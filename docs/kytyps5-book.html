@@ -6,6 +6,8 @@
 <title>KytyPS5 — The Complete Book</title>
 <meta name="description" content="A complete book on the KytyPS5 PlayStation 5 emulator: foundations, loader, memory, HLE libraries, PM4, shader recompilation and the Vulkan renderer.">
 <meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="assets/viz.css">
+<script src="assets/viz.js" defer></script>
 </head>
 <body><style>
 :root{
@@ -233,30 +235,6 @@ details[open] summary{border-bottom:1px solid var(--rule)}
 .shot{margin:0}
 .shot img{width:100%;height:auto;display:block;border:1px solid var(--rule);border-radius:3px;background:var(--surface-3)}
 .shot figcaption{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;color:var(--muted);margin-top:5px}
-
-/* ---------- wave visualiser ---------- */
-.wave-grid{display:grid;grid-template-columns:repeat(16,1fr);gap:2px;margin:var(--s4) 0}
-.lane{aspect-ratio:1;display:grid;place-items:center;font-family:var(--mono);font-size:9px;border-radius:2px;border:1px solid var(--rule);background:var(--surface-2);color:var(--faint);transition:background .18s,color .18s,border-color .18s}
-.lane.on{background:color-mix(in srgb,var(--guest) 82%,var(--surface));border-color:var(--guest);color:#fff;font-weight:600}
-.lane.taken{background:color-mix(in srgb,var(--kyty) 78%,var(--surface));border-color:var(--kyty);color:#fff;font-weight:600}
-.lane.dim{opacity:.34}
-@media (prefers-reduced-motion:reduce){.lane{transition:none}}
-.mask-line{display:flex;flex-wrap:wrap;gap:var(--s4);align-items:baseline;font-family:var(--mono);font-size:12px;margin-top:var(--s3);padding-top:var(--s3);border-top:1px solid var(--rule)}
-.mask-line b{color:var(--ink)}
-.mask-line .hexmask{color:var(--guest);word-break:break-all}
-.wave-asm{margin:var(--s3) 0 0}
-.wave-asm div{font-family:var(--mono);font-size:12px;padding:3px var(--s3);border-left:2px solid transparent;color:var(--muted);white-space:pre;overflow-x:auto}
-.wave-asm div.cur{border-left-color:var(--ink);background:var(--surface-2);color:var(--ink);font-weight:600}
-
-/* ---------- tiling visualiser ---------- */
-.tile-wrap{display:grid;grid-template-columns:1fr 1fr;gap:var(--s5)}
-@media (max-width:680px){.tile-wrap{grid-template-columns:1fr}}
-.tile-panel h5{margin:0 0 var(--s3)}
-.tile-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:2px}
-.tcell{aspect-ratio:1;display:grid;place-items:center;font-family:var(--mono);font-size:9.5px;border-radius:2px;border:1px solid var(--rule);background:var(--surface-2);color:var(--muted);font-variant-numeric:tabular-nums}
-.tcell.hot{background:var(--kyty);border-color:var(--kyty);color:#fff;font-weight:600}
-.tcell.trail{background:color-mix(in srgb,var(--kyty) 26%,var(--surface));border-color:color-mix(in srgb,var(--kyty) 45%,transparent);color:var(--ink)}
-.tcell.blk{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--guest) 55%,transparent)}
 
 /* ---------- proportional address bar ---------- */
 .spacebar{display:flex;height:34px;border:1px solid var(--rule);border-radius:3px;overflow:hidden;margin:var(--s4) 0 var(--s2)}
@@ -541,6 +519,11 @@ for (;;) {
       </tbody>
     </table>
   </div>
+
+  <h4>The path a frame actually takes</h4>
+  <p>Before any of the detail, here is the whole system in one animation. Every chapter from 25 onwards is an expansion of one of these eight boxes.</p>
+
+  <figure data-viz="pipeline"></figure>
 
   <h4>Where the difficulty actually went</h4>
   <p>Measured in lines of C++ in <code>src/</code>:</p>
@@ -843,27 +826,7 @@ s_mov_b64     exec, s[0:1]        <i>restore</i></pre>
 
   <p>Both branches are executed; results are simply thrown away for disabled lanes. This is why GPU code is fast when threads agree and slow when they diverge — and, more importantly for us, <strong>why GPU control flow is data manipulation rather than program structure</strong>. Recovering structure from it is the hardest job the shader recompiler has.</p>
 
-  <div class="fig">
-    <div class="fig-head"><span>Watch an <code>if</code> execute on 64 lanes</span><span>step through it</span></div>
-    <div class="fig-body">
-      <p style="font-size:14.5px;color:var(--muted);max-width:62ch;margin-bottom:var(--s4)">Each square is one lane, holding its own value of <code>x</code>. Blue means the lane is <strong>active</strong> and its results will be kept; gold marks lanes active in the <em>else</em> path. Faded lanes are still executing every instruction — their results are simply discarded.</p>
-
-      <div class="wave-asm" id="wave-asm"></div>
-      <div class="wave-grid" id="wave-grid"></div>
-      <div class="mask-line">
-        <span><b>EXEC</b> <span class="hexmask" id="wave-exec"></span></span>
-        <span><b>active</b> <span id="wave-count"></span> / 64</span>
-      </div>
-      <div class="step-nav">
-        <button type="button" id="wave-prev">← Previous</button>
-        <button type="button" id="wave-next">Next →</button>
-        <button type="button" id="wave-shuffle">New random data</button>
-        <span class="step-count" id="wave-count2"></span>
-      </div>
-      <div id="wave-note" style="font-size:14.5px;color:var(--ink-2);margin-top:var(--s4);border-top:1px dashed var(--rule);padding-top:var(--s3);max-width:64ch"></div>
-    </div>
-    <div class="fig-note"><p>Notice what never happens: no lane ever jumps somewhere different from its neighbours. There is one program counter for the whole wave. The <em>only</em> thing that changes is which lanes are listening — and that is why there is no branch structure for the recompiler to read back out, only arithmetic on a mask.</p></div>
-  </div>
+  <figure data-viz="wave"></figure>
 
   <div class="primer">
     <span class="lbl">Jargon · scalar versus vector registers</span>
@@ -1261,6 +1224,8 @@ static bool ParseEnum(const std::string&amp; value, E&amp; out) {
     <b>LoadElf</b>(options.elf);                       <i>// map eboot.bin into guest memory</i>
     <b>Execute</b>(options.game_patch);                <i>// spawn guest thread, run window loop</i>
 }</pre>
+
+  <figure data-viz="threads"></figure>
 
   <h4>Two threads leave <code>Execute</code></h4>
 
@@ -1687,6 +1652,10 @@ LIB_DEFINE(InitGraphicsDriver_1) {
 }</pre>
 
   <h4>The complete path, end to end</h4>
+
+  <figure data-viz="gotplt"></figure>
+
+  <p>The same five steps in words:</p>
   <div class="stack">
     <div class="layer k"><span class="nm">1 · Registration</span><span class="chip kyty">kyty</span><span class="ds"><code>Libs::InitAll()</code> runs every <code>LIB_DEFINE</code> block, inserting thousands of (NID, library, module, version) → function-pointer records into the shared <code>SymbolDatabase</code>. Nothing from the game has been loaded yet.</span></div>
     <div class="arrow">↓</div>
@@ -2964,32 +2933,7 @@ bool <b>ShaderMaterializeStageRuntime</b>(std::shared_ptr&lt;const IR::Program&g
 
   <p class="deck">Guest memory holds swizzled data; Vulkan wants something else. Converting between them is 59 KB of address arithmetic plus a family of compute shaders.</p>
 
-  <div class="fig">
-    <div class="fig-head"><span>Why tiling exists</span><span>watch memory order walk the image</span></div>
-    <div class="fig-body">
-      <p style="font-size:14.5px;color:var(--muted);max-width:64ch;margin-bottom:var(--s4)">Both panels show the same 8×8 patch of a texture. The number in each texel is <strong>its position in memory</strong>. The highlight walks memory in order — watch where it lands on screen.</p>
-      <div class="tile-wrap">
-        <div class="tile-panel">
-          <h5>Linear — row by row</h5>
-          <div class="tile-grid" id="tile-linear"></div>
-        </div>
-        <div class="tile-panel">
-          <h5>Tiled — 2×2 blocks first</h5>
-          <div class="tile-grid" id="tile-swizzled"></div>
-        </div>
-      </div>
-      <div class="step-nav">
-        <button type="button" id="tile-play">Pause</button>
-        <button type="button" id="tile-step">Step →</button>
-        <span class="step-count" id="tile-pos"></span>
-      </div>
-      <div style="font-size:14.5px;color:var(--ink-2);margin-top:var(--s4);border-top:1px dashed var(--rule);padding-top:var(--s3);max-width:64ch">
-        <p>In the linear layout, consecutive memory is a horizontal run — so the texel <em>directly below</em> the one you just read is 8 texels away, and on a real 4096-wide texture it is 4096 texels away, certainly a different cache line.</p>
-        <p>In the tiled layout, consecutive memory fills a small 2D block. A shader sampling with bilinear filtering reads a 2×2 neighbourhood, and all four texels land in the same cache line. That is the entire motivation.</p>
-      </div>
-    </div>
-    <div class="fig-note"><p><strong>This is a simplified illustration.</strong> It shows 2×2 Morton-style ordering to make the idea visible. The real families in <code>tile.cpp</code> use block sizes that vary with bytes-per-element, a per-block XOR of coordinates to spread blocks across memory channels and banks, separate schemes for depth and render targets, and a packed "tail" for small mips. The principle is the one above; the arithmetic is considerably worse.</p></div>
-  </div>
+  <figure data-viz="tiling"></figure>
 
   <h4>The layout families</h4>
   <div class="filename">src/graphics/guest_gpu/tile.h:28</div>
@@ -3091,6 +3035,8 @@ uint32_t TileGetRenderTargetPitch(uint32_t width, uint32_t bytes_per_element, ui
     <li><strong>Wave semantics differ.</strong> The shader assumes 32- or 64-lane waves and uses cross-lane instructions; host GPUs have their own subgroup sizes and support levels.</li>
     <li><strong>Failure is invisible.</strong> A miscompiled shader produces wrong pixels with no crash and no log line. This is why the tests are enormous.</li>
   </ul>
+
+  <figure data-viz="shaderflow"></figure>
 
   <h4>The pipeline</h4>
   <p>One function orchestrates everything, and it logs the beginning and end of each phase with elapsed milliseconds and a shader hash:</p>
@@ -3524,6 +3470,8 @@ Common::LeastRecentlyUsedCache&lt;ImageId, uint64_t&gt; m_lru_cache;</pre>
     <li>Has the GPU changed this data since the CPU last read it? (→ download)</li>
   </ul>
   <p>And it must answer them without any cooperation from the game.</p>
+
+  <figure data-viz="coherency"></figure>
 
   <h4>Two cooperating classes</h4>
   <div class="stack">
@@ -4557,138 +4505,6 @@ var PIPE=[
   s:"…/emitter/SpirvEmitter.cpp"}
 ];
 
-/* ---------------- wave / EXEC mask visualiser ---------------- */
-(function(){
-  var grid=document.getElementById("wave-grid");
-  if(!grid) return;
-  var asmEl=document.getElementById("wave-asm"),
-      execEl=document.getElementById("wave-exec"),
-      cntEl=document.getElementById("wave-count"),
-      cnt2El=document.getElementById("wave-count2"),
-      noteEl=document.getElementById("wave-note");
-
-  var ASM=[
-    "  ; wave starts: all 64 lanes enabled",
-    "v_cmp_gt_f32  vcc, v0, 0        ; per-lane compare -> 64-bit vcc",
-    "s_and_saveexec_b64 s[0:1], vcc  ; save exec, keep only passing lanes",
-    "  ; ... body of the THEN branch ...",
-    "s_andn2_b64   exec, s[0:1], exec ; flip to the other lanes",
-    "  ; ... body of the ELSE branch ...",
-    "s_mov_b64     exec, s[0:1]      ; restore: all lanes enabled again"
-  ];
-  var NOTE=[
-    "Every lane is active and holds its own value of <code>x</code>. There is one program counter for all 64 of them.",
-    "The compare runs in every lane at once. It does not branch — it produces a 64-bit mask in <code>vcc</code>, one bit per lane, recording which lanes passed.",
-    "<strong>This is the branch.</strong> The old mask is saved into <code>s[0:1]</code> and <code>EXEC</code> becomes <code>old &amp; vcc</code>. Faded lanes will still execute every following instruction — their writes are simply discarded.",
-    "The <em>then</em> body runs. Only the blue lanes keep their results. Cost is paid by all 64 lanes regardless.",
-    "<code>s_andn2_b64</code> computes <code>saved &amp; ~exec</code> — precisely the lanes that failed the test. No jump occurred; the mask was recomputed.",
-    "The <em>else</em> body runs, for the gold lanes. Both branches have now executed in sequence. This is why divergence costs time.",
-    "<code>EXEC</code> is restored from <code>s[0:1]</code> and the wave continues with all lanes. <strong>Nowhere in this sequence is there a merge block, a join point, or any structure</strong> — only arithmetic on a mask. Reconstructing what SPIR-V needs from this is chapter 30's hardest job."
-  ];
-
-  var N=64, vals=[], step=0;
-  function shuffle(){ vals=[]; for(var i=0;i<N;i++) vals.push(Math.floor(Math.random()*19)-9); }
-  function cond(i){ return vals[i]>0; }
-
-  function activeAt(s,i){
-    if(s<=1) return true;                 // all lanes
-    if(s===2||s===3) return cond(i);      // then
-    if(s===4||s===5) return !cond(i);     // else
-    return true;                          // restored
-  }
-  function hexMask(s){
-    var hi=0,lo=0;
-    for(var i=0;i<32;i++) if(activeAt(s,i)) lo|=(1<<i);
-    for(var j=32;j<64;j++) if(activeAt(s,j)) hi|=(1<<(j-32));
-    function h(v){ var t=(v>>>0).toString(16).toUpperCase(); while(t.length<8) t="0"+t; return t; }
-    return "0x"+h(hi)+h(lo);
-  }
-
-  var cells=[];
-  for(var i=0;i<N;i++){
-    var d=document.createElement("div");
-    d.className="lane"; d.title="lane "+i;
-    grid.appendChild(d); cells.push(d);
-  }
-
-  function render(){
-    asmEl.innerHTML=ASM.map(function(l,i){
-      return '<div class="'+(i===step?"cur":"")+'">'+l.replace(/&/g,"&amp;").replace(/</g,"&lt;")+"</div>";
-    }).join("");
-    var n=0;
-    for(var i=0;i<N;i++){
-      var on=activeAt(step,i);
-      if(on) n++;
-      var cls="lane";
-      if(on) cls+= (step===4||step===5) ? " taken" : " on";
-      else cls+=" dim";
-      cells[i].className=cls;
-      cells[i].textContent=vals[i];
-    }
-    execEl.textContent=hexMask(step);
-    cntEl.textContent=n;
-    cnt2El.textContent="step "+(step+1)+" / "+ASM.length;
-    noteEl.innerHTML=NOTE[step];
-  }
-
-  document.getElementById("wave-prev").addEventListener("click",function(){ step=(step-1+ASM.length)%ASM.length; render(); });
-  document.getElementById("wave-next").addEventListener("click",function(){ step=(step+1)%ASM.length; render(); });
-  document.getElementById("wave-shuffle").addEventListener("click",function(){ shuffle(); render(); });
-
-  shuffle(); render();
-})();
-
-/* ---------------- tiling visualiser ---------------- */
-(function(){
-  var lin=document.getElementById("tile-linear");
-  if(!lin) return;
-  var swz=document.getElementById("tile-swizzled"),
-      posEl=document.getElementById("tile-pos"),
-      playBtn=document.getElementById("tile-play"),
-      stepBtn=document.getElementById("tile-step");
-
-  var W=8,H=8,N=W*H;
-  // 2x2 blocks laid out row-major; the four texels inside a block are contiguous.
-  function swizzleIndex(x,y){
-    var bx=x>>1, by=y>>1, ix=x&1, iy=y&1;
-    return (by*(W/2)+bx)*4 + (iy*2+ix);
-  }
-  var linCells=[], swzCells=[], linIdx=[], swzIdx=[];
-  for(var y=0;y<H;y++){
-    for(var x=0;x<W;x++){
-      var a=document.createElement("div"); a.className="tcell";
-      a.textContent=y*W+x; linIdx.push(y*W+x); lin.appendChild(a); linCells.push(a);
-
-      var s=swizzleIndex(x,y);
-      var b=document.createElement("div");
-      b.className="tcell"+(((x>>1)+(y>>1))%2===0?" blk":"");
-      b.textContent=s; swzIdx.push(s); swz.appendChild(b); swzCells.push(b);
-    }
-  }
-
-  var m=0, timer=null;
-  var reduced=window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-  function paint(){
-    for(var i=0;i<N;i++){
-      linCells[i].className="tcell"+(linIdx[i]===m?" hot":(linIdx[i]<m?" trail":""));
-      var blk=(((i%W)>>1)+((i/W|0)>>1))%2===0?" blk":"";
-      swzCells[i].className="tcell"+blk+(swzIdx[i]===m?" hot":(swzIdx[i]<m?" trail":""));
-    }
-    posEl.textContent="memory offset "+m+" / "+(N-1);
-  }
-  function advance(){ m=(m+1)%N; paint(); }
-
-  function play(){ if(timer) return; timer=setInterval(advance,320); playBtn.textContent="Pause"; }
-  function pause(){ if(timer){ clearInterval(timer); timer=null; } playBtn.textContent="Play"; }
-
-  playBtn.addEventListener("click",function(){ timer?pause():play(); });
-  stepBtn.addEventListener("click",function(){ pause(); advance(); });
-
-  paint();
-  if(reduced){ pause(); } else { play(); }
-})();
-
 stepper({
   tabsId:"pipe", panelId:"pipe-panel", items:PIPE,
   btn:function(it,i){ return '<span class="i">'+String(i+1).padStart(2,"0")+'</span><span class="t">'+it.t+"</span>"; },
@@ -4700,6 +4516,8 @@ stepper({
 });
 })();
 </script>
+
+
 
 </body>
 </html>

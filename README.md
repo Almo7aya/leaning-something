@@ -40,15 +40,30 @@ layer of the emulator with real source excerpts (~120 code blocks).
 
 **Interactive pieces**
 
-- **Wave / EXEC-mask visualiser** — step an `if` through 64 shader lanes and watch
-  the execution mask do the branching. The clearest way to see why GPU control flow
-  has no structure to recover.
-- **Tiling visualiser** — watch memory order walk a texture in linear vs tiled layout
 - **PM4 packet decoder** — type a header dword, see the fields extracted
 - **GPU descriptor decoder** — decode V# / T# / S# resource descriptors field by field
 - **Calling convention comparison** — System V vs Microsoft x64, side by side
 - **ELF → memory diagram**, **boot stepper**, **shader pipeline stepper**,
   **address-space map**, filterable nav and glossary
+
+## Animated explainers
+
+Seven animations in `docs/assets/viz.js`, shared by all three documents and placed
+wherever the concept comes up. Each auto-plays while on screen, pauses when scrolled
+away, and can be stepped manually. All respect `prefers-reduced-motion`.
+
+| Animation | Explains | Appears in |
+|---|---|---|
+| **pipeline** | Game code → AGC builders → PM4 buffer → command processor → registers → draw → screen. Eight numbered stages with a token travelling the path. | book ch 3, guide §01, path L4 |
+| **gotplt** | How a console call reaches emulator code: the PLT jumps through a GOT slot, and the loader rewrites just that one pointer. The core HLE trick. | book ch 15, guide §04, path L2 |
+| **coherency** | Page faults as a notification channel — CPU writes, pages go dirty, upload, write-protect, fault, re-upload. | book ch 32, guide §05, path L6 |
+| **wave** | An `if` executing across 64 shader lanes, with the EXEC mask doing the branching. The clearest way to see why GPU control flow leaves no structure to recover. | book ch 7, guide §09, path L5 |
+| **tiling** | Memory order walking an 8×8 patch in linear vs tiled layout, showing why a 2×2 neighbourhood lands in one cache line. | book ch 29, guide §08 |
+| **threads** | Which of the three threads runs what, over the life of the process. | book ch 12, guide §03, path L1 |
+| **shaderflow** | The five forms shader code passes through: machine words → instructions → CFG → IR → SPIR-V. | book ch 30, guide §09, path L5 |
+
+Verified by rendering every widget in headless Chrome in both light and dark themes
+and stepping through all of its stages.
 
 **Further reading** is linked in context (15 boxes) and collected in chapter 39 —
 AMD's RDNA 2 ISA guide, the SPIR-V spec, Fabian Giesen's graphics pipeline series,
@@ -90,12 +105,19 @@ docs/                          served by GitHub Pages
 ├─ kytyps5-book.html           the book
 ├─ kytyps5-guide.html          the guide
 ├─ kytyps5-learning-path.html  the workbook
-└─ assets/                     screenshots (JPEG)
+└─ assets/
+   ├─ viz.css                  styles for the animated explainers
+   ├─ viz.js                   the seven animations
+   └─ shot-*.jpg               emulator screenshots (lazy-loaded)
 ```
 
-Each document is one HTML file with inline CSS and JavaScript — no build step, no
-dependencies, no tracking. The only external files are the screenshots in `assets/`,
-which are lazy-loaded. Light and dark themes follow your system preference.
+No build step, no dependencies, no tracking. Each document carries its own inline CSS
+and page JavaScript; the shared pieces are the two `viz.*` files and the screenshots.
+The animations consume the host page's design tokens, so they theme themselves — light
+and dark both follow your system preference.
+
+To add an animation anywhere, drop in `<figure data-viz="NAME"></figure>` and make sure
+the page links `assets/viz.css` and `assets/viz.js`.
 
 ---
 

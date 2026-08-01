@@ -6,6 +6,8 @@
 <title>KytyPS5 — Learning Path</title>
 <meta name="description" content="A seven-level workbook for learning the KytyPS5 PlayStation 5 emulator codebase.">
 <meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="assets/viz.css">
+<script src="assets/viz.js" defer></script>
 </head>
 <body><style>
 :root {
@@ -204,6 +206,18 @@ section.app { padding-top:var(--s8); scroll-margin-top:var(--s4); }
     <div class="overall-track"><div class="overall-fill" id="ov-fill"></div></div>
     <div class="overall-note"><p>Companion to the architecture guide. If a term here is unfamiliar — NID, PM4, sharp, SRT, EXEC mask — that document's glossary defines it.</p></div>
   </div>
+  <div class="viz">
+    <div class="viz-head"><span>What all of this produces</span><span>commercial titles, running</span></div>
+    <div class="viz-body">
+      <div class="viz-shots">
+        <figure><img loading="lazy" src="assets/shot-disgaea6.jpg" alt="Disgaea 6 running in KytyPS5" width="880" height="494"><figcaption>Disgaea 6</figcaption></figure>
+        <figure><img loading="lazy" src="assets/shot-silenthill.jpg" alt="SILENT HILL: The Short Message running in KytyPS5" width="880" height="494"><figcaption>SILENT HILL: The Short Message</figcaption></figure>
+        <figure><img loading="lazy" src="assets/shot-neptunia.jpg" alt="Neptunia ReVerse running in KytyPS5" width="880" height="494"><figcaption>Neptunia ReVerse</figcaption></figure>
+        <figure><img loading="lazy" src="assets/shot-paleopines.jpg" alt="Paleo Pines running in KytyPS5" width="880" height="493"><figcaption>Paleo Pines</figcaption></figure>
+      </div>
+    </div>
+    <div class="viz-note">Every pixel went through the chain described here: PM4 packets parsed by a software command processor, RDNA 2 shaders recompiled to SPIR-V, guest memory tracked by page faults. Screenshots from the KytyPS5 repository.</div>
+  </div>
 </header>
 
 <div id="modules"></div>
@@ -396,7 +410,7 @@ event_queue_lifetime_tests   shader_stage_runtime_tests shader_vertex_metadata_t
 
     /* ---------------------------------------------------- L1 */
     {
-      id: "l1", lv: "Level 1", side: "k", time: "2 hours", pre: "Level 0",
+      id: "l1", lv: "Level 1", side: "k", time: "2 hours", pre: "Level 0", viz: ["threads"],
       title: "The shape of the whole program",
       goal: "Understand the top level end to end. These are small files and you can genuinely finish them in one sitting — resist every temptation to follow a call into the graphics or loader code.",
       reading: [
@@ -422,7 +436,7 @@ event_queue_lifetime_tests   shader_stage_runtime_tests shader_vertex_metadata_t
 
     /* ---------------------------------------------------- L2 */
     {
-      id: "l2", lv: "Level 2", side: "k", time: "2–3 hours", pre: "Level 1",
+      id: "l2", lv: "Level 2", side: "k", time: "2–3 hours", pre: "Level 1", viz: ["gotplt"],
       title: "One HLE function, all the way through",
       goal: "See the single most important trick in the project: how a guest call to a PlayStation system function ends up executing native C++ inside the emulator. It is only a few hundred lines of mechanism.",
       reading: [
@@ -477,7 +491,7 @@ event_queue_lifetime_tests   shader_stage_runtime_tests shader_vertex_metadata_t
 
     /* ---------------------------------------------------- L4 */
     {
-      id: "l4", lv: "Level 4", side: "g", time: "1 day", pre: "Levels 1 and 3",
+      id: "l4", lv: "Level 4", side: "g", time: "1 day", pre: "Levels 1 and 3", viz: ["pipeline"],
       title: "Follow one draw call from packet to Vulkan",
       goal: "Trace a single triangle from the bytes the game wrote into its command buffer all the way to a recorded vkCmdDraw. This chain is the spine of the graphics stack — once you can walk it, most graphics work becomes navigable.",
       reading: [
@@ -508,7 +522,7 @@ event_queue_lifetime_tests   shader_stage_runtime_tests shader_vertex_metadata_t
 
     /* ---------------------------------------------------- L5 */
     {
-      id: "l5", lv: "Level 5", side: "k", time: "1–2 days", pre: "Level 4",
+      id: "l5", lv: "Level 5", side: "k", time: "1–2 days", pre: "Level 4", viz: ["wave","shaderflow"],
       title: "Watch one shader get compiled",
       goal: "Follow a blob of RDNA 2 machine code through eleven compiler passes to a SPIR-V module. This is a real compiler and it will take real time. Keep AMD's ISA reference open throughout — instruction semantics are not guessable.",
       reading: [
@@ -538,7 +552,7 @@ event_queue_lifetime_tests   shader_stage_runtime_tests shader_vertex_metadata_t
 
     /* ---------------------------------------------------- L6 */
     {
-      id: "l6", lv: "Level 6", side: "h", time: "several days", pre: "Levels 3–5",
+      id: "l6", lv: "Level 6", side: "h", time: "several days", pre: "Levels 3–5", viz: ["coherency"],
       title: "CPU/GPU coherency and the resource caches",
       goal: "The hardest part of the emulator, and the source of the bugs that are hardest to reproduce. Start with the tests — they state the invariants far more clearly than the implementation does.",
       reading: [
@@ -627,6 +641,11 @@ event_queue_lifetime_tests   shader_stage_runtime_tests shader_vertex_metadata_t
       '</div>' +
       '<div class="mod-body">' +
         '<h3>Read, in this order</h3><div class="reading">' + reading + '</div>' +
+        (m.viz && m.viz.length
+          ? '<h3>See it happen</h3>' + m.viz.map(function (v) {
+              return '<figure data-viz="' + v + '"></figure>';
+            }).join("")
+          : "") +
         '<h3>Do</h3><div class="tasks">' + tasks + '</div>' +
         '<h3>Check yourself</h3><div class="checks">' + checks + '</div>' +
         '<div class="outcome"><span class="lbl">You can now</span>' + m.out + '</div>' +
@@ -707,6 +726,8 @@ event_queue_lifetime_tests   shader_stage_runtime_tests shader_vertex_metadata_t
   spy();
 })();
 </script>
+
+
 
 </body>
 </html>

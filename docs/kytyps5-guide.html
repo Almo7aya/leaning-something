@@ -6,6 +6,8 @@
 <title>KytyPS5 — Anatomy of a PlayStation 5 Emulator</title>
 <meta name="description" content="An interactive, source-referenced walkthrough of the KytyPS5 PlayStation 5 emulator.">
 <meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="assets/viz.css">
+<script src="assets/viz.js" defer></script>
 </head>
 <body><style>
 /* ============================================================
@@ -444,6 +446,18 @@ details[open] summary { border-bottom: 1px solid var(--rule); }
     <div class="stat"><div class="k">GPU target</div><div class="v">Vulkan 1.3</div><div class="n">RDNA&nbsp;2 shader ISA recompiled to SPIR-V</div></div>
     <div class="stat"><div class="k">Tests</div><div class="v">29k</div><div class="n">lines of regression tests, mostly shader &amp; memory</div></div>
   </div>
+  <div class="viz">
+    <div class="viz-head"><span>What all of this produces</span><span>commercial titles, running</span></div>
+    <div class="viz-body">
+      <div class="viz-shots">
+        <figure><img loading="lazy" src="assets/shot-disgaea6.jpg" alt="Disgaea 6 running in KytyPS5" width="880" height="494"><figcaption>Disgaea 6</figcaption></figure>
+        <figure><img loading="lazy" src="assets/shot-silenthill.jpg" alt="SILENT HILL: The Short Message running in KytyPS5" width="880" height="494"><figcaption>SILENT HILL: The Short Message</figcaption></figure>
+        <figure><img loading="lazy" src="assets/shot-neptunia.jpg" alt="Neptunia ReVerse running in KytyPS5" width="880" height="494"><figcaption>Neptunia ReVerse</figcaption></figure>
+        <figure><img loading="lazy" src="assets/shot-paleopines.jpg" alt="Paleo Pines running in KytyPS5" width="880" height="493"><figcaption>Paleo Pines</figcaption></figure>
+      </div>
+    </div>
+    <div class="viz-note">Every pixel went through the chain described here: PM4 packets parsed by a software command processor, RDNA 2 shaders recompiled to SPIR-V, guest memory tracked by page faults. Screenshots from the KytyPS5 repository.</div>
+  </div>
 </header>
 
 <!-- ============================================================ 01 -->
@@ -509,6 +523,10 @@ details[open] summary { border-bottom: 1px solid var(--rule); }
     </div>
   </div>
 
+  <h3>The whole path, animated</h3>
+  <p>Before the detail: every section from §08 onwards expands one box in this flow.</p>
+  <figure data-viz="pipeline"></figure>
+
   <h3>HLE versus LLE, in one paragraph</h3>
   <p><em>Low-level emulation</em> means running the console's real firmware and libraries on a simulated machine — maximally accurate, extremely slow, and legally fraught because it requires copyrighted system files. <em>High-level emulation</em> means reimplementing what those libraries <em>do</em>. KytyPS5 is HLE throughout; its README notes that "no external low-level emulation modules are currently required." The trade-off is that every unimplemented function is a potential crash, and behaviour can differ from the real console in subtle ways.</p>
 </section>
@@ -573,6 +591,8 @@ details[open] summary { border-bottom: 1px solid var(--rule); }
       </div>
     </div>
   </div>
+
+  <figure data-viz="threads"></figure>
 
   <h3>The subsystem framework</h3>
   <p>Kyty does not initialise its parts in a hard-coded order. Instead each major component registers itself as a <code>Subsystem</code> with a list of dependencies, and a topological sort decides the order:</p>
@@ -656,6 +676,8 @@ E8 xx xx xx xx                 <b>call</b> tls_handler
   <h4>2 · The stack canary store</h4>
   <p>Compiler-generated stack-protector code stores through <code>fs:[0x28]</code>. Since <code>fs</code> is wrong, this would fault at address <code>0x28</code>. The loader replaces the 12-byte store with <code>nop</code>s — and, if it recognises the specific "canary failed → <code>ud2</code>" epilogue that follows, replaces the whole thing with <code>pop rbp; ret</code>.</p>
   <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp:1309</span><span class="src">src/loader/jit.h:119</span></div>
+
+  <figure data-viz="gotplt"></figure>
 
   <h3>NIDs: how symbols are named</h3>
   <p>PS5 modules do not export readable symbol names. They export <strong>NIDs</strong> — an 11-character base64-ish encoding of a hash of the original name, followed by the library and module it belongs to, separated by <code>#</code>:</p>
@@ -766,6 +788,8 @@ while (expanded_size &lt; 768 * 1024) {
   <p>On a real PS5, CPU and GPU share one physical memory. When a game writes vertex data with the CPU and then draws with it, no synchronisation is needed — the GPU reads the same bytes. On a PC, the GPU has its own memory, and Vulkan resources are <em>copies</em>. Kyty must detect when a copy has gone stale.</p>
 
   <p>It does this with hardware page protection. Two classes cooperate:</p>
+
+  <figure data-viz="coherency"></figure>
 
   <div class="stack">
     <div class="layer k"><span class="nm">PageManager</span><span class="chip kyty">kyty</span><span class="ds">Owns the actual protection calls. <code>UpdatePageWatchers(track, vaddr, size, mode)</code> makes a guest range write-protected (or read-write-protected). A guest access then faults, and the fault lands in the exception handler from §04.</span></div>
@@ -938,6 +962,8 @@ extern const std::array&lt;hw_uc_parser_func_t, UC_NUM&gt;    <b>g_hw_uc_func</b
     </table>
   </div>
 
+  <figure data-viz="tiling"></figure>
+
   <h3>Tiling: the layout problem</h3>
   <p>GPUs do not store textures row by row. They interleave pixels into small blocks so that a 2D neighbourhood lands in one cache line. AMD's schemes have names like Standard 4&nbsp;KB, Standard 64&nbsp;KB, PRT 64&nbsp;KB, Render-Target 64&nbsp;KB and Depth 64&nbsp;KB, each with a different swizzle and different alignment rules per bytes-per-pixel and per mip level.</p>
   <p>Guest memory holds tiled data; Vulkan wants linear data (or its own opaque tiling). <code>tile.cpp</code> — 59&nbsp;KB of address arithmetic — computes sizes, offsets, mip layouts and the XOR swizzles. The actual conversion runs on the host GPU as compute shaders, one per layout family:</p>
@@ -953,6 +979,10 @@ gpu_tiler_depth.comp          gpu_tiler_promote_d16.comp</pre>
   <div class="sec-head"><span class="sec-num">09</span><h2>Graphics II — the shader recompiler</h2></div>
 
   <p class="deck">26,000 lines whose job is: given a blob of RDNA&nbsp;2 machine code found at some address in guest memory, produce an equivalent SPIR-V module that Vulkan will accept. This is a compiler, complete with a control-flow graph, an SSA-ish IR, and optimisation passes.</p>
+
+  <figure data-viz="wave"></figure>
+
+  <figure data-viz="shaderflow"></figure>
 
   <h3>Why it is hard</h3>
   <ul>
@@ -1630,6 +1660,8 @@ cmake --install _Build/windows --prefix _Build/windows/install</pre>
   });
 })();
 </script>
+
+
 
 </body>
 </html>
