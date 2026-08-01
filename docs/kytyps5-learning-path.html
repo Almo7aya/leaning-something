@@ -1,0 +1,712 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="A seven-level workbook for learning the KytyPS5 PlayStation 5 emulator codebase.">
+</head>
+<body><title>KytyPS5 — Learning Path</title>
+
+<style>
+:root {
+  --ground:#EFF1F2; --surface:#FCFCFB; --surface-2:#F4F6F7; --surface-3:#E9EDEF;
+  --ink:#161B21; --ink-2:#3D4753; --muted:#5E6975; --faint:#8A939D;
+  --rule:#D9DEE1; --rule-2:#C2CACF;
+  --guest:#31649E; --kyty:#B07A0E; --host:#A83B5C;
+  --shadow: 0 1px 2px rgba(22,27,33,.05), 0 8px 24px -16px rgba(22,27,33,.28);
+  --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --serif: Charter, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --s7:48px; --s8:72px; --s9:104px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground:#0E1317; --surface:#12171C; --surface-2:#171E24; --surface-3:#1D262D;
+    --ink:#DCE3E9; --ink-2:#B3BEC8; --muted:#8A97A4; --faint:#69757F;
+    --rule:#232C34; --rule-2:#33404A;
+    --guest:#4A8AC8; --kyty:#BE8A22; --host:#C85874;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px -18px rgba(0,0,0,.9);
+  }
+}
+:root[data-theme="dark"] {
+  --ground:#0E1317; --surface:#12171C; --surface-2:#171E24; --surface-3:#1D262D;
+  --ink:#DCE3E9; --ink-2:#B3BEC8; --muted:#8A97A4; --faint:#69757F;
+  --rule:#232C34; --rule-2:#33404A;
+  --guest:#4A8AC8; --kyty:#BE8A22; --host:#C85874;
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px -18px rgba(0,0,0,.9);
+}
+:root[data-theme="light"] {
+  --ground:#EFF1F2; --surface:#FCFCFB; --surface-2:#F4F6F7; --surface-3:#E9EDEF;
+  --ink:#161B21; --ink-2:#3D4753; --muted:#5E6975; --faint:#8A939D;
+  --rule:#D9DEE1; --rule-2:#C2CACF;
+  --guest:#31649E; --kyty:#B07A0E; --host:#A83B5C;
+  --shadow: 0 1px 2px rgba(22,27,33,.05), 0 8px 24px -16px rgba(22,27,33,.28);
+}
+
+* { box-sizing: border-box; }
+body { margin:0; background:var(--ground); color:var(--ink); font-family:var(--serif); font-size:17px; line-height:1.62; -webkit-font-smoothing:antialiased; }
+p { margin:0 0 var(--s4); max-width:68ch; } p:last-child { margin-bottom:0; }
+a { color:inherit; text-decoration:underline; text-decoration-color:var(--rule-2); text-underline-offset:3px; }
+a:hover { text-decoration-color:currentColor; }
+:focus-visible { outline:2px solid var(--guest); outline-offset:3px; border-radius:2px; }
+h1,h2,h3,h4 { font-family:var(--mono); font-weight:600; text-wrap:balance; margin:0; }
+code,kbd { font-family:var(--mono); }
+ul,ol { max-width:68ch; padding-left:1.35em; margin:0 0 var(--s4); }
+li { margin-bottom:var(--s2); } li:last-child { margin-bottom:0; }
+
+/* ---------- shell ---------- */
+.shell { display:grid; grid-template-columns:262px minmax(0,1fr); }
+.rail { position:sticky; top:0; align-self:start; height:100vh; overflow-y:auto; padding:var(--s6) var(--s4) var(--s6) var(--s6); border-right:1px solid var(--rule); background:var(--surface); }
+.rail-brand { font-family:var(--mono); font-size:11.5px; letter-spacing:.11em; text-transform:uppercase; color:var(--muted); display:block; margin-bottom:var(--s5); }
+.rail-brand strong { display:block; color:var(--ink); font-size:15px; letter-spacing:.02em; text-transform:none; margin-top:2px; }
+.rail nav { display:flex; flex-direction:column; gap:1px; }
+.rail nav a { display:grid; grid-template-columns:2.6em 1fr auto; gap:var(--s2); align-items:center; font-family:var(--mono); font-size:12.5px; line-height:1.35; padding:8px var(--s2) 8px var(--s3); margin-left:-14px; text-decoration:none; color:var(--muted); border-left:2px solid transparent; }
+.rail nav a span.lv { color:var(--faint); font-variant-numeric:tabular-nums; }
+.rail nav a span.pc { font-size:10.5px; color:var(--faint); font-variant-numeric:tabular-nums; }
+.rail nav a:hover { color:var(--ink); }
+.rail nav a.on { color:var(--ink); border-left-color:var(--ink); font-weight:600; }
+.rail nav a.done span.pc { color:var(--guest); }
+.rail-foot { margin-top:var(--s6); padding-top:var(--s4); border-top:1px solid var(--rule); }
+.rail-foot button { font-family:var(--mono); font-size:11px; padding:5px 9px; border:1px solid var(--rule); background:var(--surface-2); color:var(--muted); border-radius:2px; cursor:pointer; width:100%; }
+.rail-foot button:hover { color:var(--ink); border-color:var(--rule-2); }
+.rail-foot p { font-family:var(--mono); font-size:10.5px; line-height:1.6; color:var(--faint); margin-top:var(--s3); }
+
+main { min-width:0; }
+.col { max-width:1000px; margin:0 auto; padding:0 var(--s6) var(--s9); }
+
+@media (max-width:940px) {
+  .shell { grid-template-columns:1fr; }
+  .rail { position:static; height:auto; border-right:0; border-bottom:1px solid var(--rule); padding:var(--s4); }
+  .rail nav { flex-direction:row; overflow-x:auto; gap:var(--s1); padding-bottom:var(--s2); }
+  .rail nav a { border-left:0; border-bottom:2px solid transparent; margin-left:0; padding:6px var(--s3); white-space:nowrap; grid-template-columns:auto auto auto; }
+  .rail nav a.on { border-left-color:transparent; border-bottom-color:var(--ink); }
+  .col { padding:0 var(--s4) var(--s8); }
+  body { font-size:16.5px; }
+}
+
+/* ---------- hero ---------- */
+.hero { padding:var(--s8) 0 var(--s6); border-bottom:1px solid var(--rule); }
+.eyebrow { font-family:var(--mono); font-size:11.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted); margin-bottom:var(--s4); }
+.hero h1 { font-size:clamp(28px,4.6vw,42px); line-height:1.1; letter-spacing:-.02em; margin-bottom:var(--s4); max-width:20ch; }
+.hero .lede { font-size:clamp(17px,2vw,20px); line-height:1.55; color:var(--ink-2); max-width:62ch; }
+
+.overall { margin-top:var(--s6); border:1px solid var(--rule); border-radius:3px; background:var(--surface); overflow:hidden; box-shadow:var(--shadow); }
+.overall-top { display:flex; align-items:center; gap:var(--s4); padding:var(--s4); flex-wrap:wrap; }
+.overall-top .big { font-family:var(--mono); font-size:32px; font-weight:600; letter-spacing:-.02em; font-variant-numeric:tabular-nums; line-height:1; }
+.overall-top .lbl { font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); }
+.overall-track { height:6px; background:var(--surface-3); }
+.overall-fill { height:100%; background:var(--ink); width:0%; transition:width .25s ease; }
+@media (prefers-reduced-motion:reduce) { .overall-fill { transition:none; } }
+.overall-note { padding:var(--s3) var(--s4); border-top:1px solid var(--rule); background:var(--surface-2); font-size:13.5px; color:var(--muted); }
+.overall-note p { max-width:none; }
+
+/* ---------- module card ---------- */
+.mod { margin-top:var(--s7); border:1px solid var(--rule); border-radius:3px; background:var(--surface); overflow:hidden; scroll-margin-top:var(--s4); }
+.mod-head { padding:var(--s5); border-bottom:1px solid var(--rule); background:var(--surface-2); }
+.mod-badges { display:flex; flex-wrap:wrap; gap:var(--s2); align-items:center; margin-bottom:var(--s3); }
+.badge { font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; padding:3px 8px; border-radius:2px; border:1px solid var(--rule-2); color:var(--muted); background:var(--surface); }
+.badge.lv { border-color:var(--ink); color:var(--ink); font-weight:600; }
+.badge.g { color:var(--guest); border-color:color-mix(in srgb,var(--guest) 45%,transparent); background:color-mix(in srgb,var(--guest) 9%,transparent); }
+.badge.k { color:var(--kyty); border-color:color-mix(in srgb,var(--kyty) 45%,transparent); background:color-mix(in srgb,var(--kyty) 9%,transparent); }
+.badge.h { color:var(--host); border-color:color-mix(in srgb,var(--host) 45%,transparent); background:color-mix(in srgb,var(--host) 9%,transparent); }
+.mod-head h2 { font-size:clamp(19px,2.6vw,25px); letter-spacing:-.015em; line-height:1.2; margin-bottom:var(--s3); }
+.mod-goal { font-size:16px; color:var(--ink-2); max-width:62ch; }
+.mod-prog { display:flex; align-items:center; gap:var(--s3); margin-top:var(--s4); }
+.mod-prog .track { flex:1; height:4px; background:var(--surface-3); border-radius:2px; overflow:hidden; }
+.mod-prog .fill { height:100%; width:0%; background:var(--guest); transition:width .2s ease; }
+@media (prefers-reduced-motion:reduce) { .mod-prog .fill { transition:none; } }
+.mod-prog .cnt { font-family:var(--mono); font-size:11px; color:var(--muted); font-variant-numeric:tabular-nums; white-space:nowrap; }
+.mod-body { padding:var(--s5); }
+.mod-body > h3:first-child { margin-top:0; }
+
+h3 { font-size:13px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); margin:var(--s6) 0 var(--s3); padding-bottom:6px; border-bottom:1px solid var(--rule); }
+
+/* ---------- reading list ---------- */
+.reading { display:grid; gap:1px; background:var(--rule); border:1px solid var(--rule); border-radius:3px; overflow:hidden; }
+.reading > div { background:var(--surface); padding:var(--s3) var(--s4); display:grid; grid-template-columns:1.8em minmax(0,1fr); gap:var(--s3); align-items:start; }
+.reading .n { font-family:var(--mono); font-size:11px; color:var(--faint); font-variant-numeric:tabular-nums; padding-top:3px; }
+.reading .f { font-family:var(--mono); font-size:12.5px; font-weight:600; word-break:break-all; }
+.reading .w { font-size:14px; color:var(--muted); line-height:1.5; margin-top:2px; }
+
+/* ---------- tasks ---------- */
+.tasks { display:flex; flex-direction:column; gap:var(--s2); }
+.task { display:grid; grid-template-columns:auto minmax(0,1fr); gap:var(--s3); align-items:start; padding:var(--s3) var(--s4); border:1px solid var(--rule); border-radius:3px; background:var(--surface-2); cursor:pointer; }
+.task:hover { border-color:var(--rule-2); }
+.task input { margin:4px 0 0; width:15px; height:15px; accent-color:var(--guest); cursor:pointer; flex:none; }
+.task .t { font-size:15.5px; line-height:1.5; }
+.task .hint { font-size:13.5px; color:var(--muted); line-height:1.5; margin-top:4px; }
+.task.done .t { color:var(--muted); text-decoration:line-through; text-decoration-color:var(--rule-2); }
+.task.done { background:var(--surface); }
+
+/* ---------- checkpoint ---------- */
+.checks { display:flex; flex-direction:column; gap:var(--s2); }
+.check { border:1px solid var(--rule); border-radius:3px; background:var(--surface-2); }
+.check summary { cursor:pointer; padding:var(--s3) var(--s4); font-size:15.5px; list-style:none; display:flex; gap:var(--s3); align-items:baseline; }
+.check summary::-webkit-details-marker { display:none; }
+.check summary::before { content:"?"; font-family:var(--mono); font-weight:600; color:var(--faint); flex:none; }
+.check[open] summary { border-bottom:1px solid var(--rule); }
+.check .ans { padding:var(--s4); font-size:15px; color:var(--ink-2); background:var(--surface); }
+.check .ans > :first-child { margin-top:0; }
+
+/* ---------- misc ---------- */
+pre { margin:var(--s4) 0; padding:var(--s4); overflow-x:auto; background:var(--surface-2); border:1px solid var(--rule); border-radius:3px; font-family:var(--mono); font-size:12.5px; line-height:1.7; color:var(--ink-2); tab-size:4; }
+pre b { color:var(--ink); font-weight:600; }
+pre i { color:var(--faint); font-style:normal; }
+:not(pre) > code { font-size:.87em; background:var(--surface-3); padding:1px 5px; border-radius:3px; color:var(--ink-2); }
+
+.src { display:inline-block; font-family:var(--mono); font-size:11px; padding:1px 6px; border:1px solid var(--rule); border-radius:2px; background:var(--surface-2); color:var(--muted); white-space:nowrap; }
+
+.outcome { margin-top:var(--s5); border-left:3px solid var(--guest); padding:var(--s2) 0 var(--s2) var(--s4); }
+.outcome .lbl { font-family:var(--mono); font-size:10.5px; letter-spacing:.13em; text-transform:uppercase; color:var(--muted); display:block; margin-bottom:5px; }
+
+.callout { border-left:3px solid var(--rule-2); padding:var(--s2) 0 var(--s2) var(--s4); margin:var(--s5) 0; color:var(--ink-2); }
+.callout.k { border-left-color:var(--kyty); }
+.callout .lbl { font-family:var(--mono); font-size:10.5px; letter-spacing:.13em; text-transform:uppercase; color:var(--muted); display:block; margin-bottom:5px; }
+
+.tw { overflow-x:auto; margin:var(--s4) 0; border:1px solid var(--rule); border-radius:3px; background:var(--surface); }
+table { border-collapse:collapse; width:100%; font-size:14px; }
+th,td { text-align:left; padding:9px var(--s4); border-bottom:1px solid var(--rule); vertical-align:top; }
+th { font-family:var(--mono); font-size:10.5px; letter-spacing:.11em; text-transform:uppercase; color:var(--muted); font-weight:600; background:var(--surface-2); white-space:nowrap; }
+tr:last-child td { border-bottom:0; }
+
+section.app { padding-top:var(--s8); scroll-margin-top:var(--s4); }
+.app-head { display:flex; align-items:baseline; gap:var(--s4); margin-bottom:var(--s5); padding-bottom:var(--s3); border-bottom:1px solid var(--rule); }
+.app-num { font-family:var(--mono); font-size:12px; color:var(--faint); letter-spacing:.08em; flex:none; }
+.app-head h2 { font-size:clamp(20px,2.8vw,26px); letter-spacing:-.015em; }
+
+.foot { margin-top:var(--s9); padding-top:var(--s5); border-top:1px solid var(--rule); font-size:14px; color:var(--muted); }
+</style>
+
+<div class="shell">
+  <aside class="rail">
+    <span class="rail-brand">Workbook<strong>KytyPS5 learning path</strong></span>
+    <nav id="toc"></nav>
+    <div class="rail-foot">
+      <button type="button" id="reset">Reset progress</button>
+      <p id="storenote">Progress is saved in this browser only.</p>
+    </div>
+  </aside>
+
+  <main>
+    <div class="col">
+
+<header class="hero">
+  <div class="eyebrow">Seven levels · roughly three weeks part-time</div>
+  <h1>Learning KytyPS5 by doing</h1>
+  <p class="lede">Reading 123,000 lines front to back does not work. This is an ordered set of small, complete journeys through the emulator — each one ends with something you can actually do. Every task is concrete and every file reference is real.</p>
+
+  <div class="overall">
+    <div class="overall-top">
+      <div><div class="lbl">Completed</div><div class="big" id="ov-pct">0%</div></div>
+      <div><div class="lbl">Tasks</div><div class="big" id="ov-cnt">0</div></div>
+      <div style="flex:1"></div>
+      <div style="max-width:34ch;font-size:14px;color:var(--muted);line-height:1.5">Tick tasks as you finish them. Levels build on each other — the prerequisites are real, not decorative.</div>
+    </div>
+    <div class="overall-track"><div class="overall-fill" id="ov-fill"></div></div>
+    <div class="overall-note"><p>Companion to the architecture guide. If a term here is unfamiliar — NID, PM4, sharp, SRT, EXEC mask — that document's glossary defines it.</p></div>
+  </div>
+</header>
+
+<div id="modules"></div>
+
+<!-- ============================================ APPENDICES -->
+<section class="app" id="playbook">
+  <div class="app-head"><span class="app-num">A</span><h2>Debugging playbook</h2></div>
+  <p class="deck">Symptom to first move. This is the table you will actually use once you are past level 3.</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Symptom</th><th>Turn on</th><th>Look at</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Exits immediately, no window</strong></td>
+          <td>default logging</td>
+          <td>The last few log lines. Usually a failed subsystem init, a missing <code>eboot.bin</code>, or an <code>EXIT_NOT_IMPLEMENTED</code> in the loader. The message names the file and condition.</td>
+        </tr>
+        <tr>
+          <td><strong>Crashes before any rendering</strong></td>
+          <td>default logging</td>
+          <td>Search for <code>kyty_exception_handler</code>. The handler prints the faulting module, 64 bytes of code, all registers and a guest stack walk. If the fault address is small (like <code>0x28</code>) suspect an unpatched <code>fs:</code> access.</td>
+        </tr>
+        <tr>
+          <td><strong>Boots, then a function does nothing</strong></td>
+          <td><code>PRINT_NAME_ENABLE(true)</code> in the suspect module</td>
+          <td>The per-call trace. Also grep the log for stubbed NIDs — an import that resolved to the lazy thunk returns 0, which many games read as success.</td>
+        </tr>
+        <tr>
+          <td><strong>Black screen, no errors</strong></td>
+          <td><code>--command-buffer-dump true</code></td>
+          <td>Whether draw packets are arriving at all. No <code>IT_DRAW_*</code> in the dump means the problem is upstream of graphics — the game never got far enough to render.</td>
+        </tr>
+        <tr>
+          <td><strong>Geometry wrong or missing</strong></td>
+          <td><code>--rd</code> then RenderDoc</td>
+          <td>The captured draw: vertex buffer contents, the bound pipeline, viewport and scissor. Compare against the register state in the command buffer dump.</td>
+        </tr>
+        <tr>
+          <td><strong>Wrong colours or garbage pixels</strong></td>
+          <td><code>--shader-log-direction File</code></td>
+          <td>The dumped IR for the pixel shader. Also check whether <code>dispatcher fallback used</code> appears — the fallback is correct but exercises different code.</td>
+        </tr>
+        <tr>
+          <td><strong>Textures flicker or go stale</strong></td>
+          <td><code>--readback-linear-images true</code></td>
+          <td>A coherency bug: the CPU wrote memory the GPU has cached, or vice versa. Start at <code>MemoryTracker</code>, not at the texture cache.</td>
+        </tr>
+        <tr>
+          <td><strong>Vulkan device lost / validation errors</strong></td>
+          <td><code>--vulkan-validation true --shader-validation true</code></td>
+          <td>Validation output first. <code>--shader-validation</code> runs every emitted module through <code>spirv-val</code>, which catches malformed SPIR-V before the driver does something unpredictable with it.</td>
+        </tr>
+        <tr>
+          <td><strong>Runs but very slowly</strong></td>
+          <td><code>--profiler-direction Network</code></td>
+          <td>Tracy. Check first whether time goes to shader compilation (a cold cache) or to per-draw work, because the fixes are completely different.</td>
+        </tr>
+        <tr>
+          <td><strong>Hangs with no CPU use</strong></td>
+          <td>attach a debugger, dump all threads</td>
+          <td>A blocked <code>WAIT_REG_MEM</code> in the command processor whose condition never becomes true, or a guest thread waiting on an event queue nothing signals.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="app" id="cheat">
+  <div class="app-head"><span class="app-num">B</span><h2>Commands you will type constantly</h2></div>
+
+  <h3 style="margin-top:0">Configure and build</h3>
+<pre><i># from an x64 Native Tools prompt — note: source root is src/, not the repo root</i>
+cmake -S <b>src</b> -B _Build/windows -G Ninja -DCMAKE_BUILD_TYPE=Release ^
+      -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl ^
+      -DCMAKE_PREFIX_PATH="C:/Qt/6.x.x/msvc2022_64"
+
+cmake --build _Build/windows --target <b>kyty_emulator</b>      <i># emulator only, faster</i>
+cmake --build _Build/windows --target launcher            <i># + Qt front end</i>
+cmake --install _Build/windows --prefix _Build/windows/install</pre>
+
+  <h3>Run</h3>
+<pre><i># bare run</i>
+.\_Build\windows\install\kyty_emulator.exe --game "D:\Games\Example"
+
+<i># the configuration you will use for most debugging</i>
+kyty_emulator.exe --game "D:\Games\Example" ^
+  --printf-direction File --printf-output-file _kyty.txt ^
+  --vulkan-validation true --shader-validation true
+
+<i># graphics investigation</i>
+kyty_emulator.exe --game "..." --command-buffer-dump true ^
+  --shader-log-direction File --graphics-debug-dump true</pre>
+
+  <h3>Where output lands</h3>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Path</th><th>Written by</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr><td><code>_kyty.txt</code></td><td><code>--printf-direction File</code></td><td>Default is <code>Console</code>, so redirect it to a file before a long session.</td></tr>
+        <tr><td><code>_Shaders/</code></td><td><code>--shader-log-direction File</code></td><td>Decoded RDNA&nbsp;2, CFG and IR per shader.</td></tr>
+        <tr><td><code>_Buffers/</code></td><td><code>--command-buffer-dump true</code></td><td>Decoded PM4 listings.</td></tr>
+        <tr><td><code>_Textures/</code></td><td><code>--graphics-debug-dump true</code></td><td>Cleared on every start by <code>ClearDebugTextureFolder()</code>.</td></tr>
+        <tr><td><code>_SaveData/</code>, <code>_DownloadData/</code>, <code>_TempData/</code></td><td>the guest</td><td>Per-title, keyed by <code>TITLE_ID</code>.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p><span class="src">src/common/emulatorConfig.h:21</span> <span class="src">src/main.cpp:40</span></p>
+
+  <h3>Build and run a test</h3>
+<pre>cmake --build _Build/windows --target <b>memory_tracker_tests</b>
+.\_Build\windows\memory_tracker_tests.exe
+
+<i># every test target is EXCLUDE_FROM_ALL, so a normal build skips them:</i>
+scalar_provenance_tests      resource_tracking_tests    page_manager_tests
+memory_tracker_tests         resource_mutex_tests       image_page_table_tests
+event_queue_lifetime_tests   shader_stage_runtime_tests shader_vertex_metadata_tests</pre>
+</section>
+
+<section class="app" id="conventions">
+  <div class="app-head"><span class="app-num">C</span><h2>Reading conventions in this codebase</h2></div>
+
+  <p>Five things worth internalising before you read much source. They are used consistently, so recognising them saves a lot of time.</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>You will see</th><th>It means</th></tr></thead>
+      <tbody>
+        <tr><td><code>EXIT_NOT_IMPLEMENTED(cond)</code><br>1,034 sites</td><td>"If this is true, I did not handle this case." Not an assertion of impossibility — a marker of the frontier. Grepping these is the fastest way to map what the emulator does not yet do.</td></tr>
+        <tr><td><code>EXIT("...")</code><br>484 sites</td><td>An unrecoverable error with a message. Distinguished from the above: this is a real invariant violation, usually a bug rather than a gap.</td></tr>
+        <tr><td><code>KYTY_SYSV_ABI</code></td><td>This function is called by guest code. Its arguments arrive in System&nbsp;V registers. Never call it directly from emulator code without thinking about the ABI.</td></tr>
+        <tr><td><code>PRINT_NAME()</code></td><td>First line of a guest-facing function. Logs the call when the module's thread-local flag is on. Free tracing, already wired up.</td></tr>
+        <tr><td><code>KYTY_CLASS_NO_COPY(T)</code></td><td>Deleted copy constructor and assignment. Ubiquitous on anything owning a Vulkan or OS handle.</td></tr>
+        <tr><td><code>Common::Singleton&lt;T&gt;::Instance()</code></td><td>How cross-cutting services are reached — the runtime linker, the subsystem list, the config. There is no dependency injection here.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Naming that maps to hardware</h3>
+  <ul>
+    <li><code>HwCtx*</code> / <code>HwSh*</code> / <code>HwUc*</code> — handlers for <strong>c</strong>on<strong>t</strong>e<strong>x</strong>t, <strong>sh</strong>ader and <strong>u</strong>ser-<strong>c</strong>onfig register writes. The three register spaces a PM4 stream can target.</li>
+    <li><code>CpOp*</code> — a command-processor <em>operation</em>, i.e. a handler for one PM4 opcode.</li>
+    <li><code>IT_*</code> — PM4 opcodes ("<strong>i</strong>ndirect-buffer <strong>t</strong>ype"). <code>R_*</code> — Sony's sub-selectors carried in <code>IT_NOP</code> packets.</li>
+    <li><code>V#</code> <code>T#</code> <code>S#</code> — buffer, image and sampler descriptors. In code, "sharp".</li>
+    <li><code>Gen5</code> — the AGC graphics API. Appears everywhere in <code>agc.cpp</code> and <code>libGraphicsDriver.cpp</code>.</li>
+  </ul>
+
+  <div class="callout k">
+    <span class="lbl">One habit above all</span>
+    <p>Whenever you read a pointer, ask: <strong>guest address or host address?</strong> Whenever you read a function, ask: <strong>which thread runs this — the guest thread, the GPU thread, or the main/window thread?</strong> Most genuinely confusing emulator bugs are a confusion about one of those two questions, and the codebase does not always spell out the answer.</p>
+  </div>
+</section>
+
+<div class="foot">
+  <p>Built against KytyPS5 <code>v0.2.2</code>; line references will drift as the code moves. Times are rough and assume you are comfortable with C++ but new to emulation. If a level takes twice as long as stated, that is normal — level 5 in particular is a compiler course wearing a disguise.</p>
+</div>
+
+    </div>
+  </main>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var MODULES = [
+    /* ---------------------------------------------------- L0 */
+    {
+      id: "l0", lv: "Level 0", side: null, time: "2–4 hours", pre: "None",
+      title: "Get a build you can step through",
+      goal: "Before any reading: a debug-capable binary, a title that boots far enough to log, and a log file you can grep. Everything after this assumes you can re-run and observe.",
+      reading: [
+        ["README.md", "The build section is authoritative and platform-specific. Read the whole thing once."],
+        ["src/CMakeLists.txt", "Skim only. Find the two executables and the list of test targets near the bottom."],
+        ["src/main.cpp:40", "PrintUsage() — the complete list of runtime flags, in one function."]
+      ],
+      tasks: [
+        ["Build <code>kyty_emulator</code> with clang-cl (Windows) or clang (Linux).", "MSVC is rejected at configure time — the project needs <code>__attribute__((sysv_abi))</code>. If CMake complains about the compiler, that is why."],
+        ["Run <code>kyty_emulator --help</code> and read every flag.", "Roughly a third of them exist purely for debugging. Knowing they exist is most of the value of this level."],
+        ["Boot a title and capture a log to a file.", "<code>--printf-direction File --printf-output-file _kyty.txt</code>. The default is Console, which you will lose."],
+        ["Find these four things in your log: the mount lines, a module's <code>base_vaddr</code>, the <code>--- Execute: Main ---</code> banner, and the first shader compile.", "They mark the four phases of start-up. If your log is missing the banner, the game never reached its entry point."],
+        ["Make a trivial source change, rebuild, and confirm it appears.", "A <code>LOGF</code> in <code>Emulator::Run</code> is enough. You want to know the edit-build-run loop works before you need it."]
+      ],
+      checks: [
+        ["Why does the build reject <code>cl.exe</code>?", "<p>Guest code uses the System&nbsp;V AMD64 calling convention; the emulator on Windows uses the Microsoft convention. Every guest-callable function is marked <code>KYTY_SYSV_ABI</code>, which expands to <code>__attribute__((sysv_abi))</code> — a Clang/GCC extension MSVC does not have.</p><p><span class=\"src\">src/common/abi.h</span></p>"],
+        ["The CMake source directory is not the repository root. What is it?", "<p><code>src/</code>. <code>cmake -S src -B _Build/&lt;platform&gt;</code>. This trips up nearly everyone once.</p>"]
+      ],
+      out: "Re-run the emulator with any combination of flags and find things in its output. That is the base capability everything else builds on."
+    },
+
+    /* ---------------------------------------------------- L1 */
+    {
+      id: "l1", lv: "Level 1", side: "k", time: "2 hours", pre: "Level 0",
+      title: "The shape of the whole program",
+      goal: "Understand the top level end to end. These are small files and you can genuinely finish them in one sitting — resist every temptation to follow a call into the graphics or loader code.",
+      reading: [
+        ["src/main.cpp", "285 lines. Argument parsing, then two subsystems, then <code>Run()</code>."],
+        ["src/emulator.h", "23 lines. <code>RunOptions</code> is the entire input to the emulator."],
+        ["src/emulator.cpp", "215 lines. <code>Init</code>, mounts, <code>LoadElf</code>, <code>Execute</code>. This file is the spine."],
+        ["src/common/subsystems.h", "The dependency-ordered init framework and the four macros that define a subsystem."],
+        ["src/common/emulatorConfig.h", "Every configurable value and its default, in one struct."]
+      ],
+      tasks: [
+        ["Draw the subsystem dependency graph by hand from <code>emulator.cpp:141–149</code>.", "Nine subsystems. Note that graphics depends on six others, and that config and log are initialised in two separate earlier passes."],
+        ["Add a new command-line flag end to end.", "Parse it in <code>ParseArgs</code>, add a field to <code>ConfigOptions</code>, add a getter in <code>emulatorConfig.cpp</code>, print it somewhere. The smallest real change you can make to this codebase — do it now while the files are small."],
+        ["Annotate <code>Execute()</code> with which thread runs each line.", "Two threads leave that function: a spawned guest thread and the original main thread inside <code>WindowRun()</code>."],
+        ["Find out what <code>KytyClose</code> does and when it runs.", "Registered with <code>atexit</code>. Note the interaction with <code>std::quick_exit(0)</code> at the end of <code>Execute</code> — decide for yourself whether it actually runs on the normal path."]
+      ],
+      checks: [
+        ["Why does the window event loop run on the main thread, with the game on a spawned thread?", "<p>Windowing systems on macOS and Windows require window creation and event pumping on the process's first thread. Rather than marshalling, Kyty gives the guest its own thread. A side benefit: a hung game does not freeze the window.</p><p><span class=\"src\">src/emulator.cpp:171</span></p>"],
+        ["Why must <code>Config</code> and <code>Log</code> initialise in separate passes before the other subsystems?", "<p>Logging depends on configuration (direction, output file), and every other subsystem logs during its own init. So the order is: config → <code>InitAll</code> → load config values → log → <code>InitAll</code> → everything else → <code>InitAll</code>.</p><p><span class=\"src\">src/emulator.cpp:126–151</span></p>"],
+        ["Where does the flexible-memory budget come from, and why is it applied where it is?", "<p>From <code>sce_sys/param.json</code>, via <code>SystemContentGetFlexibleMemorySize()</code>. It is applied <em>before</em> the memory subsystem is added to the list, because the memory manager sizes its pools during <code>Init</code> and would ignore a later change.</p><p><span class=\"src\">src/emulator.cpp:133–139</span></p>"]
+      ],
+      out: "Navigate the top level without a map, and add configuration. You now know where every major component is started."
+    },
+
+    /* ---------------------------------------------------- L2 */
+    {
+      id: "l2", lv: "Level 2", side: "k", time: "2–3 hours", pre: "Level 1",
+      title: "One HLE function, all the way through",
+      goal: "See the single most important trick in the project: how a guest call to a PlayStation system function ends up executing native C++ inside the emulator. It is only a few hundred lines of mechanism.",
+      reading: [
+        ["src/libs/libs.h", "The macros. <code>LIB_VERSION</code>, <code>LIB_FUNC</code>, <code>PRINT_NAME</code>. Read the expansions carefully — this is the whole registration mechanism."],
+        ["src/libs/libs.cpp", "<code>InitAll</code>, plus three small complete examples at the bottom of the file."],
+        ["src/libs/libAppContent.cpp", "8 KB — a realistically sized module you can read in full."],
+        ["src/loader/symbolDatabase.h", "How a symbol record is keyed and looked up."],
+        ["src/loader/runtimeLinker.cpp:1654", "<code>Resolve()</code> — splitting <code>name#library#module</code> and searching."]
+      ],
+      tasks: [
+        ["Pick one <code>LIB_FUNC</code> in <code>libAppContent.cpp</code>, breakpoint the C++ function, and catch the guest calling it.", "Look at the call stack. The frames below yours are guest code — addresses in the <code>0x9xxxxxxxx</code> range."],
+        ["Enable <code>PRINT_NAME</code> for one module and read the resulting trace.", "Set the module's thread-local flag with <code>PRINT_NAME_ENABLE(true)</code>. You get timestamped, thread-tagged entry logging for free."],
+        ["Find a stubbed NID in your log, then implement it.", "Add a <code>LIB_FUNC</code> pointing at a function that logs its arguments and returns <code>OK</code>. Re-run and confirm the stub message is gone. This is the actual workflow for growing compatibility."],
+        ["Work out what happens when two loaded modules export the same NID.", "Read the search order in <code>Resolve()</code>: HLE database first, then each loaded program's export table in load order."]
+      ],
+      checks: [
+        ["What are the three parts of <code>lUwEK9UwLNo#libSceGnmDriver#libSceGnmDriver</code>?", "<p>Encoded symbol hash, library name, module name. The loader maps the library and module identifiers back through the importing file's own <code>DT_OS_IMPORT_LIB</code> / <code>DT_OS_MODULE_INFO</code> tables before searching, so the same NID in different libraries resolves differently.</p>"],
+        ["Why must <code>Libs::InitAll()</code> run before <code>LoadElf()</code>?", "<p>Relocation is what binds a guest import to an implementation, and relocation happens during load. If the HLE table were populated afterwards, every import would already have been resolved to a stub.</p><p><span class=\"src\">src/emulator.cpp:208–210</span></p>"],
+        ["A function you implemented is registered but never called. What are the two likely causes?", "<p>Either the NID string is wrong (a single character off and it silently never matches), or the library/module version in <code>LIB_VERSION</code> does not match what the game imports. Both fail silently — the import just resolves to a stub instead. Check the log for that NID appearing as unresolved.</p>"]
+      ],
+      out: "Implement a missing system function and verify a game reaches it. This alone is enough to start contributing compatibility fixes."
+    },
+
+    /* ---------------------------------------------------- L3 */
+    {
+      id: "l3", lv: "Level 3", side: "k", time: "half a day", pre: "Levels 1–2",
+      title: "The loader, in detail",
+      goal: "Understand exactly how a file on disk becomes executable memory — including the two places where Kyty rewrites the guest's own instruction bytes, which is where most people's mental model breaks.",
+      reading: [
+        ["src/loader/elf.h", "Sony's ELF extensions. Note <code>ET_DYNEXEC</code>, the <code>PT_OS_*</code> segments and the <code>DT_OS_*</code> tags."],
+        ["src/loader/runtimeLinker.cpp:1511", "<code>LoadProgram</code> — the top of the load path."],
+        ["src/loader/runtimeLinker.cpp:2141", "<code>LoadProgramToMemory</code> — segments, protection, TLS, proc-param."],
+        ["src/loader/runtimeLinker.cpp:1309", "<code>PatchProgram</code> — the <code>fs:[0]</code> and <code>fs:[0x28]</code> rewrites. Read this twice."],
+        ["src/loader/jit.h", "Hand-assembled stubs, with the disassembly in comments."],
+        ["src/loader/runtimeLinker.cpp:147", "<code>AllocateUnresolvedImportThunk</code> — 162 bytes of generated machine code, byte by byte."],
+        ["src/loader/runtimeLinker.cpp:763", "The exception handler, and the three cases it handles rather than reports."]
+      ],
+      tasks: [
+        ["Reconstruct the full memory layout of a booted game from its log alone.", "The loader prints <code>base_vaddr</code>, <code>base_size</code>, <code>mapped_size</code> and every segment's address, size and mode. Sketch the address space."],
+        ["Find a <code>Patch tls at addr</code> line, then look at those 9 bytes in a debugger before and after.", "You should see <code>64 48 8B 04 25 00 00 00 00</code> become <code>E8 xx xx xx xx 48 89 C0 90</code>. Seeing this once makes the whole trick concrete."],
+        ["Single-step an unresolved-import thunk.", "Break on <code>ResolveImportStubWithId</code>, then step out and watch the register restore and the <code>test r11,r11</code> decision. Note what happens on the failure path."],
+        ["Trace one relocation of each type you can find.", "<code>R_X86_64_RELATIVE</code>, <code>GLOB_DAT</code>, <code>JUMP_SLOT</code>, <code>DTPMOD64</code>. Use <code>program->dbg_print_reloc = true</code> to get them logged."],
+        ["Explain to yourself why executable segments are patched <em>before</em> protection is applied.", "Look at the order in <code>LoadProgramToMemory</code>, and at the <code>FlushInstructionCache</code> call that follows."]
+      ],
+      checks: [
+        ["Why is the guest page size 0x4000 rather than the host's 0x1000?", "<p>The PS5 uses 16&nbsp;KB pages and games observe this through <code>sceKernelVirtualQuery</code> and alignment requirements. One guest page covers four host pages, so protection changes always apply in groups — which matters a great deal later, in the memory tracker.</p><p><span class=\"src\">src/loader/runtimeLinker.cpp:2160</span></p>"],
+        ["When resolution fails, the thunk executes <code>xor eax, eax; ret</code>. Why not abort?", "<p>Games import far more functions than they call. Aborting at load time would make almost everything unbootable. Failing lazily at call time limits the damage to code paths actually taken, and the log records exactly which NID was stubbed — which is the single most useful line in a compatibility report.</p>"],
+        ["The exception handler returns <code>true</code> for some access violations. What are they, and why is that not a workaround?", "<p>GPU page faults and reserved-range faults. Both are load-bearing design: memory the GPU has cached is deliberately write-protected so a guest write traps and the renderer learns the data is stale. The page fault <em>is</em> the notification mechanism, not an error being swallowed.</p><p><span class=\"src\">src/loader/runtimeLinker.cpp:771–794</span></p>"]
+      ],
+      out: "Diagnose a game that will not boot: read the load log, spot a missing import, identify an unpatched instruction, and interpret a crash dump."
+    },
+
+    /* ---------------------------------------------------- L4 */
+    {
+      id: "l4", lv: "Level 4", side: "g", time: "1 day", pre: "Levels 1 and 3",
+      title: "Follow one draw call from packet to Vulkan",
+      goal: "Trace a single triangle from the bytes the game wrote into its command buffer all the way to a recorded vkCmdDraw. This chain is the spine of the graphics stack — once you can walk it, most graphics work becomes navigable.",
+      reading: [
+        ["src/graphics/guest_gpu/pm4.cpp", "170 lines. The packet dumper — the clearest statement of the packet format anywhere in the tree."],
+        ["src/graphics/guest_gpu/command_processor/pm4Dispatch.h", "The four jump tables. Skim the declarations to see the shape."],
+        ["…/pm4Handlers.cpp:2084", "<code>CpOpDrawIndexAuto</code> — a tiny function; find it in the 174 KB file and read only that."],
+        ["src/graphics/guest_gpu/graphicsRun.cpp:79", "<code>GpuState</code> — the queues, the thread, the submission struct."],
+        ["…/graphicsRun.cpp:1239", "<code>CommandProcessor::DrawIndexAuto</code>."],
+        ["src/graphics/host_gpu/renderer/renderDraw.cpp:1281", "<code>RenderExecutor::DrawAuto</code>."],
+        ["…/renderDraw.cpp:812", "<code>PrepareDrawRenderState</code> — targets, shaders, resources."],
+        ["…/renderDraw.cpp:1063", "<code>ExecutePreparedDraw</code> — bindings, pipeline, record."]
+      ],
+      tasks: [
+        ["Dump a command buffer and find an <code>IT_DRAW_INDEX_AUTO</code> packet.", "<code>--command-buffer-dump true</code>. Use a simple 2D title; the buffers are short enough to read."],
+        ["Decode that packet's header dword by hand, then check yourself.", "type = <code>&gt;&gt;30</code>, count = <code>(&gt;&gt;16)&amp;0x3fff</code>, opcode = <code>(&gt;&gt;8)&amp;0xff</code>. The architecture guide has an interactive decoder to verify against."],
+        ["Breakpoint all six functions in the chain and record what each one adds.", "<code>CpOpDrawIndexAuto</code> → <code>DrawIndexAuto</code> → <code>DrawAuto</code> → <code>PrepareDrawRenderState</code> → <code>ExecutePreparedDraw</code> → <code>CreateGraphicsPipeline</code>. Write down the state that exists after each step."],
+        ["Count the <code>SET_CONTEXT_REG</code> packets preceding your draw, then find where two of them land in <code>HW::Context</code>.", "Look up the register offset in <code>g_hw_ctx_func</code> and read the handler. This is how all GPU state arrives."],
+        ["Find the pipeline cache key for your draw.", "<code>GraphicsPipelineKey</code> in <code>pipelineCache.h</code>: rendering state, both shader IDs, and a byte-comparable struct of every static parameter. Understand why each part must be in the key."],
+        ["Work out why <code>Gpu::Submit</code> copies the command buffer instead of referencing it.", "Read <code>OwnedCmdBuffer</code>. Then consider what the game does with that memory immediately after submitting."]
+      ],
+      checks: [
+        ["How many queues does the GPU state machine have, and why that number?", "<p>57: one graphics queue plus seven compute pipes of eight queues each. It mirrors the hardware's queue topology, which games rely on for asynchronous compute — work submitted to different queues must be able to progress independently.</p><p><span class=\"src\">src/graphics/guest_gpu/graphicsRun.cpp:81–84</span></p>"],
+        ["A <code>WAIT_REG_MEM</code> packet's condition is not yet true. What happens?", "<p><code>Process()</code> returns <code>Pm4ProcessResult::Blocked</code> and the submission is suspended with its buffer-stack cursor intact, so the thread can service other queues and resume later. A busy-wait would let one blocked graphics submission stall all compute work.</p>"],
+        ["Why is the entire static pipeline state part of the cache key, rather than just the shaders?", "<p>Because Vulkan bakes blend factors, depth compare, cull mode, sample count and attachment formats into the <code>VkPipeline</code> object. Two draws with identical shaders but different blend state genuinely need different pipelines. The key is compared as raw bytes, which is why the struct is <code>#pragma pack(1)</code> with a <code>static_assert</code> on its exact size.</p><p><span class=\"src\">…/pipeline/pipelineCache.h:34</span></p>"]
+      ],
+      out: "Debug a draw that is missing, misplaced or wrongly blended: find its packet, inspect the register state it was built from, and see which Vulkan objects resulted."
+    },
+
+    /* ---------------------------------------------------- L5 */
+    {
+      id: "l5", lv: "Level 5", side: "k", time: "1–2 days", pre: "Level 4",
+      title: "Watch one shader get compiled",
+      goal: "Follow a blob of RDNA 2 machine code through eleven compiler passes to a SPIR-V module. This is a real compiler and it will take real time. Keep AMD's ISA reference open throughout — instruction semantics are not guessable.",
+      reading: [
+        ["AMD RDNA 2 ISA reference, document 70648", "Not in the repo. The README names it explicitly as the primary reference for this code."],
+        ["…/recompiler/ShaderRecompiler.cpp:640", "<code>TryRecompile</code> — the whole pipeline in one function, with per-phase logging."],
+        ["…/decompiler/ShaderDecoder.h", "Instruction representation and encoding classes."],
+        ["…/cfg/ShaderCFG.h", "Blocks, terminators, back edges, natural loops, failure kinds."],
+        ["…/ir/ShaderIR.h", "The opcode enumeration. Skim it — the length itself is informative."],
+        ["…/ir/SrtWalker.h", "The descriptor-recovery contract. Short header, dense ideas."],
+        ["src/graphics/shader/shader.h:44", "<code>ShaderMaterializeStageRuntime</code> — the compile/bind split."]
+      ],
+      tasks: [
+        ["Dump the shaders for one frame and open the smallest one.", "<code>--shader-log-direction File --shader-log-folder _Shaders</code>. You get the decoded RDNA&nbsp;2 listing, the CFG and the IR."],
+        ["Map five decoded instructions to their IR opcodes by hand.", "Pick a mix: a scalar ALU op, a vector ALU op, a compare, a buffer load, and the export at the end."],
+        ["Read the phase timings in the log and find the slowest stage.", "Each phase logs <code>phase begin</code> / <code>phase end</code> with elapsed milliseconds and the shader hash. Compare a cold compile against a cache hit."],
+        ["Find a shader that used the dispatcher fallback, and work out why.", "Grep the log for <code>dispatcher fallback used</code>. The reason is printed: either an irreducible CFG, a structurisation failure, or a loop header containing an instruction whose lowering emits control flow."],
+        ["Trace one texture from T# to a bound Vulkan image.", "Follow <code>BuildScalarProvenance</code> → <code>BuildSrtPlan</code> → <code>MaterializeResources</code> → <code>ResolveTexture</code>. This is the hardest single trace in the codebase and worth the effort."],
+        ["Run the shader test suites and make one fail on purpose.", "<code>scalar_provenance_tests</code> and <code>resource_tracking_tests</code>. Change something small in the pass and watch which assertions catch it — the tests are a better specification than the comments."]
+      ],
+      checks: [
+        ["Why can't RDNA 2 branching map directly onto SPIR-V control flow?", "<p>GPU branches manipulate a 64-bit EXEC mask that enables or disables individual lanes; control flow is data, not structure. SPIR-V requires <em>structured</em> control flow — every conditional branch declares a merge block, every loop declares a merge and a continue target. Recovering that structure from mask manipulation is what the CFG and structurisation passes do, and it is the stage most likely to fail.</p>"],
+        ["What does resource specialisation mean, and why does it affect the cache key?", "<p>Once the resources are known concretely — this buffer's stride, this image's format — the IR can be emitted more directly. But that means the SPIR-V is only valid for resources of that shape, so two draws using differently-shaped resources need different modules. Hence <code>ShaderId</code> carries resource information alongside the code hash, and the pipeline cache will not conflate them.</p><p><span class=\"src\">src/graphics/shader/shader.h:48</span></p>"],
+        ["Why are compilation and resource binding deliberately separate?", "<p>Shader code and its SRT <em>plan</em> are immutable and cached. User data changes on every draw, so the plan is re-executed each time against fresh user data and guest memory. If any read fails, <code>ShaderMaterializeStageRuntime</code> keeps the previous stage rather than drawing with garbage — a failed descriptor read produces a stale frame, not corruption.</p>"]
+      ],
+      out: "Investigate a wrong-pixels bug: dump the shader, read its IR, identify which pass mistranslated, and write a regression test for it."
+    },
+
+    /* ---------------------------------------------------- L6 */
+    {
+      id: "l6", lv: "Level 6", side: "h", time: "several days", pre: "Levels 3–5",
+      title: "CPU/GPU coherency and the resource caches",
+      goal: "The hardest part of the emulator, and the source of the bugs that are hardest to reproduce. Start with the tests — they state the invariants far more clearly than the implementation does.",
+      reading: [
+        ["tests/MemoryTrackerTests.cpp", "Read this <em>first</em>. It is the specification."],
+        ["tests/PageManagerTests.cpp", "Watch semantics, in isolation from everything else."],
+        ["src/graphics/host_gpu/pageManager.h", "The protection interface. Small header, large consequences."],
+        ["src/graphics/host_gpu/memoryTracker.h", "Dirty tracking, upload and download loops. The templates are dense; read them slowly."],
+        ["src/graphics/host_gpu/regionManager.h", "Per-region page state and the spin lock guarding it."],
+        ["…/renderer/cache/textureCache.h", "The public surface first — the private section is 71 KB of implementation."],
+        ["…/renderer/cache/bufferCache.h", "The same problem with fewer dimensions. Easier to hold in your head."]
+      ],
+      tasks: [
+        ["Build and run <code>memory_tracker_tests</code>, <code>page_manager_tests</code> and <code>image_page_table_tests</code>.", "Read each test name as a sentence. Together they enumerate the invariants."],
+        ["Write down the exact sequence for an upload and for a download.", "<code>ForEachUploadRange</code> and <code>ForEachDownloadRange</code>. Note which locks are held across the callback, and when protection is re-applied."],
+        ["Use the failure-injection hooks to exercise an error path.", "<code>TestFailNextPhysicalMemoryUnmap()</code>, <code>TestFailGuestBackingStoreUnmapAfter(n)</code>, behind <code>KYTY_VIRTUAL_MEMORY_ALLOCATION_TESTS</code>. Deliberately introduced so allocator error paths are actually run."],
+        ["Work out how two images overlapping the same guest memory are resolved.", "<code>FindImagesInRegion</code>, <code>ResolveOverlap</code>, <code>ExpandImage</code>, <code>AssociateStencil</code>. Aliasing is normal, not exceptional — games reuse memory aggressively."],
+        ["Follow the texture cache's garbage collector.", "<code>RunGarbageCollector</code>, the LRU cache, and the 1.5&nbsp;GB pressure and 3&nbsp;GB critical thresholds. Decide what happens to an image that is evicted while still referenced by an in-flight command buffer."],
+        ["Add a regression test for a scenario you invent.", "The real deliverable of this level. If you can express a coherency scenario as a test, you understand the model."]
+      ],
+      checks: [
+        ["What actually triggers an upload, and what triggers a download?", "<p>Neither is triggered by the game. An upload happens because the memory tracker reports CPU-dirty pages within a range about to be read by the GPU. A download happens because GPU-dirty pages exist in a range the CPU is about to read. Both dirty bits are set by page faults, which is why the exception handler in level 3 matters here.</p>"],
+        ["Why does the tracker refuse re-entry from inside an upload callback?", "<p><code>CheckNotInUploadCallback</code> — during an upload, region locks are held and page state is mid-transition. A re-entrant call would either deadlock on the spin lock or observe half-updated state. Making it an immediate hard failure turns a rare, non-deterministic corruption into a reproducible crash at the point of the mistake.</p><p><span class=\"src\">…/memoryTracker.h:155</span></p>"],
+        ["<code>InvalidateRegion</code> calls its state update twice and fails if the second call still reports GPU-owned pages. Why?", "<p>The first call determines whether a flush is needed and transitions CPU state. The flush then runs. The second call verifies the flush actually released every GPU-owned page in the range. If not, some resource still claims memory that is being invalidated — a bug that would otherwise show up much later as corrupted pixels with no traceable cause, so it is turned into an immediate <code>EXIT</code>.</p><p><span class=\"src\">…/memoryTracker.h:33–73</span></p>"]
+      ],
+      out: "Work on texture and buffer corruption bugs — the class of problem where the symptom appears many frames after the cause."
+    }
+  ];
+
+  /* ---------------------------------------------------------- storage */
+  var KEY = "kyty-path-v1";
+  var state = {};
+  var canStore = true;
+  try {
+    var raw = window.localStorage.getItem(KEY);
+    if (raw) state = JSON.parse(raw) || {};
+  } catch (e) { canStore = false; }
+  function save() {
+    if (!canStore) return;
+    try { window.localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { canStore = false; }
+  }
+  if (!canStore) {
+    document.getElementById("storenote").textContent = "Storage unavailable — progress will not persist.";
+  }
+
+  /* ---------------------------------------------------------- render */
+  var host = document.getElementById("modules");
+  var toc = document.getElementById("toc");
+
+  MODULES.forEach(function (m) {
+    var sideBadge = m.side
+      ? '<span class="badge ' + m.side + '">' + ({ g: "guest", k: "kyty", h: "host" }[m.side]) + '</span>'
+      : "";
+
+    var reading = m.reading.map(function (r, i) {
+      return '<div><span class="n">' + String(i + 1).padStart(2, "0") + '</span><div>' +
+        '<div class="f">' + r[0] + '</div><div class="w">' + r[1] + "</div></div></div>";
+    }).join("");
+
+    var tasks = m.tasks.map(function (t, i) {
+      var tid = m.id + "-t" + i;
+      var on = !!state[tid];
+      return '<label class="task' + (on ? " done" : "") + '" data-id="' + tid + '">' +
+        '<input type="checkbox"' + (on ? " checked" : "") + '>' +
+        '<div><div class="t">' + t[0] + '</div><div class="hint">' + t[1] + "</div></div></label>";
+    }).join("");
+
+    var checks = m.checks.map(function (c) {
+      return '<details class="check"><summary>' + c[0] + '</summary><div class="ans">' + c[1] + "</div></details>";
+    }).join("");
+
+    var el = document.createElement("section");
+    el.className = "mod";
+    el.id = m.id;
+    el.innerHTML =
+      '<div class="mod-head">' +
+        '<div class="mod-badges">' +
+          '<span class="badge lv">' + m.lv + '</span>' +
+          '<span class="badge">' + m.time + '</span>' +
+          '<span class="badge">Needs: ' + m.pre + '</span>' +
+          sideBadge +
+        '</div>' +
+        '<h2>' + m.title + '</h2>' +
+        '<p class="mod-goal">' + m.goal + '</p>' +
+        '<div class="mod-prog"><div class="track"><div class="fill" data-fill="' + m.id + '"></div></div>' +
+        '<span class="cnt" data-cnt="' + m.id + '"></span></div>' +
+      '</div>' +
+      '<div class="mod-body">' +
+        '<h3>Read, in this order</h3><div class="reading">' + reading + '</div>' +
+        '<h3>Do</h3><div class="tasks">' + tasks + '</div>' +
+        '<h3>Check yourself</h3><div class="checks">' + checks + '</div>' +
+        '<div class="outcome"><span class="lbl">You can now</span>' + m.out + '</div>' +
+      '</div>';
+    host.appendChild(el);
+
+    var a = document.createElement("a");
+    a.href = "#" + m.id;
+    a.innerHTML = '<span class="lv">' + m.lv.replace("Level ", "L") + '</span>' +
+      '<span>' + m.title.split(",")[0] + '</span><span class="pc" data-pc="' + m.id + '"></span>';
+    toc.appendChild(a);
+  });
+
+  ["playbook:A:Debugging playbook", "cheat:B:Commands", "conventions:C:Conventions"].forEach(function (s) {
+    var p = s.split(":");
+    var a = document.createElement("a");
+    a.href = "#" + p[0];
+    a.innerHTML = '<span class="lv">' + p[1] + '</span><span>' + p[2] + "</span><span class=\"pc\"></span>";
+    toc.appendChild(a);
+  });
+
+  /* ---------------------------------------------------------- progress */
+  function refresh() {
+    var total = 0, done = 0;
+    MODULES.forEach(function (m) {
+      var n = m.tasks.length, d = 0;
+      for (var i = 0; i < n; i++) if (state[m.id + "-t" + i]) d++;
+      total += n; done += d;
+      var pct = n ? (d / n) * 100 : 0;
+      var fill = document.querySelector('[data-fill="' + m.id + '"]');
+      var cnt = document.querySelector('[data-cnt="' + m.id + '"]');
+      var pc = document.querySelector('[data-pc="' + m.id + '"]');
+      if (fill) fill.style.width = pct.toFixed(0) + "%";
+      if (cnt) cnt.textContent = d + " / " + n;
+      if (pc) {
+        pc.textContent = d === n ? "✓" : (d ? d + "/" + n : "");
+        pc.parentElement.classList.toggle("done", d === n);
+      }
+    });
+    document.getElementById("ov-pct").textContent = (total ? Math.round((done / total) * 100) : 0) + "%";
+    document.getElementById("ov-cnt").textContent = done + " / " + total;
+    document.getElementById("ov-fill").style.width = (total ? (done / total) * 100 : 0) + "%";
+  }
+
+  host.addEventListener("change", function (e) {
+    var lab = e.target.closest(".task");
+    if (!lab) return;
+    state[lab.dataset.id] = e.target.checked;
+    lab.classList.toggle("done", e.target.checked);
+    save();
+    refresh();
+  });
+
+  document.getElementById("reset").addEventListener("click", function () {
+    state = {};
+    save();
+    Array.prototype.forEach.call(document.querySelectorAll(".task"), function (l) {
+      l.classList.remove("done");
+      l.querySelector("input").checked = false;
+    });
+    refresh();
+  });
+
+  refresh();
+
+  /* ---------------------------------------------------------- scrollspy */
+  var links = Array.prototype.slice.call(toc.querySelectorAll("a"));
+  var targets = links.map(function (a) { return document.querySelector(a.getAttribute("href")); }).filter(Boolean);
+  function spy() {
+    var idx = 0;
+    for (var i = 0; i < targets.length; i++) {
+      if (targets[i].getBoundingClientRect().top <= 140) idx = i;
+    }
+    links.forEach(function (a, i) { a.classList.toggle("on", i === idx); });
+  }
+  window.addEventListener("scroll", spy, { passive: true });
+  window.addEventListener("resize", spy);
+  spy();
+})();
+</script>
+
+</body>
+</html>

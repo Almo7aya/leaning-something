@@ -1,0 +1,1635 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="An interactive, source-referenced walkthrough of the KytyPS5 PlayStation 5 emulator.">
+</head>
+<body><title>KytyPS5 — Anatomy of a PlayStation 5 Emulator</title>
+
+<style>
+/* ============================================================
+   TOKENS
+   Color is reserved for meaning: which side of the boundary a
+   thing lives on. GUEST = the PS5 and its software. KYTY = the
+   emulator's own translation machinery. HOST = the real PC.
+   Structure (rules, headings, links) stays achromatic.
+   ============================================================ */
+:root {
+  --ground:      #EFF1F2;
+  --surface:     #FCFCFB;
+  --surface-2:   #F4F6F7;
+  --surface-3:   #E9EDEF;
+  --ink:         #161B21;
+  --ink-2:       #3D4753;
+  --muted:       #5E6975;
+  --faint:       #8A939D;
+  --rule:        #D9DEE1;
+  --rule-2:      #C2CACF;
+
+  --guest:       #31649E;
+  --kyty:        #B07A0E;
+  --host:        #A83B5C;
+
+  --shadow:      0 1px 2px rgba(22,27,33,.05), 0 8px 24px -16px rgba(22,27,33,.28);
+
+  --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --serif: Charter, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+
+  --s1: 4px;  --s2: 8px;  --s3: 12px; --s4: 16px;
+  --s5: 24px; --s6: 32px; --s7: 48px; --s8: 72px; --s9: 104px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground:    #0E1317;
+    --surface:   #12171C;
+    --surface-2: #171E24;
+    --surface-3: #1D262D;
+    --ink:       #DCE3E9;
+    --ink-2:     #B3BEC8;
+    --muted:     #8A97A4;
+    --faint:     #69757F;
+    --rule:      #232C34;
+    --rule-2:    #33404A;
+    --guest:     #4A8AC8;
+    --kyty:      #BE8A22;
+    --host:      #C85874;
+    --shadow:    0 1px 2px rgba(0,0,0,.4), 0 10px 30px -18px rgba(0,0,0,.9);
+  }
+}
+:root[data-theme="dark"] {
+  --ground:#0E1317; --surface:#12171C; --surface-2:#171E24; --surface-3:#1D262D;
+  --ink:#DCE3E9; --ink-2:#B3BEC8; --muted:#8A97A4; --faint:#69757F;
+  --rule:#232C34; --rule-2:#33404A;
+  --guest:#4A8AC8; --kyty:#BE8A22; --host:#C85874;
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px -18px rgba(0,0,0,.9);
+}
+:root[data-theme="light"] {
+  --ground:#EFF1F2; --surface:#FCFCFB; --surface-2:#F4F6F7; --surface-3:#E9EDEF;
+  --ink:#161B21; --ink-2:#3D4753; --muted:#5E6975; --faint:#8A939D;
+  --rule:#D9DEE1; --rule-2:#C2CACF;
+  --guest:#31649E; --kyty:#B07A0E; --host:#A83B5C;
+  --shadow: 0 1px 2px rgba(22,27,33,.05), 0 8px 24px -16px rgba(22,27,33,.28);
+}
+
+/* ============================================================
+   BASE
+   ============================================================ */
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--serif);
+  font-size: 17.5px;
+  line-height: 1.66;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+p { margin: 0 0 var(--s4); max-width: 68ch; }
+p:last-child { margin-bottom: 0; }
+
+a { color: inherit; text-decoration: underline; text-decoration-color: var(--rule-2); text-underline-offset: 3px; }
+a:hover { text-decoration-color: currentColor; }
+:focus-visible { outline: 2px solid var(--guest); outline-offset: 3px; border-radius: 2px; }
+
+h1, h2, h3, h4 { font-family: var(--mono); font-weight: 600; text-wrap: balance; margin: 0; }
+
+code, kbd, samp { font-family: var(--mono); }
+
+ul, ol { max-width: 68ch; padding-left: 1.35em; margin: 0 0 var(--s4); }
+li { margin-bottom: var(--s2); }
+li:last-child { margin-bottom: 0; }
+
+hr { border: 0; border-top: 1px solid var(--rule); margin: var(--s7) 0; }
+
+/* ============================================================
+   SHELL / RAIL
+   ============================================================ */
+.progress {
+  position: fixed; inset: 0 auto auto 0; height: 2px; width: 0%;
+  background: var(--ink); z-index: 60; transition: width .1s linear;
+}
+@media (prefers-reduced-motion: reduce) { .progress { transition: none; } }
+
+.shell { display: grid; grid-template-columns: 264px minmax(0, 1fr); }
+
+.rail {
+  position: sticky; top: 0; align-self: start; height: 100vh;
+  overflow-y: auto; padding: var(--s6) var(--s4) var(--s6) var(--s6);
+  border-right: 1px solid var(--rule);
+  background: var(--surface);
+}
+.rail-brand { font-family: var(--mono); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: var(--s5); display: block; }
+.rail-brand strong { display: block; color: var(--ink); font-size: 15px; letter-spacing: .02em; text-transform: none; margin-top: 2px; }
+.rail nav { display: flex; flex-direction: column; gap: 1px; }
+.rail nav a {
+  display: grid; grid-template-columns: 2.4em 1fr; gap: var(--s2);
+  font-family: var(--mono); font-size: 12.5px; line-height: 1.4;
+  padding: 7px var(--s2) 7px 0; text-decoration: none; color: var(--muted);
+  border-left: 2px solid transparent; padding-left: var(--s3); margin-left: -14px;
+}
+.rail nav a span { color: var(--faint); font-variant-numeric: tabular-nums; }
+.rail nav a:hover { color: var(--ink); }
+.rail nav a.on { color: var(--ink); border-left-color: var(--ink); font-weight: 600; }
+.rail nav a.on span { color: var(--ink); }
+.rail-foot { margin-top: var(--s6); padding-top: var(--s4); border-top: 1px solid var(--rule); font-family: var(--mono); font-size: 11px; line-height: 1.6; color: var(--faint); }
+
+main { min-width: 0; }
+.col { max-width: 1060px; margin: 0 auto; padding: 0 var(--s6) var(--s9); }
+
+@media (max-width: 940px) {
+  .shell { grid-template-columns: 1fr; }
+  .rail { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--rule); padding: var(--s4) var(--s4) var(--s3); }
+  .rail nav { flex-direction: row; overflow-x: auto; gap: var(--s1); padding-bottom: var(--s2); }
+  .rail nav a { border-left: 0; border-bottom: 2px solid transparent; margin-left: 0; padding: 6px var(--s3); white-space: nowrap; grid-template-columns: auto auto; }
+  .rail nav a.on { border-left-color: transparent; border-bottom-color: var(--ink); }
+  .rail-foot { display: none; }
+  .col { padding: 0 var(--s4) var(--s8); }
+  body { font-size: 16.5px; }
+}
+
+/* ============================================================
+   HERO
+   ============================================================ */
+.hero { padding: var(--s9) 0 var(--s7); border-bottom: 1px solid var(--rule); }
+.eyebrow { font-family: var(--mono); font-size: 11.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); margin-bottom: var(--s4); }
+.hero h1 { font-size: clamp(30px, 5vw, 48px); line-height: 1.08; letter-spacing: -.02em; margin-bottom: var(--s5); max-width: 20ch; }
+.hero .lede { font-size: clamp(18px, 2.2vw, 21px); line-height: 1.55; color: var(--ink-2); max-width: 62ch; }
+
+.tape {
+  margin: var(--s7) 0 0; border: 1px solid var(--rule); background: var(--surface);
+  border-radius: 3px; overflow: hidden; box-shadow: var(--shadow);
+}
+.tape-head {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--s4);
+  padding: var(--s2) var(--s4); border-bottom: 1px solid var(--rule);
+  font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
+  background: var(--surface-2);
+}
+.tape-body { padding: var(--s4); font-family: var(--mono); font-size: 12.5px; line-height: 1.9; overflow-x: auto; }
+.tape-row { display: grid; grid-template-columns: 7ch 12ch 1fr; gap: var(--s4); white-space: nowrap; padding: 1px var(--s2); border-radius: 2px; }
+.tape-row .off { color: var(--faint); }
+.tape-row .dw { color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.tape-row .dec { color: var(--muted); }
+.tape-row.lit { background: color-mix(in srgb, var(--guest) 12%, transparent); }
+.tape-row.lit .dw, .tape-row.lit .dec { color: var(--ink); }
+
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); margin-top: var(--s6); border-radius: 3px; overflow: hidden; }
+.stat { background: var(--surface); padding: var(--s4); }
+.stat .k { font-family: var(--mono); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.stat .v { font-family: var(--mono); font-size: 26px; font-weight: 600; line-height: 1.2; margin-top: 6px; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.stat .n { font-size: 13.5px; color: var(--muted); line-height: 1.4; margin-top: 4px; font-family: var(--serif); }
+
+/* ============================================================
+   SECTIONS
+   ============================================================ */
+section { padding-top: var(--s8); scroll-margin-top: var(--s4); }
+.sec-head { display: flex; align-items: baseline; gap: var(--s4); margin-bottom: var(--s5); padding-bottom: var(--s3); border-bottom: 1px solid var(--rule); }
+.sec-num { font-family: var(--mono); font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; letter-spacing: .08em; flex: none; }
+.sec-head h2 { font-size: clamp(22px, 3vw, 29px); letter-spacing: -.015em; line-height: 1.15; }
+h3 { font-size: 17px; letter-spacing: -.005em; margin: var(--s6) 0 var(--s3); }
+h3::before { content: "▸ "; color: var(--faint); }
+h4 { font-size: 13px; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: var(--s5) 0 var(--s3); }
+
+.deck { font-size: 19px; line-height: 1.55; color: var(--ink-2); max-width: 62ch; margin-bottom: var(--s5); }
+
+/* ============================================================
+   SOURCE TAGS — every claim points at a file
+   ============================================================ */
+.src {
+  display: inline-block; font-family: var(--mono); font-size: 11px; line-height: 1.5;
+  padding: 1px 6px; border: 1px solid var(--rule); border-radius: 2px;
+  background: var(--surface-2); color: var(--muted); white-space: nowrap;
+  vertical-align: baseline;
+}
+.srcs { display: flex; flex-wrap: wrap; gap: 5px; margin: var(--s3) 0 var(--s5); }
+
+/* ============================================================
+   FIGURES / PANELS
+   ============================================================ */
+.fig { margin: var(--s6) 0; border: 1px solid var(--rule); background: var(--surface); border-radius: 3px; overflow: hidden; }
+.fig-head { padding: var(--s3) var(--s4); border-bottom: 1px solid var(--rule); background: var(--surface-2); font-family: var(--mono); font-size: 11px; letter-spacing: .11em; text-transform: uppercase; color: var(--muted); display: flex; justify-content: space-between; gap: var(--s4); align-items: center; flex-wrap: wrap; }
+.fig-body { padding: var(--s5); }
+.fig-note { padding: var(--s3) var(--s4); border-top: 1px solid var(--rule); font-size: 14px; color: var(--muted); background: var(--surface-2); }
+.fig-note p { max-width: none; }
+
+.callout { border-left: 3px solid var(--rule-2); padding: var(--s2) 0 var(--s2) var(--s4); margin: var(--s5) 0; color: var(--ink-2); }
+.callout.guest { border-left-color: var(--guest); }
+.callout.kyty  { border-left-color: var(--kyty); }
+.callout.host  { border-left-color: var(--host); }
+.callout .lbl { font-family: var(--mono); font-size: 10.5px; letter-spacing: .13em; text-transform: uppercase; display: block; margin-bottom: 5px; color: var(--muted); }
+
+/* ============================================================
+   CODE
+   ============================================================ */
+pre {
+  margin: var(--s4) 0; padding: var(--s4); overflow-x: auto;
+  background: var(--surface-2); border: 1px solid var(--rule); border-radius: 3px;
+  font-family: var(--mono); font-size: 12.5px; line-height: 1.7; color: var(--ink-2);
+  tab-size: 4;
+}
+pre b { color: var(--ink); font-weight: 600; }
+pre i { color: var(--faint); font-style: normal; }
+:not(pre) > code { font-size: .87em; background: var(--surface-3); padding: 1px 5px; border-radius: 3px; color: var(--ink-2); }
+
+/* ============================================================
+   TABLES
+   ============================================================ */
+.tw { overflow-x: auto; margin: var(--s5) 0; border: 1px solid var(--rule); border-radius: 3px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 9px var(--s4); border-bottom: 1px solid var(--rule); vertical-align: top; }
+th { font-family: var(--mono); font-size: 10.5px; letter-spacing: .11em; text-transform: uppercase; color: var(--muted); font-weight: 600; background: var(--surface-2); white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+td code { white-space: nowrap; }
+.num { font-variant-numeric: tabular-nums; text-align: right; font-family: var(--mono); }
+
+/* ============================================================
+   SIDE CHIPS (guest / kyty / host)
+   ============================================================ */
+.chip { display: inline-flex; align-items: center; gap: 5px; font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; padding: 2px 7px; border-radius: 2px; border: 1px solid; }
+.chip::before { content: ""; width: 7px; height: 7px; border-radius: 1px; background: currentColor; }
+.chip.guest { color: var(--guest); border-color: color-mix(in srgb, var(--guest) 42%, transparent); background: color-mix(in srgb, var(--guest) 9%, transparent); }
+.chip.kyty  { color: var(--kyty);  border-color: color-mix(in srgb, var(--kyty) 42%, transparent);  background: color-mix(in srgb, var(--kyty) 9%, transparent); }
+.chip.host  { color: var(--host);  border-color: color-mix(in srgb, var(--host) 42%, transparent);  background: color-mix(in srgb, var(--host) 9%, transparent); }
+.legend { display: flex; flex-wrap: wrap; gap: var(--s3); margin: var(--s4) 0; align-items: center; }
+
+/* ============================================================
+   STACK DIAGRAM
+   ============================================================ */
+.stack { display: flex; flex-direction: column; gap: var(--s1); }
+.layer { border: 1px solid var(--rule); border-radius: 3px; padding: var(--s3) var(--s4); background: var(--surface-2); display: grid; grid-template-columns: minmax(0,1fr) auto; gap: var(--s4); align-items: center; }
+.layer .nm { font-family: var(--mono); font-size: 13px; font-weight: 600; }
+.layer .ds { font-size: 13.5px; color: var(--muted); grid-column: 1 / -1; line-height: 1.5; }
+.layer.g { border-left: 3px solid var(--guest); }
+.layer.k { border-left: 3px solid var(--kyty); }
+.layer.h { border-left: 3px solid var(--host); }
+.arrow { text-align: center; color: var(--faint); font-family: var(--mono); font-size: 13px; line-height: 1; padding: 2px 0; }
+
+/* ============================================================
+   STEPPER (boot sequence, shader pipeline)
+   ============================================================ */
+.steps { display: flex; flex-wrap: wrap; gap: var(--s1); }
+.steps button {
+  font-family: var(--mono); font-size: 11.5px; padding: 6px 10px; cursor: pointer;
+  border: 1px solid var(--rule); background: var(--surface-2); color: var(--muted);
+  border-radius: 2px; line-height: 1.3; transition: background .12s, color .12s, border-color .12s;
+}
+.steps button:hover { color: var(--ink); border-color: var(--rule-2); }
+.steps button[aria-selected="true"] { background: var(--ink); color: var(--surface); border-color: var(--ink); font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { .steps button { transition: none; } }
+
+.step-panel { margin-top: var(--s5); display: grid; grid-template-columns: minmax(0,1fr); gap: var(--s4); }
+.step-panel h4 { margin: 0 0 var(--s2); font-size: 15px; text-transform: none; letter-spacing: -.01em; color: var(--ink); font-family: var(--mono); }
+.step-panel .why { font-size: 14.5px; color: var(--muted); border-top: 1px dashed var(--rule); padding-top: var(--s3); margin-top: var(--s3); }
+.step-nav { display: flex; gap: var(--s2); margin-top: var(--s4); }
+.step-nav button { font-family: var(--mono); font-size: 12px; padding: 5px 12px; border: 1px solid var(--rule); background: var(--surface); color: var(--ink-2); border-radius: 2px; cursor: pointer; }
+.step-nav button:hover { border-color: var(--rule-2); }
+.step-count { font-family: var(--mono); font-size: 11.5px; color: var(--faint); align-self: center; margin-left: auto; font-variant-numeric: tabular-nums; }
+
+/* ============================================================
+   MEMORY MAP
+   ============================================================ */
+.mmap { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: var(--s5); align-items: start; }
+@media (max-width: 760px) { .mmap { grid-template-columns: 1fr; } }
+.bands { display: flex; flex-direction: column; gap: 3px; }
+.band { display: grid; grid-template-columns: 1fr; text-align: left; padding: var(--s3); border: 1px solid var(--rule); border-radius: 3px; background: var(--surface-2); cursor: pointer; font: inherit; color: inherit; transition: border-color .12s, background .12s; }
+.band:hover { border-color: var(--rule-2); }
+.band[aria-selected="true"] { background: var(--surface-3); border-color: var(--ink); }
+.band .addr { font-family: var(--mono); font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.band .ttl { font-family: var(--mono); font-size: 13px; font-weight: 600; margin-top: 2px; }
+.band .sz { font-family: var(--mono); font-size: 11px; color: var(--faint); }
+.band.g { border-left: 3px solid var(--guest); }
+.band.k { border-left: 3px solid var(--kyty); }
+.band.h { border-left: 3px solid var(--host); }
+@media (prefers-reduced-motion: reduce) { .band { transition: none; } }
+
+/* ============================================================
+   PM4 DECODER
+   ============================================================ */
+.decoder { display: grid; gap: var(--s4); }
+.dec-input { display: flex; gap: var(--s2); flex-wrap: wrap; align-items: center; }
+.dec-input label { font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.dec-input input {
+  font-family: var(--mono); font-size: 15px; padding: 8px var(--s3); width: 15ch;
+  border: 1px solid var(--rule-2); border-radius: 2px; background: var(--surface); color: var(--ink);
+}
+.presets { display: flex; flex-wrap: wrap; gap: 4px; }
+.presets button { font-family: var(--mono); font-size: 11px; padding: 4px 8px; border: 1px solid var(--rule); background: var(--surface-2); color: var(--muted); border-radius: 2px; cursor: pointer; }
+.presets button:hover { color: var(--ink); border-color: var(--rule-2); }
+.bits { display: flex; gap: 2px; overflow-x: auto; padding-bottom: var(--s2); }
+.bit { width: 15px; height: 30px; display: grid; place-items: center; font-family: var(--mono); font-size: 11px; border: 1px solid var(--rule); border-radius: 1px; background: var(--surface-2); color: var(--muted); flex: none; }
+.bit.f0 { background: color-mix(in srgb, var(--host) 20%, var(--surface)); border-color: color-mix(in srgb, var(--host) 45%, transparent); color: var(--ink); }
+.bit.f1 { background: color-mix(in srgb, var(--kyty) 20%, var(--surface)); border-color: color-mix(in srgb, var(--kyty) 45%, transparent); color: var(--ink); }
+.bit.f2 { background: color-mix(in srgb, var(--guest) 20%, var(--surface)); border-color: color-mix(in srgb, var(--guest) 45%, transparent); color: var(--ink); }
+.bit.f3 { background: var(--surface-3); color: var(--ink); }
+.dec-out { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 3px; overflow: hidden; }
+.dec-out div { background: var(--surface); padding: var(--s3) var(--s4); }
+.dec-out .k { font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.dec-out .v { font-family: var(--mono); font-size: 15px; margin-top: 3px; word-break: break-all; }
+
+/* ============================================================
+   BAR CHART
+   ============================================================ */
+.chart { display: grid; gap: 6px; }
+.bar-row { display: grid; grid-template-columns: minmax(120px, 210px) minmax(0,1fr) 7ch; gap: var(--s3); align-items: center; }
+.bar-row .lab { font-family: var(--mono); font-size: 11.5px; color: var(--ink-2); line-height: 1.3; }
+.bar-track { height: 16px; background: var(--surface-3); border-radius: 0 3px 3px 0; position: relative; }
+.bar-fill { height: 100%; background: var(--guest); border-radius: 0 3px 3px 0; }
+.bar-row .val { font-family: var(--mono); font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
+.bar-row:hover .bar-fill { filter: brightness(1.12); }
+@media (max-width: 620px) { .bar-row { grid-template-columns: 1fr; gap: 2px; } .bar-row .val { text-align: left; } }
+
+/* ============================================================
+   TABS
+   ============================================================ */
+.tabs { display: flex; gap: 0; border-bottom: 1px solid var(--rule); flex-wrap: wrap; }
+.tabs button { font-family: var(--mono); font-size: 12px; padding: 8px var(--s4); border: 0; border-bottom: 2px solid transparent; background: none; color: var(--muted); cursor: pointer; }
+.tabs button:hover { color: var(--ink); }
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); font-weight: 600; }
+.tabpane { padding-top: var(--s4); }
+.tabpane[hidden] { display: none; }
+
+/* ============================================================
+   DETAILS
+   ============================================================ */
+details { border: 1px solid var(--rule); border-radius: 3px; margin: var(--s4) 0; background: var(--surface); }
+summary { cursor: pointer; padding: var(--s3) var(--s4); font-family: var(--mono); font-size: 12.5px; color: var(--ink-2); list-style: none; display: flex; align-items: center; gap: var(--s2); }
+summary::-webkit-details-marker { display: none; }
+summary::before { content: "+"; font-family: var(--mono); color: var(--faint); width: 1em; }
+details[open] summary::before { content: "−"; }
+details[open] summary { border-bottom: 1px solid var(--rule); }
+.details-body { padding: var(--s4); }
+.details-body > :first-child { margin-top: 0; }
+
+/* ============================================================
+   PIPELINE (shader stages)
+   ============================================================ */
+.pipe { display: flex; flex-wrap: wrap; gap: 3px; align-items: stretch; }
+.pipe button {
+  flex: 1 1 96px; min-width: 96px; text-align: left; cursor: pointer;
+  border: 1px solid var(--rule); background: var(--surface-2); border-radius: 3px;
+  padding: var(--s3); font: inherit; color: var(--muted);
+}
+.pipe button:hover { border-color: var(--rule-2); color: var(--ink); }
+.pipe button[aria-selected="true"] { background: var(--surface-3); border-color: var(--ink); color: var(--ink); }
+.pipe .i { font-family: var(--mono); font-size: 10px; color: var(--faint); font-variant-numeric: tabular-nums; }
+.pipe .t { font-family: var(--mono); font-size: 12px; font-weight: 600; line-height: 1.25; margin-top: 3px; }
+
+/* ============================================================
+   GLOSSARY
+   ============================================================ */
+.gloss { display: grid; gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 3px; overflow: hidden; }
+.gloss > div { background: var(--surface); padding: var(--s3) var(--s4); display: grid; grid-template-columns: minmax(90px, 150px) minmax(0,1fr); gap: var(--s4); }
+.gloss dt, .gloss .term { font-family: var(--mono); font-size: 12.5px; font-weight: 600; }
+.gloss .def { font-size: 14.5px; color: var(--ink-2); line-height: 1.5; }
+@media (max-width: 620px) { .gloss > div { grid-template-columns: 1fr; gap: 2px; } }
+
+.foot { margin-top: var(--s9); padding-top: var(--s5); border-top: 1px solid var(--rule); font-size: 14px; color: var(--muted); }
+</style>
+
+<div class="progress" id="prog"></div>
+
+<div class="shell">
+  <aside class="rail">
+    <span class="rail-brand">Field guide<strong>KytyPS5</strong></span>
+    <nav id="toc">
+      <a href="#intro"><span>00</span>Orientation</a>
+      <a href="#what"><span>01</span>What it actually does</a>
+      <a href="#map"><span>02</span>Map of the codebase</a>
+      <a href="#boot"><span>03</span>Boot sequence</a>
+      <a href="#loader"><span>04</span>The loader</a>
+      <a href="#memory"><span>05</span>Memory</a>
+      <a href="#kernel"><span>06</span>Kernel layer</a>
+      <a href="#hle"><span>07</span>HLE libraries</a>
+      <a href="#gpu"><span>08</span>Guest GPU &amp; PM4</a>
+      <a href="#shader"><span>09</span>Shader recompiler</a>
+      <a href="#renderer"><span>10</span>Vulkan renderer</a>
+      <a href="#present"><span>11</span>Present, audio, input</a>
+      <a href="#build"><span>12</span>Build &amp; tooling</a>
+      <a href="#path"><span>13</span>A learning path</a>
+      <a href="#glossary"><span>14</span>Glossary</a>
+    </nav>
+    <div class="rail-foot">
+      KytyPS5 v0.2.2<br>
+      GPL-2.0-only<br>
+      based on Kyty (MIT)<br><br>
+      Every claim on this page<br>carries a <span class="src">file:line</span> tag.
+    </div>
+  </aside>
+
+  <main>
+    <div class="col">
+
+<!-- ============================================================ HERO -->
+<header class="hero" id="intro">
+  <div class="eyebrow">A guided reading of the source</div>
+  <h1>Anatomy of a PlayStation&nbsp;5 emulator</h1>
+  <p class="lede">KytyPS5 takes a program compiled for a games console — a machine with its own operating system, its own graphics API, and its own idea of what memory looks like — and persuades it to run on a Windows or Linux PC. This page walks the whole path, from <code>main()</code> to a triangle on screen, and explains why each piece exists.</p>
+
+  <div class="tape" id="tape">
+    <div class="tape-head">
+      <span>Command stream · what the GPU thread eats</span>
+      <span>PM4 type-3 packets</span>
+    </div>
+    <div class="tape-body" id="tape-body"></div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="k">Source</div><div class="v">123k</div><div class="n">lines of C++ across 323 files in <code>src/</code></div></div>
+    <div class="stat"><div class="k">CPU emulation</div><div class="v">None</div><div class="n">guest x86-64 runs natively on the host CPU</div></div>
+    <div class="stat"><div class="k">GPU target</div><div class="v">Vulkan 1.3</div><div class="n">RDNA&nbsp;2 shader ISA recompiled to SPIR-V</div></div>
+    <div class="stat"><div class="k">Tests</div><div class="v">29k</div><div class="n">lines of regression tests, mostly shader &amp; memory</div></div>
+  </div>
+</header>
+
+<!-- ============================================================ 01 -->
+<section id="what">
+  <div class="sec-head"><span class="sec-num">01</span><h2>What an emulator like this actually does</h2></div>
+
+  <p class="deck">The word "emulator" suggests simulating a chip instruction by instruction. KytyPS5 does almost none of that, and understanding why is the single most useful thing to grasp before reading any code.</p>
+
+  <h3>The PS5 is a PC in an unusual coat</h3>
+  <p>The console's CPU is an 8-core AMD Zen&nbsp;2 running the x86-64 instruction set — the same instruction set as the machine you are reading this on. Its GPU is AMD RDNA&nbsp;2, the same architecture as a Radeon RX&nbsp;6000 card. Its operating system is a derivative of FreeBSD.</p>
+  <p>That means a compiled PS5 game is <em>already</em> machine code your processor can execute. There is no interpreter, no dynamic recompiler, no basic-block cache anywhere in this repository. The emulator maps the game's code into memory, sets the CPU's instruction pointer to the entry point, and lets the silicon run it.</p>
+
+  <div class="callout guest">
+    <span class="lbl">The consequence</span>
+    <p>Because the CPU is free, <strong>all the difficulty moves elsewhere</strong>: to the calling convention, to the memory layout, to the thousands of operating-system functions the game calls, and above all to the GPU. Roughly 70% of the codebase is graphics.</p>
+  </div>
+
+  <h3>The four boundaries that must be bridged</h3>
+  <p>Everything in this project is one of four translations. The colour coding used throughout this page follows them.</p>
+
+  <div class="legend">
+    <span class="chip guest">Guest — the PS5 and its software</span>
+    <span class="chip kyty">Kyty — the emulator's translation layer</span>
+    <span class="chip host">Host — the real PC, OS and GPU</span>
+  </div>
+
+  <div class="fig">
+    <div class="fig-head"><span>The four translation problems</span><span>select a tab</span></div>
+    <div class="fig-body">
+      <div class="tabs" id="xlate-tabs" role="tablist">
+        <button role="tab" aria-selected="true" data-pane="x-cpu">CPU &amp; ABI</button>
+        <button role="tab" aria-selected="false" data-pane="x-mem">Memory</button>
+        <button role="tab" aria-selected="false" data-pane="x-os">Operating system</button>
+        <button role="tab" aria-selected="false" data-pane="x-gpu">GPU</button>
+      </div>
+
+      <div class="tabpane" id="x-cpu" role="tabpanel">
+        <p><strong>The instructions are identical. The <em>conventions</em> are not.</strong> The PS5 uses the System&nbsp;V AMD64 calling convention (arguments in <code>rdi, rsi, rdx, rcx, r8, r9</code>). Windows uses the Microsoft x64 convention (<code>rcx, rdx, r8, r9</code>, plus 32 bytes of shadow space). A guest function calling an emulator function would otherwise pass its arguments into the wrong registers.</p>
+        <p>Kyty solves this by annotating every function the guest can call with a Clang attribute, so the compiler generates a System&nbsp;V prologue for that one function while the rest of the emulator stays native:</p>
+<pre>#define <b>KYTY_MS_ABI</b>   __attribute__((ms_abi))
+#define <b>KYTY_SYSV_ABI</b> __attribute__((sysv_abi))</pre>
+        <p>This is also why the build refuses MSVC's <code>cl.exe</code> and requires <code>clang-cl</code> — MSVC has no such attribute. There is a second gap too: PS5 code reads thread-local storage through the <code>fs</code> segment register, which Windows reserves for itself. That one is solved by rewriting the guest's instruction bytes; see §04.</p>
+        <div class="srcs"><span class="src">src/common/abi.h</span><span class="src">src/CMakeLists.txt</span></div>
+      </div>
+
+      <div class="tabpane" id="x-mem" role="tabpanel" hidden>
+        <p><strong>The game expects specific addresses to be available.</strong> PS5 software allocates at fixed regions, uses 16&nbsp;KB pages where the host uses 4&nbsp;KB, and distinguishes "direct" (physical) memory from "flexible" (virtual) memory in ways Windows and Linux do not.</p>
+        <p>Kyty therefore reserves whole bands of the host address space up front and hands them out itself, keeping its own page tables so it can answer the guest's queries about protection, type and naming. On macOS it goes further and uses linker flags to pin segments of the <em>emulator binary itself</em> so the required ranges are never taken by the system loader.</p>
+        <div class="srcs"><span class="src">src/kernel/memoryAddressSpace.inc</span><span class="src">src/kernel/memory.cpp</span></div>
+      </div>
+
+      <div class="tabpane" id="x-os" role="tabpanel" hidden>
+        <p><strong>Every system call has to be answered by something.</strong> A game calls <code>scePthreadCreate</code>, <code>sceKernelOpen</code>, <code>sceAudioOutOutput</code>, <code>sceNpWebApiCreateContext</code> — thousands of distinct entry points across dozens of modules.</p>
+        <p>Kyty implements them in native C++ (this is called <em>high-level emulation</em>, or HLE) rather than running Sony's real system libraries. A guest call to "create a thread" becomes a real host thread; "open a file" becomes a real host file handle inside a sandboxed directory tree. The <code>src/libs/</code> directory is 38,000 lines of exactly this.</p>
+        <div class="srcs"><span class="src">src/libs/</span><span class="src">src/kernel/</span></div>
+      </div>
+
+      <div class="tabpane" id="x-gpu" role="tabpanel" hidden>
+        <p><strong>This is the hard one.</strong> The game does not call a graphics API that Kyty can implement function-by-function. It builds raw <em>command packets</em> in memory — the same binary format the real GPU's command processor reads — and hands the buffer to the kernel.</p>
+        <p>So Kyty must implement a software model of an AMD command processor: parse PM4 packets, maintain the ~4,000 hardware registers they write, and when a draw packet arrives, translate the entire accumulated register state into a Vulkan pipeline. And the shaders inside are RDNA&nbsp;2 machine code that must be decompiled and re-emitted as SPIR-V. Sections 08–10 are about this.</p>
+        <div class="srcs"><span class="src">src/graphics/guest_gpu/</span><span class="src">src/graphics/shader/</span><span class="src">src/graphics/host_gpu/</span></div>
+      </div>
+    </div>
+  </div>
+
+  <h3>HLE versus LLE, in one paragraph</h3>
+  <p><em>Low-level emulation</em> means running the console's real firmware and libraries on a simulated machine — maximally accurate, extremely slow, and legally fraught because it requires copyrighted system files. <em>High-level emulation</em> means reimplementing what those libraries <em>do</em>. KytyPS5 is HLE throughout; its README notes that "no external low-level emulation modules are currently required." The trade-off is that every unimplemented function is a potential crash, and behaviour can differ from the real console in subtle ways.</p>
+</section>
+
+<!-- ============================================================ 02 -->
+<section id="map">
+  <div class="sec-head"><span class="sec-num">02</span><h2>Map of the codebase</h2></div>
+
+  <p class="deck">Nine directories under <code>src/</code>. Their relative sizes tell you where the difficulty lives.</p>
+
+  <div class="fig">
+    <div class="fig-head"><span>Lines of C++ by subsystem</span><span>src/ only · headers included</span></div>
+    <div class="fig-body">
+      <div class="chart" id="chart"></div>
+    </div>
+    <div class="fig-note"><p>Graphics — <code>shader</code> + <code>host_gpu</code> + <code>guest_gpu</code> + <code>presentation</code> — is about 60,000 lines, roughly half the emulator. The shader recompiler alone is larger than the loader, the kernel and the common layer combined.</p></div>
+  </div>
+
+  <h3>What each directory is for</h3>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Directory</th><th>Side</th><th>Responsibility</th></tr></thead>
+      <tbody>
+        <tr><td><code>src/common/</code></td><td><span class="chip host">host</span></td><td>Platform abstraction: virtual memory, file I/O, threads, timers, exception handling, logging, profiling. Three implementations behind one interface (<code>sysWindows*</code>, <code>sysLinux*</code>, macOS variants).</td></tr>
+        <tr><td><code>src/loader/</code></td><td><span class="chip kyty">kyty</span></td><td>Reads the game's ELF/SELF executable, maps it into guest memory, resolves its imports against the HLE symbol table, applies relocations, patches unsupported instructions, and jumps to the entry point.</td></tr>
+        <tr><td><code>src/kernel/</code></td><td><span class="chip kyty">kyty</span></td><td>The parts of the PS5 kernel that are too central to live in <code>libs/</code>: the memory manager, the pthread implementation, the file system, event queues, semaphores, event flags.</td></tr>
+        <tr><td><code>src/libs/</code></td><td><span class="chip kyty">kyty</span></td><td>Reimplementations of the console's user-space system modules — audio, networking, fonts, save data, video decode, dialogs, PNG, JSON, trophies, and the AGC graphics driver.</td></tr>
+        <tr><td><code>src/graphics/guest_gpu/</code></td><td><span class="chip guest">guest</span></td><td>The PS5's side of the GPU: PM4 packet parsing, the hardware register file, tiling maths, and the command-processor state machine.</td></tr>
+        <tr><td><code>src/graphics/shader/</code></td><td><span class="chip kyty">kyty</span></td><td>RDNA&nbsp;2 machine code in, SPIR-V out. Decoder, control-flow graph, intermediate representation, optimisation passes, SPIR-V emitter.</td></tr>
+        <tr><td><code>src/graphics/host_gpu/</code></td><td><span class="chip host">host</span></td><td>The Vulkan backend: command scheduling, pipelines, descriptor sets, and the caches that map guest memory ranges onto Vulkan images and buffers.</td></tr>
+        <tr><td><code>src/graphics/presentation/</code></td><td><span class="chip host">host</span></td><td>The window (SDL2), the swapchain, the <code>VideoOut</code> flip model, vertical-blank timing, RenderDoc hooks.</td></tr>
+        <tr><td><code>src/launcher/</code></td><td><span class="chip host">host</span></td><td>An optional Qt&nbsp;6 front end: scans folders for games, edits per-title settings, shows a compatibility database and trophy viewer, and spawns <code>kyty_emulator</code>.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Two executables</h3>
+  <p><code>kyty_emulator</code> is the emulator itself, driven entirely by command-line flags. <code>launcher</code> is a Qt GUI that exists only to build those command lines for you. If you are learning the code, ignore the launcher completely — it never touches emulation.</p>
+
+  <div class="callout kyty">
+    <span class="lbl">Reading tip</span>
+    <p>The repository's CMake root is <code>src/</code>, not the repository root. <code>cmake -S src -B _Build/windows</code>. This surprises almost everyone the first time.</p>
+  </div>
+</section>
+
+<!-- ============================================================ 03 -->
+<section id="boot">
+  <div class="sec-head"><span class="sec-num">03</span><h2>Boot: from <code>main()</code> to the game's first instruction</h2></div>
+
+  <p class="deck">Eleven steps happen between launching the executable and the game's own code running. Step through them — each one exists for a reason, and several of the reasons are surprising.</p>
+
+  <div class="fig">
+    <div class="fig-head"><span>Startup sequence</span><span id="boot-hint">click a step · ← → to move</span></div>
+    <div class="fig-body">
+      <div class="steps" id="boot-steps" role="tablist"></div>
+      <div class="step-panel" id="boot-panel"></div>
+      <div class="step-nav">
+        <button type="button" id="boot-prev">← Previous</button>
+        <button type="button" id="boot-next">Next →</button>
+        <span class="step-count" id="boot-count"></span>
+      </div>
+    </div>
+  </div>
+
+  <h3>The subsystem framework</h3>
+  <p>Kyty does not initialise its parts in a hard-coded order. Instead each major component registers itself as a <code>Subsystem</code> with a list of dependencies, and a topological sort decides the order:</p>
+
+<pre>slist-&gt;Add(<b>graphics</b>, {core, log, pthread, memory, config, profiler, controller});
+slist-&gt;Add(<b>audio</b>,    {core, log, pthread, memory});
+slist-&gt;Add(<b>pthread</b>,  {core, log, timer});
+slist-&gt;InitAll(true);</pre>
+
+  <p>Every subsystem must supply four methods: <code>Id()</code>, <code>Init()</code>, <code>Destroy()</code> and <code>UnexpectedShutdown()</code>. That last one matters — when the guest crashes, Kyty needs to tear the Vulkan device down cleanly even though the normal shutdown path was never reached.</p>
+  <div class="srcs"><span class="src">src/common/subsystems.h:67</span><span class="src">src/emulator.cpp:108</span></div>
+
+  <h3>Two threads own the process</h3>
+  <p>Note what <code>Execute()</code> does: it spawns a thread for the guest, then the <em>main</em> thread runs the window event loop forever. This inversion is deliberate. Windowing systems on macOS and Windows insist that window and input handling happen on the process's first thread, so the game gets a thread of its own instead.</p>
+
+<pre>static void Execute(const std::filesystem::path&amp; game_patch) {
+    Common::Thread guest_thread([](void* param) {
+        auto* rt = Common::Singleton&lt;Loader::RuntimeLinker&gt;::Instance();
+        rt-&gt;<b>Execute</b>(*static_cast&lt;const std::filesystem::path*&gt;(param));
+    }, &amp;patch_path);
+    Libs::Graphics::<b>WindowRun</b>();   <i>// main thread never returns</i>
+    std::quick_exit(0);
+}</pre>
+  <div class="srcs"><span class="src">src/emulator.cpp:171</span></div>
+</section>
+
+<!-- ============================================================ 04 -->
+<section id="loader">
+  <div class="sec-head"><span class="sec-num">04</span><h2>The loader: turning a file into a running program</h2></div>
+
+  <p class="deck">A PS5 executable is an ELF file with Sony's extensions bolted on. The loader in <code>src/loader/</code> is under 5,000 lines but it is where most of the genuinely clever tricks live.</p>
+
+  <h3>The file format</h3>
+  <p>Games ship an <code>eboot.bin</code>, which is a <strong>SELF</strong> — a Signed ELF, a small container header followed by (on retail discs, encrypted) ELF segments. Kyty parses the container, then the ELF inside. The ELF is standard x86-64 ELF64 with FreeBSD's OS/ABI marker, but with Sony-specific type and tag values:</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Constant</th><th>Value</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>ET_DYNEXEC</code></td><td class="num">0xfe10</td><td>A main executable that is nonetheless position-independent</td></tr>
+        <tr><td><code>ET_DYNAMIC</code></td><td class="num">0xfe18</td><td>A shared library (<code>.prx</code>-style module)</td></tr>
+        <tr><td><code>PT_OS_DYNLIBDATA</code></td><td class="num">0x61000000</td><td>Segment holding the dynamic symbol/string/relocation tables</td></tr>
+        <tr><td><code>PT_OS_PROCPARAM</code></td><td class="num">0x61000001</td><td>Process parameters block the runtime reads at start-up</td></tr>
+        <tr><td><code>PT_OS_RELRO</code></td><td class="num">0x61000010</td><td>Read-only-after-relocation data</td></tr>
+        <tr><td><code>DT_OS_MODULE_INFO</code></td><td class="num">0x6100000d</td><td>Names + versions of the modules this file exports</td></tr>
+        <tr><td><code>DT_OS_IMPORT_LIB</code></td><td class="num">0x61000015</td><td>Names + versions of the libraries this file imports</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="srcs"><span class="src">src/loader/elf.h:48–100</span></div>
+
+  <h3>Mapping it into memory</h3>
+  <p><code>LoadProgramToMemory()</code> walks the program headers, computes the total span, rounds it to the guest's 16&nbsp;KB page size (<code>0x4000</code>), and reserves that much guest memory. Modules are laid out sequentially from a fixed base:</p>
+
+<pre>constexpr uint64_t SYSTEM_RESERVED  = 0x800000000;
+constexpr uint64_t CODE_BASE_OFFSET = 0x100000000;
+constexpr uint64_t CODE_BASE_INCR   = 0x010000000;
+
+<i>// first module lands at 0x900000000, each subsequent one 256 MB further on</i>
+static uint64_t g_desired_base_addr = SYSTEM_RESERVED + CODE_BASE_OFFSET;</pre>
+
+  <p>Each <code>PT_LOAD</code> segment is read from the file to <code>p_vaddr + base_vaddr</code>, then given its final page protection. Executable segments get an extra pass first — <code>PatchProgram()</code> — before protection is applied and the instruction cache is flushed.</p>
+  <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp:2141</span><span class="src">src/loader/runtimeLinker.cpp:337</span></div>
+
+  <h3>Patching the guest's instruction bytes</h3>
+  <p>This is one of the most instructive functions in the project. Two patterns in PS5 code cannot execute on Windows, so the loader scans the guest's <code>.text</code> and rewrites them in place.</p>
+
+  <h4>1 · Thread-local storage through <code>fs:[0]</code></h4>
+  <p>PS5 code reads its thread control block with <code>mov rax, qword ptr fs:[0]</code>. On Windows the <code>fs</code> segment belongs to the OS and points somewhere else entirely. The loader finds every such instruction and overwrites those exact 9 bytes with a call to a generated stub, which fetches the guest's real TCB pointer and returns it in the same register the original instruction targeted:</p>
+
+<pre><i>// before — 9 bytes</i>
+64 48 8B 04 25 00 00 00 00     mov rax, qword ptr fs:[0]
+
+<i>// after — same 9 bytes</i>
+E8 xx xx xx xx                 <b>call</b> tls_handler
+48 89 C0                       mov  rax, rax
+90                             nop</pre>
+
+  <p>The stub itself is hand-assembled machine code in <code>jit.h</code>. Because the emulator is compiled with the Microsoft ABI on Windows but the guest runs System&nbsp;V, the stub (<code>SafeCall</code>) pushes the flags and all volatile registers, aligns the stack to 16 bytes, reserves 32 bytes of Win64 shadow space, calls the C++ handler, then restores everything.</p>
+
+  <h4>2 · The stack canary store</h4>
+  <p>Compiler-generated stack-protector code stores through <code>fs:[0x28]</code>. Since <code>fs</code> is wrong, this would fault at address <code>0x28</code>. The loader replaces the 12-byte store with <code>nop</code>s — and, if it recognises the specific "canary failed → <code>ud2</code>" epilogue that follows, replaces the whole thing with <code>pop rbp; ret</code>.</p>
+  <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp:1309</span><span class="src">src/loader/jit.h:119</span></div>
+
+  <h3>NIDs: how symbols are named</h3>
+  <p>PS5 modules do not export readable symbol names. They export <strong>NIDs</strong> — an 11-character base64-ish encoding of a hash of the original name, followed by the library and module it belongs to, separated by <code>#</code>:</p>
+
+<pre>lUwEK9UwLNo<b>#</b>libSceGnmDriver<b>#</b>libSceGnmDriver
+└─ symbol ─┘ └─── library ───┘ └──── module ────┘</pre>
+
+  <p><code>RuntimeLinker::Resolve()</code> splits on <code>#</code>, maps the library and module identifiers back through the file's own tables, and then searches, in order: the HLE symbol database, then the export tables of every other loaded guest module.</p>
+
+  <p>The HLE side registers its functions with a pair of macros. This is the entire mechanism by which the emulator "implements" a console function:</p>
+
+<pre>LIB_VERSION("Graphics5", 1, "Graphics5", 1, 1);
+
+LIB_DEFINE(InitGraphicsDriver_1) {
+    <b>LIB_FUNC</b>("23LRUSvYu1M", Gen5::GraphicsInit);
+    <b>LIB_FUNC</b>("f3dg2CSgRKY", Gen5::GraphicsCreateShader);
+    <b>LIB_FUNC</b>("k3GhuSNmBLU", Gen5::GraphicsCbDispatch);
+}</pre>
+
+  <p><code>LIB_FUNC</code> expands into a <code>SymbolResolve</code> record — name, library, library version, module, module major/minor version, type — and inserts the address of the native C++ function into the shared database. When the guest's relocation for that NID is processed, the address of Kyty's C++ function is written into the guest's Global Offset Table. From then on, the guest calls straight into the emulator.</p>
+  <div class="srcs"><span class="src">src/libs/libs.h:39</span><span class="src">src/loader/runtimeLinker.cpp:1654</span><span class="src">src/loader/symbolDatabase.h</span></div>
+
+  <h3>What happens when a symbol is missing</h3>
+  <p>Real games import functions Kyty has never heard of. Rather than aborting, the loader generates a 162-byte <strong>thunk</strong> per unresolved import and points the relocation at it. When the guest eventually calls it, the thunk:</p>
+
+  <ol>
+    <li>Pushes <code>rax</code> and all six System&nbsp;V argument registers, plus all eight <code>xmm</code> registers, onto the stack — so the original arguments survive.</li>
+    <li>Loads a record ID into <code>rdi</code> and calls <code>ResolveImportStubWithId</code>, which retries resolution now that more modules may be loaded.</li>
+    <li>Restores every register exactly.</li>
+    <li>If a real address came back, <code>jmp</code> to it — the original call proceeds as though nothing happened. If not, <code>xor eax, eax; ret</code>: return zero and hope the game copes.</li>
+  </ol>
+
+  <div class="callout kyty">
+    <span class="lbl">Why this design</span>
+    <p>Failing at load time would make almost every game unbootable, because games import far more than they call. Failing lazily at call time means only the code paths actually taken can break — and the log records which NID was stubbed, which is exactly what a compatibility bug report needs.</p>
+  </div>
+  <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp:147</span></div>
+
+  <h3>The exception handler as a control-flow mechanism</h3>
+  <p>Kyty installs a process-wide handler (a vectored exception handler on Windows, a signal handler elsewhere). It is not only for diagnostics — three of its branches are load-bearing:</p>
+
+  <div class="stack">
+    <div class="layer h"><span class="nm">Illegal instruction</span><span class="chip host">host</span><span class="ds">Handed to <code>X64InstructionEmulator</code>, which software-emulates instructions the host CPU lacks — SHA-1/SHA-256 extensions, bit-field manipulation and similar — then advances the instruction pointer past them.</span></div>
+    <div class="arrow">↓ not handled</div>
+    <div class="layer k"><span class="nm">Access violation → GPU fault</span><span class="chip kyty">kyty</span><span class="ds"><code>Memory::HandleGpuFault()</code>. Memory the GPU is using is deliberately write-protected; a guest write to it traps here, so the renderer learns the CPU has modified a texture or buffer and can invalidate its cached copy.</span></div>
+    <div class="arrow">↓ not handled</div>
+    <div class="layer k"><span class="nm">Access violation → reserved range</span><span class="chip kyty">kyty</span><span class="ds">A guest touch inside a range that was reserved but not yet committed, which the memory manager commits on demand.</span></div>
+    <div class="arrow">↓ genuinely a crash</div>
+    <div class="layer h"><span class="nm">Diagnostic dump</span><span class="chip host">host</span><span class="ds">Faulting module, 64 bytes of code around the fault, all 16 general registers, 16 stack words, and a guest stack walk resolved against the loaded modules.</span></div>
+  </div>
+  <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp:763</span><span class="src">src/loader/x64InstructionEmulator.cpp</span></div>
+
+  <details>
+    <summary>Deep dive · why the Windows stack is pre-grown by 768 KB</summary>
+    <div class="details-body">
+      <p>Windows commits thread stacks lazily using a guard page: touching it triggers an exception that commits another page and moves the guard down. This requires that code touch the stack in order, which is why MSVC emits <code>__chkstk</code> probes for large frames.</p>
+      <p>PS5 code has no such probes. A guest function with a large local array can write <em>past</em> the guard page, and Windows will then treat that as a genuine stack overflow. Module initialisers also run on the host stack before the guest's own stack is in use.</p>
+      <p>So before any guest code runs, <code>RuntimeLinker::Execute()</code> deliberately walks the guard page down 768&nbsp;KB by writing a zero to it in a loop, forcing Windows to commit the whole region up front.</p>
+<pre>size_t expanded_size = 0;
+while (expanded_size &lt; 768 * 1024) {
+    sys_dbg_stack_info_t stack {};
+    SysStackUsage(stack);
+    *reinterpret_cast&lt;uint32_t*&gt;(stack.guard_addr) = 0;   <i>// force commit</i>
+    expanded_size += stack.guard_size;
+}</pre>
+      <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp:1590</span></div>
+    </div>
+  </details>
+</section>
+
+<!-- ============================================================ 05 -->
+<section id="memory">
+  <div class="sec-head"><span class="sec-num">05</span><h2>Memory: the address space is part of the ABI</h2></div>
+
+  <p class="deck">On a console the memory map is documented and games rely on it. Kyty reserves matching bands of the host address space and runs its own allocator inside them.</p>
+
+  <div class="fig">
+    <div class="fig-head"><span>Guest address space (Windows / Linux)</span><span>click a band</span></div>
+    <div class="fig-body">
+      <div class="mmap">
+        <div class="bands" id="bands" role="tablist"></div>
+        <div id="band-detail"></div>
+      </div>
+    </div>
+    <div class="fig-note"><p>macOS shifts these ranges (<code>HOST_USER_MIN</code> becomes <code>0x7000000000</code>) and pins them with linker flags — <code>-segaddr SYSTEM_RESERVED,0x7ffffc000 -segaddr USER_AREA,0x7000000000</code> — so the dynamic loader can never place a system library where the guest needs to allocate. <span class="src">src/CMakeLists.txt:323</span></p></div>
+  </div>
+
+  <h3>Direct, flexible, and pooled memory</h3>
+  <p>The PS5 kernel exposes three ways to get memory, and games use all three. Kyty models each with its own bookkeeping:</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Kind</th><th>Guest API</th><th>What it means</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Direct</strong></td><td><code>sceKernelAllocateDirectMemory</code><br><code>sceKernelMapDirectMemory</code></td><td>A reservation out of <em>physical</em> memory, identified by a physical offset, which is then mapped at a virtual address. Games use it for GPU-visible resources. Allocation and mapping are separate steps, and one physical range can be mapped twice.</td></tr>
+        <tr><td><strong>Flexible</strong></td><td><code>sceKernelMapFlexibleMemory</code></td><td>Ordinary paged memory from a fixed per-title budget. The budget is read from the game's <code>sce_sys/param.json</code> at start-up and applied before the memory subsystem initialises.</td></tr>
+        <tr><td><strong>Pooled</strong></td><td><code>sceKernelMemoryPoolReserve</code><br><code>…Commit</code> / <code>…Decommit</code></td><td>A reserve-then-commit pool, closer to <code>VirtualAlloc</code>'s two-phase model, with a batch interface so a game can perform dozens of map operations in one call.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>On top of these sit <code>sceKernelVirtualQuery</code> (the guest asking "what is at this address?" — Kyty answers from its own tables, including the <em>name</em> the game gave the range), memory-type protection, PRT apertures for partially-resident textures, and batch mapping.</p>
+  <div class="srcs"><span class="src">src/kernel/memory.h</span><span class="src">src/kernel/memory.cpp</span></div>
+
+  <h3>Keeping the CPU and GPU in agreement</h3>
+  <p>This is the subtlest problem in the whole emulator, and it deserves its own explanation.</p>
+
+  <p>On a real PS5, CPU and GPU share one physical memory. When a game writes vertex data with the CPU and then draws with it, no synchronisation is needed — the GPU reads the same bytes. On a PC, the GPU has its own memory, and Vulkan resources are <em>copies</em>. Kyty must detect when a copy has gone stale.</p>
+
+  <p>It does this with hardware page protection. Two classes cooperate:</p>
+
+  <div class="stack">
+    <div class="layer k"><span class="nm">PageManager</span><span class="chip kyty">kyty</span><span class="ds">Owns the actual protection calls. <code>UpdatePageWatchers(track, vaddr, size, mode)</code> makes a guest range write-protected (or read-write-protected). A guest access then faults, and the fault lands in the exception handler from §04.</span></div>
+    <div class="arrow">↓ reports dirtiness</div>
+    <div class="layer k"><span class="nm">MemoryTracker</span><span class="chip kyty">kyty</span><span class="ds">Divides the address space into fixed regions, each with per-page dirty bits tagged by source: <code>DirtySource::Cpu</code> or <code>DirtySource::Gpu</code>. Answers <code>IsRegionCpuModified()</code> / <code>IsRegionGpuModified()</code> and drives the upload and download loops.</span></div>
+  </div>
+
+  <p>The result is a two-way flow, both driven by page faults rather than by the game telling anyone anything:</p>
+
+  <ul>
+    <li><strong>Upload</strong> — before a draw reads a texture, <code>ForEachUploadRange()</code> finds the sub-ranges the CPU dirtied since the last upload, copies just those to the Vulkan image, then flips those pages to GPU-owned and re-protects them.</li>
+    <li><strong>Download</strong> — when the GPU has written a render target and the CPU later reads it, <code>ForEachDownloadRange()</code> copies back only the ranges the GPU marked dirty.</li>
+  </ul>
+
+  <p>The tracker is defensive about its own invariants. It refuses re-entry from inside an upload callback (<code>CheckNotInUploadCallback</code>) and hard-fails if an invalidation leaves GPU-owned pages behind — bugs here produce corruption that is otherwise almost impossible to localise.</p>
+  <div class="srcs"><span class="src">src/graphics/host_gpu/pageManager.h</span><span class="src">src/graphics/host_gpu/memoryTracker.h</span><span class="src">tests/MemoryTrackerTests.cpp</span></div>
+</section>
+
+<!-- ============================================================ 06 -->
+<section id="kernel">
+  <div class="sec-head"><span class="sec-num">06</span><h2>The kernel layer</h2></div>
+
+  <p class="deck">Eleven thousand lines implementing the FreeBSD-derived services a PS5 game assumes it is running on.</p>
+
+  <h3>Threads — the largest single file after the PM4 handlers</h3>
+  <p><code>src/kernel/pthread.cpp</code> is 130&nbsp;KB. It is a full pthread implementation: threads with names and priorities and CPU affinity masks, mutexes with all four types and protocol attributes, condition variables, read-write locks, thread-specific keys with destructors, cancellation with both deferred and asynchronous types, and per-thread signal queues.</p>
+
+  <p>Guest threads are real host threads, but with two extra pieces of state Kyty must maintain itself:</p>
+  <ul>
+    <li>A <strong>guest stack</strong> allocated inside the guest address space, because guest code computes addresses relative to its own stack and those addresses can be handed to the GPU or stored in structures the emulator inspects. <code>PthreadCreateMainGuestStack()</code> sets this up for the main thread before the entry point runs.</li>
+    <li>A <strong>thread control block</strong> reachable from the patched TLS stub, plus a per-thread copy of every loaded module's TLS image. <code>RuntimeLinker::TlsGetAddr()</code> lazily allocates these; <code>DeleteTlss(thread_id)</code> frees them on exit.</li>
+  </ul>
+  <div class="srcs"><span class="src">src/kernel/pthread.h</span><span class="src">src/loader/runtimeLinker.cpp:2073</span></div>
+
+  <h3>Event queues</h3>
+  <p><code>sceKernelCreateEqueue</code> and friends are a <code>kqueue</code>-shaped API: a game creates a queue, attaches sources to it (a vertical-blank event, a flip event, a timer, a user event), then blocks in <code>sceKernelWaitEqueue</code>. Kyty routes internal events — notably the display driver's flip and vblank notifications — into these queues.</p>
+  <p>Lifetime here is genuinely hard: a queue can be destroyed while another thread is blocked on it, or while the graphics thread is mid-way through delivering an event. There is a dedicated 19&nbsp;KB test file for exactly this.</p>
+  <div class="srcs"><span class="src">src/kernel/eventQueue.cpp</span><span class="src">tests/EventQueueLifetimeTests.cpp</span></div>
+
+  <h3>The file system</h3>
+  <p>The guest sees a console-shaped tree, which Kyty synthesises from host directories mounted at start-up:</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Guest path</th><th>Backed by</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code>/app0</code></td><td>the <code>--game</code> directory</td><td>The game's own read-only files</td></tr>
+        <tr><td><code>/hostapp</code></td><td>the same directory</td><td>Alias some titles use for development builds</td></tr>
+        <tr><td><code>/download0</code></td><td><code>_DownloadData/&lt;TITLE_ID&gt;</code></td><td>Downloadable content and patches</td></tr>
+        <tr><td><code>/temp0</code>, <code>/temp</code></td><td><code>_TempData/&lt;TITLE_ID&gt;</code></td><td>Scratch space, cleared per title</td></tr>
+        <tr><td><code>/savedata…</code></td><td><code>_SaveData/</code></td><td>Mounted on demand by the save-data library</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>The <code>TITLE_ID</code> comes from <code>sce_sys/param.json</code>, parsed by <code>SystemContentLoadParamSfo()</code>, so each game gets isolated directories. Path translation also has to handle case sensitivity: the console's file system is case-insensitive, Linux's is not, so lookups fall back to a case-folded directory scan.</p>
+  <div class="srcs"><span class="src">src/emulator.cpp:61</span><span class="src">src/kernel/fileSystem.cpp</span><span class="src">src/loader/systemContent.cpp</span></div>
+</section>
+
+<!-- ============================================================ 07 -->
+<section id="hle">
+  <div class="sec-head"><span class="sec-num">07</span><h2>The HLE library layer</h2></div>
+
+  <p class="deck">Thirty-eight thousand lines of "what would the console have done here?" — the widest and shallowest part of the project.</p>
+
+  <p>Every file in <code>src/libs/</code> follows the same shape: declare which library and module it stands in for, implement the functions in native C++ with the System&nbsp;V ABI attribute, and register them by NID.</p>
+
+<pre>LIB_VERSION(<i>"ContentExport"</i>, 1, <i>"ContentExport"</i>, 1, 1);
+
+static int <b>KYTY_SYSV_ABI</b> ContentExportInit2(const ContentExportInitParam2* p) {
+    <b>PRINT_NAME</b>();                       <i>// per-thread call tracing</i>
+    if (p == nullptr) return CONTENT_EXPORT_ERROR_INVALID_PARAM;
+    LOGF("\t buffer_size = %" PRIu64 "\n", p-&gt;buffer_size);
+    g_initialized = true;
+    return OK;
+}
+
+LIB_DEFINE(InitContentExport_1) {
+    LIB_FUNC("0GnN4QCgIfs", ContentExport::ContentExportInit2);
+}</pre>
+
+  <p><code>PRINT_NAME()</code> is worth noticing: it is a per-thread toggle that, when enabled, logs every entry into a guest-facing function with a timestamp and thread ID. Turning it on for one module is often the fastest way to find where a game diverges from expectation.</p>
+
+  <h3>What is implemented</h3>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Area</th><th>Files</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td>Graphics driver (AGC)</td><td><code>agc.cpp</code> · <code>libGraphicsDriver.cpp</code></td><td>140&nbsp;KB plus a 215&nbsp;KB table of hardware register default values — the values the real driver writes at context reset, needed because games only set the registers they change.</td></tr>
+        <tr><td>Kernel surface</td><td><code>libKernel.cpp</code></td><td>113&nbsp;KB: the parts of <code>libkernel</code> not big enough to earn their own file in <code>src/kernel/</code>.</td></tr>
+        <tr><td>Networking</td><td><code>libNet.cpp</code> · <code>network.cpp</code></td><td>224&nbsp;KB combined — sockets, resolvers, SSL/HTTP shims, and the NP (PlayStation Network) surface stubbed enough to keep games running offline.</td></tr>
+        <tr><td>Audio</td><td><code>audio.cpp</code> · <code>libAudio.cpp</code> · <code>libAudio2.cpp</code> · <code>ajm.cpp</code></td><td>Output mixing plus AJM, the console's hardware audio-decode block: ATRAC9 (via LibAtrac9), AAC and MP3 (via FFmpeg).</td></tr>
+        <tr><td>Video</td><td><code>avPlayer.cpp</code> · <code>libVideoDec2.cpp</code></td><td>Full-motion-video playback, decoded with FFmpeg. The AVPlayer implementation credits shadPS4 as a reference.</td></tr>
+        <tr><td>Fonts &amp; images</td><td><code>libFont.cpp</code> · <code>libPngDec.cpp</code></td><td>75&nbsp;KB of font layout; PNG decode via <code>stb</code>.</td></tr>
+        <tr><td>Async memory (AMPR)</td><td><code>libAmpr.cpp</code></td><td>~100&nbsp;KB. The PS5's asynchronous mapping/paging engine — its command records are parsed and replayed against Kyty's memory manager.</td></tr>
+        <tr><td>System services</td><td><code>libSaveData</code> · <code>libSystemService</code> · <code>libUserService</code> · <code>libPlayGo</code> · <code>libDialog</code> · <code>libShare</code></td><td>Save data, user profiles, chunk-based install progress, message and error dialogs.</td></tr>
+        <tr><td>Guest <code>printf</code></td><td><code>guestPrintf.cpp</code></td><td>25&nbsp;KB implementing the format-string interpreter itself, because the guest passes a System&nbsp;V variadic argument list that cannot simply be forwarded to the host's <code>vprintf</code>.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout kyty">
+    <span class="lbl">The pragmatic pattern</span>
+    <p>Many functions here validate arguments, log them, set a flag, and return <code>OK</code>. That is not laziness — for a large fraction of console APIs, the observable contract really is "accept this configuration and do not fail." The work is in knowing <em>which</em> ones need real behaviour.</p>
+  </div>
+</section>
+
+<!-- ============================================================ 08 -->
+<section id="gpu">
+  <div class="sec-head"><span class="sec-num">08</span><h2>Graphics I — the guest GPU and PM4</h2></div>
+
+  <p class="deck">The game never calls a draw function Kyty can intercept. It writes command packets into a buffer and submits it. To render anything, the emulator has to become a command processor.</p>
+
+  <h3>The path from game to pixels</h3>
+
+  <div class="stack">
+    <div class="layer g"><span class="nm">Game engine</span><span class="chip guest">guest</span><span class="ds">Calls the AGC ("Gen5") graphics API — <code>GraphicsCbDispatch</code>, <code>GraphicsCbSetShRegistersDirect</code>, <code>GraphicsCbReleaseMem</code> and hundreds more.</span></div>
+    <div class="arrow">↓ these are pure builders</div>
+    <div class="layer k"><span class="nm">agc.cpp · libGraphicsDriver.cpp</span><span class="chip kyty">kyty</span><span class="ds">Each AGC call <em>writes dwords into the game's own command buffer</em>. Kyty reimplements them to produce byte-identical PM4 to the real driver, because the game may inspect and patch the buffer afterwards.</span></div>
+    <div class="arrow">↓ submit</div>
+    <div class="layer k"><span class="nm">Gpu::Submit()</span><span class="chip kyty">kyty</span><span class="ds">Copies the buffer (games reuse their memory immediately) and pushes a <code>Submission</code> onto one of 57 queues: 1 graphics + 7 compute pipes × 8 queues each.</span></div>
+    <div class="arrow">↓ handed to the GPU thread</div>
+    <div class="layer k"><span class="nm">CommandProcessor::Process()</span><span class="chip kyty">kyty</span><span class="ds">Walks the packet stream. Register-write packets update <code>HW::Context</code>, <code>HW::UserConfig</code> and <code>HW::Shader</code>. Action packets — draw, dispatch, flip, fence — call into the renderer.</span></div>
+    <div class="arrow">↓ draw arrives</div>
+    <div class="layer h"><span class="nm">RenderExecutor → Vulkan</span><span class="chip host">host</span><span class="ds">Resolves render targets, compiles or fetches shaders, builds a pipeline from the accumulated register state, binds descriptors, records <code>vkCmdDraw</code>.</span></div>
+  </div>
+
+  <h3>Anatomy of a PM4 packet</h3>
+  <p>The stream is a sequence of 32-bit dwords. Each packet starts with a header dword whose top two bits give the packet type; everything Kyty handles is type&nbsp;3. Decode one yourself:</p>
+
+  <div class="fig">
+    <div class="fig-head"><span>PM4 type-3 header decoder</span><span>edit the hex value</span></div>
+    <div class="fig-body">
+      <div class="decoder">
+        <div class="dec-input">
+          <label for="pm4in">Header dword</label>
+          <input id="pm4in" type="text" value="0xC0021000" spellcheck="false" autocomplete="off">
+          <div class="presets" id="pm4presets"></div>
+        </div>
+        <div class="bits" id="pm4bits" aria-hidden="true"></div>
+        <div class="dec-out" id="pm4out"></div>
+      </div>
+    </div>
+    <div class="fig-note"><p>Field extraction, straight from the source: type = <code>cmd_id &gt;&gt; 30</code>, opcode = <code>(cmd_id &gt;&gt; 8) &amp; 0xff</code>, body length = <code>((cmd_id &gt;&gt; 16) &amp; 0x3fff) + 1</code> dwords. Bits 7:2 carry a Sony-specific sub-selector used when the opcode is <code>IT_NOP</code>. <span class="src">src/graphics/guest_gpu/pm4.cpp:122</span></p></div>
+  </div>
+
+  <h3>Dispatch by jump table</h3>
+  <p>With ~50 opcodes and thousands of register offsets, a switch statement would be unmanageable. Instead Kyty builds four function-pointer tables at start-up and indexes them directly:</p>
+
+<pre>extern const std::array&lt;cp_op_parser_func_t, 256&gt;        <b>g_cp_op_func</b>;         <i>// by opcode</i>
+extern const std::array&lt;hw_ctx_parser_func_t, CX_NUM&gt;   <b>g_hw_ctx_func</b>;       <i>// context registers</i>
+extern const std::array&lt;hw_sh_parser_func_t, SH_NUM&gt;    <b>g_hw_sh_func</b>;        <i>// shader registers</i>
+extern const std::array&lt;hw_uc_parser_func_t, UC_NUM&gt;    <b>g_hw_uc_func</b>;        <i>// user-config registers</i></pre>
+
+  <p>A <code>SET_CONTEXT_REG</code> packet says "starting at offset N, here are M values." The processor looks up <code>g_hw_ctx_func[N]</code>, which is a small function that knows how to unpack that specific register into a typed field of <code>HW::Context</code> — and returns how many dwords it consumed, so multi-register writes advance correctly. <code>pm4Handlers.cpp</code>, at 174&nbsp;KB, is almost entirely these functions.</p>
+  <div class="srcs"><span class="src">src/graphics/guest_gpu/command_processor/pm4Dispatch.h</span><span class="src">…/pm4Handlers.cpp</span><span class="src">src/graphics/guest_gpu/hardwareContext.h</span></div>
+
+  <h3>Things a real command processor does that Kyty must model</h3>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Mechanism</th><th>What it is</th><th>Why it matters</th></tr></thead>
+      <tbody>
+        <tr><td><strong>DE / CE counters</strong></td><td>Two engines run the same stream: the Constant Engine runs ahead prefetching constants, the Drawing Engine follows. Packets synchronise them by counter.</td><td>Get this wrong and constant data is stale by a frame or two — subtle, drifting corruption.</td></tr>
+        <tr><td><strong>Constant RAM</strong></td><td>A 48&nbsp;KB scratch area (<code>m_const_ram[0x3000]</code> dwords) the CE writes and the DE dumps into memory.</td><td>Used heavily for ring-buffered per-draw constants.</td></tr>
+        <tr><td><strong>End-of-pipe events</strong></td><td><code>RELEASE_MEM</code> / <code>EVENT_WRITE_EOP</code>: "when everything before this has finished, write this value here and optionally raise an interrupt."</td><td>This is how the game knows a frame is done. Kyty maps them onto Vulkan timeline semaphores and its own event queues.</td></tr>
+        <tr><td><strong>Indirect buffers</strong></td><td><code>INDIRECT_BUFFER</code> is a call: the processor jumps into another buffer and returns. <code>Pm4Execution</code> keeps a buffer stack.</td><td>Engines split state into reusable chunks; without this you see a fraction of the commands.</td></tr>
+        <tr><td><strong>Predication</strong></td><td><code>SET_PREDICATION</code> makes subsequent packets conditional on a memory value.</td><td>Occlusion-culled draws must actually be skipped, not merely drawn cheaply.</td></tr>
+        <tr><td><strong>Blocking waits</strong></td><td><code>WAIT_REG_MEM</code> spins until memory matches a condition. Kyty returns <code>Pm4ProcessResult::Blocked</code> and suspends the submission.</td><td>A blocked graphics queue must not stall the compute queues — hence the suspend/resume design rather than a busy loop.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Tiling: the layout problem</h3>
+  <p>GPUs do not store textures row by row. They interleave pixels into small blocks so that a 2D neighbourhood lands in one cache line. AMD's schemes have names like Standard 4&nbsp;KB, Standard 64&nbsp;KB, PRT 64&nbsp;KB, Render-Target 64&nbsp;KB and Depth 64&nbsp;KB, each with a different swizzle and different alignment rules per bytes-per-pixel and per mip level.</p>
+  <p>Guest memory holds tiled data; Vulkan wants linear data (or its own opaque tiling). <code>tile.cpp</code> — 59&nbsp;KB of address arithmetic — computes sizes, offsets, mip layouts and the XOR swizzles. The actual conversion runs on the host GPU as compute shaders, one per layout family:</p>
+<pre>gpu_tiler_standard4.comp      gpu_tiler_standard64_3d.comp
+gpu_tiler_standard64.comp     gpu_tiler_prt.comp
+gpu_tiler_standard256.comp    gpu_tiler_render_target.comp
+gpu_tiler_depth.comp          gpu_tiler_promote_d16.comp</pre>
+  <div class="srcs"><span class="src">src/graphics/guest_gpu/tile.cpp</span><span class="src">src/graphics/host_gpu/renderer/image/tiler.cpp</span><span class="src">src/graphics/host_gpu/shaders/</span></div>
+</section>
+
+<!-- ============================================================ 09 -->
+<section id="shader">
+  <div class="sec-head"><span class="sec-num">09</span><h2>Graphics II — the shader recompiler</h2></div>
+
+  <p class="deck">26,000 lines whose job is: given a blob of RDNA&nbsp;2 machine code found at some address in guest memory, produce an equivalent SPIR-V module that Vulkan will accept. This is a compiler, complete with a control-flow graph, an SSA-ish IR, and optimisation passes.</p>
+
+  <h3>Why it is hard</h3>
+  <ul>
+    <li><strong>The input is machine code, not source.</strong> No types, no structure, no function boundaries — just 64-bit instruction words operating on 256 scalar and 256 vector registers.</li>
+    <li><strong>GPU control flow is unstructured.</strong> RDNA&nbsp;2 uses an execution mask: a 64-bit register where each bit enables one lane. Branches manipulate this mask. SPIR-V, by contrast, demands <em>structured</em> control flow — every branch needs a declared merge block, every loop a header and a continue target.</li>
+    <li><strong>Resources are opaque.</strong> A texture is a 256-bit "T# descriptor" the shader loads out of memory at runtime. To emit a Vulkan descriptor binding, the compiler must trace backwards to work out <em>where</em> that descriptor came from.</li>
+    <li><strong>Wave size differs.</strong> RDNA&nbsp;2 shaders assume waves of 32 or 64 lanes and use cross-lane instructions. Host GPUs have their own subgroup sizes.</li>
+  </ul>
+
+  <div class="fig">
+    <div class="fig-head"><span>The compilation pipeline</span><span>click a stage</span></div>
+    <div class="fig-body">
+      <div class="pipe" id="pipe" role="tablist"></div>
+      <div class="step-panel" id="pipe-panel"></div>
+    </div>
+    <div class="fig-note"><p>Every stage logs <code>phase begin</code> / <code>phase end</code> with elapsed milliseconds and a shader hash, so a slow or failing compile can be located in the log without a debugger. <span class="src">src/graphics/shader/recompiler/ShaderRecompiler.cpp:640</span></p></div>
+  </div>
+
+  <h3>Sharps, user data, and shader resource tables</h3>
+  <p>This mechanism deserves special attention because it has no analogue in a normal graphics API.</p>
+  <p>A shader receives up to 64 dwords of <strong>user data</strong> in its first scalar registers, set by <code>SET_SH_REG</code> packets. Inside those dwords the game may place, in any arrangement it likes:</p>
+  <ul>
+    <li>An inline <strong>V# / T# / S#</strong> descriptor — "sharp" in AMD's terminology: a buffer, image or sampler descriptor stored directly in registers.</li>
+    <li>A <strong>pointer</strong> to a table in memory holding descriptors, which the shader loads with <code>s_load_dword</code>. Tables may nest arbitrarily deep. This is the <em>shader resource table</em>, or SRT.</li>
+  </ul>
+  <p>So to know which Vulkan image to bind, Kyty must evaluate the shader's own address arithmetic. Three components cooperate:</p>
+
+  <div class="stack">
+    <div class="layer k"><span class="nm">ScalarProvenance</span><span class="chip kyty">kyty</span><span class="ds">A dataflow analysis over scalar registers. For every scalar value it records where it came from — a user-data slot, a constant, an arithmetic combination, or "unknown." 34&nbsp;KB, with a 52&nbsp;KB test file.</span></div>
+    <div class="arrow">↓</div>
+    <div class="layer k"><span class="nm">SrtWalker / BuildSrtPlan</span><span class="chip kyty">kyty</span><span class="ds">Turns provenance into a <em>plan</em>: a list of memory reads to perform, relative to user data, to recover each descriptor. Constant offsets get compact slots; genuinely dynamic offsets stay explicit.</span></div>
+    <div class="arrow">↓ at draw time</div>
+    <div class="layer k"><span class="nm">MaterializeResources</span><span class="chip kyty">kyty</span><span class="ds">Executes the plan against the <em>current</em> user data and guest memory, producing a concrete <code>ResourceSnapshot</code> — this exact texture, this exact buffer, this size and format.</span></div>
+  </div>
+
+  <p>The important consequence: <strong>compilation is split from binding.</strong> The SPIR-V module and its plan are compiled once and cached; the plan is re-evaluated on every draw against fresh user data. <code>ShaderMaterializeStageRuntime()</code> does this and — importantly — keeps the previous stage intact if any read fails, rather than drawing with garbage.</p>
+  <div class="srcs"><span class="src">…/ir/ScalarProvenance.cpp</span><span class="src">…/ir/SrtWalker.cpp</span><span class="src">…/ir/ResourceMaterialization.cpp</span><span class="src">src/graphics/shader/shader.h:44</span></div>
+
+  <h3>When the control flow cannot be structured</h3>
+  <p>Some shaders have genuinely irreducible control flow — loops with multiple entry points, computed jumps through a code table. SPIR-V cannot express these directly. Rather than failing, the recompiler falls back to a <strong>dispatcher</strong>: the whole shader becomes one loop around a switch on a program-counter variable, with each basic block as a case. Slower, but universally correct.</p>
+  <p>The same fallback triggers for a subtler reason. If a loop header block contains an instruction whose SPIR-V lowering itself emits control flow — a buffer load with bounds checking, an atomic, an export — then the emitted loop header would be split into several SPIR-V blocks, which the specification forbids. <code>NeedsDispatcherForStructuredLoopHeader()</code> detects that case ahead of time.</p>
+  <div class="srcs"><span class="src">…/ShaderRecompiler.cpp:109</span><span class="src">…/cfg/ShaderCFG.cpp</span></div>
+
+  <h3>Where the test weight is</h3>
+  <p><code>tests/ShaderRecompilerComputeTests.cpp</code> is 800&nbsp;KB — the largest file in the repository by a wide margin, larger than the recompiler it tests. Together with <code>shaderCfgTests.cpp</code> (370&nbsp;KB), <code>ResourceTrackingTests.cpp</code> (91&nbsp;KB) and <code>ScalarProvenanceTests.cpp</code> (52&nbsp;KB), the shader compiler carries roughly 45% of all test code. That ratio is the correct one: a miscompiled shader produces wrong pixels with no crash and no log line.</p>
+</section>
+
+<!-- ============================================================ 10 -->
+<section id="renderer">
+  <div class="sec-head"><span class="sec-num">10</span><h2>Graphics III — the Vulkan renderer</h2></div>
+
+  <p class="deck">The host side. Its central task is caching: turning "this guest address range, in this format" into "this Vulkan object," and knowing when that answer stops being true.</p>
+
+  <h3>Five caches</h3>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Cache</th><th>Keyed by</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>TextureCache</code></td><td>guest address + format + extent + binding type</td><td>71&nbsp;KB, the most complex. Handles aliasing (two images overlapping in memory), depth/stencil pairing, mip expansion, upload, download, and garbage collection under memory pressure at 1.5&nbsp;GB and 3&nbsp;GB thresholds.</td></tr>
+        <tr><td><code>BufferCache</code></td><td>guest address range</td><td>Vertex, index, uniform and storage buffers, with a page-table index mapping addresses to buffer IDs.</td></tr>
+        <tr><td><code>PipelineCache</code></td><td>shader IDs + full static pipeline state</td><td>The key is a packed, byte-comparable struct of every non-dynamic pipeline field — blend factors, depth compare, cull mode, viewport, sample count — plus attachment formats.</td></tr>
+        <tr><td><code>DescriptorCache</code></td><td>binding layout</td><td>Allocates and recycles descriptor sets; sets are returned to the pool only after the fence for their command buffer signals.</td></tr>
+        <tr><td><code>SamplerCache</code></td><td>the guest S# descriptor</td><td>Small and simple by comparison.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Command submission</h3>
+  <p><code>CommandScheduler</code> keeps eight command buffers in rotation, each with its own fence, plus a Vulkan <strong>timeline semaphore</strong> (<code>MasterSemaphore</code>) providing a monotonically increasing tick. Anything that must outlive a submission — a staging buffer, a descriptor set, a shared image — is registered against the current buffer and released only when its fence signals:</p>
+
+<pre>void RetireBufferAfterFence(std::unique_ptr&lt;VulkanBuffer&gt; buffer);
+void RetainResourceUntilFence(std::shared_ptr&lt;void&gt; resource);
+void RecycleDescriptorAfterFence(VulkanDescriptorSet&amp; set);</pre>
+
+  <p>There is also a separate priority-operation thread. Some deferred work — a readback the guest is blocking on — cannot wait for the normal drain, so it runs on its own thread with its own tick.</p>
+  <div class="srcs"><span class="src">…/renderer/commandScheduler.h</span><span class="src">…/renderer/masterSemaphore.h</span></div>
+
+  <h3>What happens on a single draw</h3>
+  <ol>
+    <li><strong>Resolve render targets.</strong> Read the colour and depth register state, find or create images in the texture cache, transition their layouts.</li>
+    <li><strong>Fetch shaders.</strong> Hash the vertex and pixel shader registers plus the derived input info into a <code>ShaderId</code>; look it up; recompile on a miss.</li>
+    <li><strong>Materialise resources.</strong> Re-run each shader's SRT plan against the current user data to get concrete textures and buffers.</li>
+    <li><strong>Upload dirty memory.</strong> For every bound resource, ask the memory tracker which pages the CPU touched and copy just those.</li>
+    <li><strong>Build the pipeline key.</strong> Pack the whole static state; look up or create the <code>VkPipeline</code>.</li>
+    <li><strong>Bind and record.</strong> Write descriptor sets, push constants, then <code>vkCmdDrawIndexed</code> or <code>vkCmdDraw</code>.</li>
+  </ol>
+
+  <h3>Vertex fetch has no fixed-function equivalent</h3>
+  <p>On RDNA&nbsp;2 there is no vertex-input state in hardware. Instead the driver compiles a small <em>fetch shader</em> that reads vertex attributes from buffers and leaves them in registers, and the real vertex shader is called with those registers already populated. Games may supply this fetch shader externally, or embed it in the vertex shader's prologue.</p>
+  <p>Kyty detects both cases. <code>DetectEmbeddedVertexFetch()</code> analyses the decoded prologue to work out which registers hold attribute tables, buffer tables and indices, then <code>RewriteEmbeddedVertexFetches()</code> replaces those loads with real SPIR-V vertex inputs — so Vulkan's ordinary vertex-input state can be used instead.</p>
+  <div class="srcs"><span class="src">…/ShaderRecompiler.cpp:744</span><span class="src">src/graphics/shader/shader.h:67</span></div>
+
+  <h3>Diagnostics built into the renderer</h3>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Flag</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td><code>--vulkan-validation true</code></td><td>Enables the Vulkan validation layers.</td></tr>
+        <tr><td><code>--shader-validation true</code></td><td>Runs every emitted SPIR-V module through <code>spirv-val</code> before handing it to the driver.</td></tr>
+        <tr><td><code>--shader-log-direction File</code></td><td>Dumps the decoded RDNA&nbsp;2 listing, the CFG, and the IR for every shader compiled.</td></tr>
+        <tr><td><code>--command-buffer-dump true</code></td><td>Writes a decoded PM4 listing of every submitted buffer.</td></tr>
+        <tr><td><code>--spirv-debug-printf true</code></td><td>Enables <code>printf</code> from inside shaders.</td></tr>
+        <tr><td><code>--rd</code></td><td>Loads the RenderDoc API and captures frames.</td></tr>
+        <tr><td><code>--profiler-direction Network</code></td><td>Streams timings to a Tracy profiler client.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="srcs"><span class="src">src/main.cpp:40</span><span class="src">src/graphics/host_gpu/renderer/debug.cpp</span></div>
+</section>
+
+<!-- ============================================================ 11 -->
+<section id="present">
+  <div class="sec-head"><span class="sec-num">11</span><h2>Presentation, audio and input</h2></div>
+
+  <h3>The flip model</h3>
+  <p>A PS5 game does not "present a frame." It registers a set of buffers with the video-out driver, renders into one, and then <em>flips</em> — asks the display hardware to scan out that buffer starting at the next vertical blank. The game learns the flip happened through an event queue.</p>
+  <p>Kyty reproduces the whole protocol:</p>
+  <ul>
+    <li><code>VideoOutRegisterBuffers2</code> — the game hands over guest addresses and a tiling/format description. Kyty records them; images are created lazily by the texture cache.</li>
+    <li><code>VideoOutSubmitFlip</code> — queued, not immediate. A flip submitted while another is pending must block, exactly as on hardware.</li>
+    <li><code>SubmitFlipFromGpu</code> — the interesting case: a flip requested from <em>inside</em> the command stream, which must happen after the preceding draws complete. It becomes a Vulkan submission ordered by timeline semaphore.</li>
+    <li><code>VideoOutAddVblankEvent</code> / <code>VideoOutWaitVblank</code> — a virtual vblank fires at the configured frequency (default 60&nbsp;Hz, <code>--vblank-frequency</code>). Many engines pace their entire simulation off this, so the timing has to be steady even when rendering is slow.</li>
+  </ul>
+  <p>Only at the very end does the guest's buffer get blitted into the SDL window's Vulkan swapchain image.</p>
+  <div class="srcs"><span class="src">src/graphics/presentation/videoOut.cpp</span><span class="src">…/window/swapchain.cpp</span></div>
+
+  <h3>Audio</h3>
+  <p>Two distinct paths. <code>sceAudioOut</code> is straightforward mixing and output, running on its own thread and fed by the guest in fixed-size blocks. <strong>AJM</strong> is not: it models a hardware decode block, where the guest submits a batch of "jobs" describing input and output buffers and codec parameters. Kyty parses the job format and routes each to LibAtrac9 (Sony's ATRAC9 codec) or FFmpeg (AAC, MP3).</p>
+
+  <h3>Input</h3>
+  <p>SDL2 supplies gamepad and keyboard events on the main thread; <code>controller.cpp</code> maps them onto the DualSense button bit-mask and analogue axes, which <code>libPad.cpp</code> then reports through <code>scePadReadState</code>. Touchpad and motion are present in the data structures. Keyboard fallbacks let you play without a pad.</p>
+  <div class="srcs"><span class="src">src/graphics/presentation/window/window.cpp</span><span class="src">src/libs/controller.cpp</span><span class="src">src/libs/libPad.cpp</span></div>
+</section>
+
+<!-- ============================================================ 12 -->
+<section id="build">
+  <div class="sec-head"><span class="sec-num">12</span><h2>Build, dependencies and tooling</h2></div>
+
+  <h3>Toolchain</h3>
+  <p>CMake ≥ 3.12 driving Ninja, with <strong>Clang only</strong>. MSVC's <code>cl.exe</code> is rejected at configure time because the project depends on <code>__attribute__((sysv_abi))</code>. On Windows that means <code>clang-cl</code> from the Visual Studio "C++ Clang tools" component. Qt&nbsp;6 (Concurrent, Network, Widgets) is required for the launcher.</p>
+
+<pre>cmake -S <b>src</b> -B _Build/windows -G Ninja -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl \
+      -DCMAKE_PREFIX_PATH="C:/Qt/6.x.x/msvc2022_64"
+cmake --build _Build/windows --target launcher
+cmake --install _Build/windows --prefix _Build/windows/install</pre>
+
+  <h3>Third-party libraries</h3>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Library</th><th>Used for</th></tr></thead>
+      <tbody>
+        <tr><td><code>Vulkan-Headers</code> · <code>VulkanMemoryAllocator</code></td><td>The graphics API and its allocator. Vulkan is loaded dynamically; no SDK is needed to build.</td></tr>
+        <tr><td><code>SPIRV-Headers</code> · <code>SPIRV-Tools</code></td><td>Emitting, validating and optimising the recompiler's output (<code>--shader-optimization-type</code>).</td></tr>
+        <tr><td><code>SDL2</code></td><td>Window, input, and the Vulkan surface. Statically linked.</td></tr>
+        <tr><td><code>ffmpeg-core</code> · <code>LibAtrac9</code></td><td>Video and audio decoding for AVPlayer and AJM.</td></tr>
+        <tr><td><code>fmt</code> · <code>spdlog</code> · <code>nlohmann_json</code> · <code>magic_enum</code></td><td>Formatting, logging, JSON (<code>param.json</code>, game patches), enum reflection for CLI parsing.</td></tr>
+        <tr><td><code>xxHash</code></td><td>Fast hashing for shader and pipeline cache keys.</td></tr>
+        <tr><td><code>tracy</code></td><td>Frame profiler, enabled with <code>--profiler-direction Network</code>.</td></tr>
+        <tr><td><code>stb</code> · <code>cpuinfo</code> · <code>winpthread</code></td><td>Image decode, CPU feature detection, pthread support on Windows.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Tests</h3>
+  <p>Each test file builds as its own standalone executable (all <code>EXCLUDE_FROM_ALL</code>, so a normal build skips them). They cluster in two places, which is exactly where silent corruption lives:</p>
+  <ul>
+    <li><strong>Shader compiler</strong> — <code>ShaderRecompilerComputeTests</code>, <code>shaderCfgTests</code>, <code>ResourceTrackingTests</code>, <code>ScalarProvenanceTests</code>, <code>ShaderStageRuntimeTests</code>, <code>ShaderVertexMetadataTests</code>.</li>
+    <li><strong>Memory and resource lifetime</strong> — <code>VirtualMemoryAllocationTests</code>, <code>MemoryTrackerTests</code>, <code>PageManagerTests</code>, <code>ImagePageTableTests</code>, <code>ResourceMutexTests</code>, <code>EventQueueLifetimeTests</code>.</li>
+  </ul>
+  <p>Note the pattern in <code>memory.h</code>: test hooks are compiled in behind <code>KYTY_VIRTUAL_MEMORY_ALLOCATION_TESTS</code> — <code>TestFailNextPhysicalMemoryUnmap()</code>, <code>TestFailGuestBackingStoreUnmapAfter(n)</code>. Failure injection, so the error paths in the allocator are actually exercised.</p>
+
+  <h3>Working conventions</h3>
+  <p><code>clang-format</code> runs as a pre-commit hook over <code>src/</code>; <code>clang-tidy</code> is available behind <code>-DKYTY_ENABLE_CLANG_TIDY=ON</code>. The README also carries an explicit AI-use policy: assistance is allowed for research and development, but contributors must understand and test what they submit, disclose the scope of AI involvement, and write the PR text themselves.</p>
+</section>
+
+<!-- ============================================================ 13 -->
+<section id="path">
+  <div class="sec-head"><span class="sec-num">13</span><h2>A learning path through the source</h2></div>
+
+  <p class="deck">Reading a 123,000-line emulator front to back does not work. Read it as a sequence of complete journeys instead — each one small, each one ending somewhere satisfying.</p>
+
+  <div class="fig">
+    <div class="fig-head"><span>Six passes, in order</span><span>roughly increasing difficulty</span></div>
+    <div class="fig-body">
+      <div class="stack">
+        <div class="layer k"><span class="nm">1 · The whole boot, end to end</span><span class="chip kyty">2 hours</span><span class="ds"><code>main.cpp</code> → <code>emulator.cpp</code> → <code>RuntimeLinker::Execute()</code>. Small files, and you will finish knowing the shape of the entire program. Do not detour into anything yet.</span></div>
+        <div class="layer k"><span class="nm">2 · One HLE function, all the way through</span><span class="chip kyty">1 hour</span><span class="ds">Pick something small in <code>src/libs/</code> — <code>libAppContent.cpp</code> is a good size. Find its <code>LIB_FUNC</code> registration, then follow <code>RuntimeLinker::Resolve()</code> to see how the guest's relocation reaches it. This is the core HLE trick and it is only a few hundred lines.</span></div>
+        <div class="layer k"><span class="nm">3 · The loader in detail</span><span class="chip kyty">half a day</span><span class="ds"><code>LoadProgramToMemory</code>, <code>ParseProgramDynamicInfo</code>, <code>Relocate</code>, <code>PatchProgram</code>. Run with <code>--game</code> and read the log alongside — the loader prints every segment address, size and protection.</span></div>
+        <div class="layer g"><span class="nm">4 · Follow one draw call</span><span class="chip guest">a day</span><span class="ds">Turn on <code>--command-buffer-dump</code>, run a 2D game, open the dump. Find an <code>IT_DRAW_INDEX_AUTO</code> packet. Then trace it: <code>pm4Handlers.cpp</code> → <code>CommandProcessor::DrawIndexAuto</code> → <code>RenderExecutor::DrawAuto</code> → <code>renderDraw.cpp</code>. This is the spine of the graphics stack.</span></div>
+        <div class="layer k"><span class="nm">5 · One shader, compiled</span><span class="chip kyty">a day</span><span class="ds">Turn on <code>--shader-log-direction File</code>. Read the decoded RDNA&nbsp;2 listing, then the CFG, then the IR, then look up the corresponding SPIR-V. Keep AMD's RDNA&nbsp;2 ISA reference (document 70648) open — the README recommends it, and instruction semantics are not guessable.</span></div>
+        <div class="layer h"><span class="nm">6 · The coherency machinery</span><span class="chip host">hardest</span><span class="ds"><code>PageManager</code> → <code>MemoryTracker</code> → <code>TextureCache</code>. Read <code>tests/MemoryTrackerTests.cpp</code> first: the tests state the invariants more clearly than the implementation does.</span></div>
+      </div>
+    </div>
+  </div>
+
+  <h3>Habits worth adopting early</h3>
+  <ul>
+    <li><strong>Run with logging on and read it.</strong> Kyty logs enormously and deliberately: every module load, every segment, every unresolved NID, every shader compile phase with timings. Most questions are answered faster by the log than by the source.</li>
+    <li><strong>Treat <code>EXIT_NOT_IMPLEMENTED</code> as a map.</strong> Grep for it. Each one marks a case the author knew existed and chose not to handle — it is a catalogue of the emulator's frontier.</li>
+    <li><strong>Read the tests as specification.</strong> For the shader compiler and the memory tracker, the tests are more precise than any comment.</li>
+    <li><strong>Keep the guest/host boundary in mind at all times.</strong> When reading any function, ask: is this pointer a guest address or a host address? Is this code running on the guest's thread or the GPU thread? Most confusing bugs in emulators are a confusion about one of those two questions.</li>
+  </ul>
+</section>
+
+<!-- ============================================================ 14 -->
+<section id="glossary">
+  <div class="sec-head"><span class="sec-num">14</span><h2>Glossary</h2></div>
+
+  <p class="deck">The vocabulary that makes the code readable. Roughly in the order you will meet it.</p>
+
+  <div class="gloss">
+    <div><span class="term">HLE</span><span class="def">High-level emulation. Reimplementing what a console's system libraries <em>do</em>, in native code, instead of running the originals.</span></div>
+    <div><span class="term">Guest / host</span><span class="def">Guest = the emulated PS5 and its software. Host = the real PC, its OS and its GPU. Nearly every design decision in the codebase is about the boundary between them.</span></div>
+    <div><span class="term">SELF</span><span class="def">Signed ELF. Sony's executable container: a small header and segment table wrapping an otherwise standard ELF64 file.</span></div>
+    <div><span class="term">NID</span><span class="def">The 11-character encoded hash that names an exported symbol in place of a readable name. Written as <code>hash#library#module</code>.</span></div>
+    <div><span class="term">PRX / module</span><span class="def">A PS5 shared library. Games ship some of their own alongside <code>eboot.bin</code>; Kyty preloads any it finds beside the executable.</span></div>
+    <div><span class="term">TLS / TCB</span><span class="def">Thread-local storage and its thread control block. Reached on PS5 through the <code>fs</code> segment, which is why the loader rewrites those instructions.</span></div>
+    <div><span class="term">SysV ABI</span><span class="def">The System&nbsp;V AMD64 calling convention, used by the PS5 (and by Linux and macOS). Differs from the Microsoft x64 convention in register assignment and stack layout.</span></div>
+    <div><span class="term">Direct memory</span><span class="def">PS5 physical memory, allocated by physical offset then mapped separately to a virtual address.</span></div>
+    <div><span class="term">Flexible memory</span><span class="def">PS5 paged memory from a fixed per-title budget declared in <code>param.json</code>.</span></div>
+    <div><span class="term">AGC</span><span class="def">The PS5's low-level graphics API — also called "Gen5" in this codebase. Its functions build PM4 packets rather than issuing draws.</span></div>
+    <div><span class="term">PM4</span><span class="def">AMD's GPU command packet format. A stream of 32-bit dwords; type-3 packets carry an opcode and a body length.</span></div>
+    <div><span class="term">Command processor</span><span class="def">The GPU front end that reads PM4 and updates hardware registers. Kyty implements one in software: <code>CommandProcessor</code>.</span></div>
+    <div><span class="term">DE / CE</span><span class="def">Drawing Engine and Constant Engine — two cooperating command engines, synchronised by counters, with the CE prefetching constant data ahead of the DE.</span></div>
+    <div><span class="term">EOP</span><span class="def">End of pipe. An event that fires when all preceding GPU work has completed, typically writing a value to memory and raising an interrupt.</span></div>
+    <div><span class="term">Tiling / swizzle</span><span class="def">The non-linear memory layout GPUs use for textures. Converting to and from it is <code>tile.cpp</code> plus a family of compute shaders.</span></div>
+    <div><span class="term">HTile</span><span class="def">A compressed metadata surface accompanying a depth buffer, storing per-tile depth ranges for fast rejection.</span></div>
+    <div><span class="term">DCC</span><span class="def">Delta Colour Compression. Metadata alongside a render target that compresses colour writes.</span></div>
+    <div><span class="term">RDNA&nbsp;2</span><span class="def">The GPU architecture the PS5's graphics core is based on. Its shader instruction set is the recompiler's input language.</span></div>
+    <div><span class="term">Wave / lane</span><span class="def">A wave is a group of 32 or 64 shader invocations executing in lockstep; each invocation is a lane. Branching is done by masking lanes off, not by jumping.</span></div>
+    <div><span class="term">EXEC mask</span><span class="def">The 64-bit register holding which lanes are currently active. Manipulating it is how RDNA&nbsp;2 expresses control flow — and why converting to SPIR-V is hard.</span></div>
+    <div><span class="term">SGPR / VGPR</span><span class="def">Scalar and vector general-purpose registers. Scalar values are uniform across the wave; vector values are per lane.</span></div>
+    <div><span class="term">Sharp (V# T# S#)</span><span class="def">A resource descriptor stored in registers or memory: V# buffer, T# image, S# sampler. The shader loads them itself at runtime.</span></div>
+    <div><span class="term">SRT</span><span class="def">Shader Resource Table. A possibly-nested table of descriptors in memory, reached from a pointer in user data. Kyty must statically work out how to walk it.</span></div>
+    <div><span class="term">User data</span><span class="def">Up to 64 dwords written into a shader's first scalar registers by <code>SET_SH_REG</code> packets — the only channel by which a draw passes parameters to its shaders.</span></div>
+    <div><span class="term">Fetch shader</span><span class="def">A small generated shader that reads vertex attributes into registers before the real vertex shader runs. RDNA&nbsp;2 has no fixed-function vertex input.</span></div>
+    <div><span class="term">SPIR-V</span><span class="def">Vulkan's binary shader intermediate language, and the recompiler's output. Requires structured control flow.</span></div>
+    <div><span class="term">Flip</span><span class="def">Asking the display to scan out a different buffer at the next vertical blank. The PS5's equivalent of "present."</span></div>
+    <div><span class="term">Vblank</span><span class="def">Vertical blanking interval. Kyty generates a virtual one at a configurable rate; many engines pace themselves off it.</span></div>
+  </div>
+
+  <div class="foot">
+    <p>Written from a reading of the KytyPS5 source tree at <code>v0.2.2</code>. Line references point at that revision and will drift. The project is GPL-2.0-only, based on <a href="https://github.com/InoriRus/Kyty">InoriRus/Kyty</a> (MIT), and credits <a href="https://github.com/shadps4-emu/shadPS4">shadPS4</a> as a reference for the memory model and AVPlayer. It is not affiliated with Sony Interactive Entertainment.</p>
+  </div>
+</section>
+
+    </div>
+  </main>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* ---------------------------------------------------------- progress + scrollspy */
+  var prog = document.getElementById("prog");
+  var links = Array.prototype.slice.call(document.querySelectorAll("#toc a"));
+  var sections = links.map(function (a) { return document.querySelector(a.getAttribute("href")); }).filter(Boolean);
+
+  function onScroll() {
+    var h = document.documentElement;
+    var max = h.scrollHeight - h.clientHeight;
+    prog.style.width = (max > 0 ? (h.scrollTop / max) * 100 : 0) + "%";
+    var idx = 0;
+    for (var i = 0; i < sections.length; i++) {
+      if (sections[i].getBoundingClientRect().top <= 120) idx = i;
+    }
+    links.forEach(function (a, i) { a.classList.toggle("on", i === idx); });
+  }
+  window.addEventListener("scroll", onScroll, { passive: true });
+  window.addEventListener("resize", onScroll);
+  onScroll();
+
+  /* ---------------------------------------------------------- hero packet tape */
+  var TAPE = [
+    ["00000", "0xC0021000", "IT_NOP  R_ZERO  CNT:3        padding / alignment"],
+    ["00004", "0xC0016900", "IT_SET_CONTEXT_REG  CNT:2    write 2 context registers"],
+    ["00007", "0xC0027600", "IT_SET_SH_REG  CNT:3         shader user-data SGPRs"],
+    ["0000B", "0xC0007900", "IT_SET_UCONFIG_REG  CNT:1    primitive type"],
+    ["0000D", "0xC0032D00", "IT_DRAW_INDEX_AUTO  CNT:4    ← the draw"],
+    ["00012", "0xC0044900", "IT_RELEASE_MEM  CNT:5        end-of-pipe fence + interrupt"],
+    ["00018", "0xC000105C", "IT_NOP  R_FLIP  CNT:1        present this frame"]
+  ];
+  var tb = document.getElementById("tape-body");
+  TAPE.forEach(function (r, i) {
+    var d = document.createElement("div");
+    d.className = "tape-row";
+    d.dataset.i = i;
+    d.innerHTML = '<span class="off">' + r[0] + '</span><span class="dw">' + r[1] + '</span><span class="dec">' + r[2] + '</span>';
+    tb.appendChild(d);
+  });
+  if (!reduce) {
+    var lit = 0;
+    var rows = tb.querySelectorAll(".tape-row");
+    setInterval(function () {
+      rows.forEach(function (r, i) { r.classList.toggle("lit", i === lit); });
+      lit = (lit + 1) % rows.length;
+    }, 1400);
+  }
+
+  /* ---------------------------------------------------------- tabs */
+  var tabWrap = document.getElementById("xlate-tabs");
+  tabWrap.addEventListener("click", function (e) {
+    var b = e.target.closest("button[data-pane]");
+    if (!b) return;
+    Array.prototype.forEach.call(tabWrap.querySelectorAll("button"), function (x) {
+      var on = x === b;
+      x.setAttribute("aria-selected", on ? "true" : "false");
+      document.getElementById(x.dataset.pane).hidden = !on;
+    });
+  });
+
+  /* ---------------------------------------------------------- chart */
+  var DATA = [
+    ["libs — HLE system libraries", 38055],
+    ["graphics/shader — recompiler", 26486],
+    ["graphics/host_gpu — Vulkan", 18572],
+    ["kernel — threads, memory, files", 11197],
+    ["graphics/guest_gpu — PM4", 10051],
+    ["common — platform layer", 6430],
+    ["loader — ELF, linking", 4896],
+    ["graphics/presentation", 4550],
+    ["launcher — Qt front end", 2960]
+  ];
+  var maxv = DATA[0][1];
+  var chart = document.getElementById("chart");
+  DATA.forEach(function (d) {
+    var row = document.createElement("div");
+    row.className = "bar-row";
+    row.title = d[0] + " — " + d[1].toLocaleString() + " lines";
+    row.innerHTML =
+      '<div class="lab">' + d[0] + '</div>' +
+      '<div class="bar-track"><div class="bar-fill" style="width:' + ((d[1] / maxv) * 100).toFixed(1) + '%"></div></div>' +
+      '<div class="val">' + d[1].toLocaleString() + '</div>';
+    chart.appendChild(row);
+  });
+
+  /* ---------------------------------------------------------- generic stepper */
+  function buildStepper(opts) {
+    var host = document.getElementById(opts.tabsId);
+    var panel = document.getElementById(opts.panelId);
+    var cur = 0;
+    opts.items.forEach(function (it, i) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.setAttribute("role", "tab");
+      b.setAttribute("aria-selected", i === 0 ? "true" : "false");
+      b.innerHTML = opts.buttonHtml(it, i);
+      b.addEventListener("click", function () { show(i); });
+      host.appendChild(b);
+    });
+    function show(i) {
+      cur = (i + opts.items.length) % opts.items.length;
+      Array.prototype.forEach.call(host.querySelectorAll("button"), function (b, n) {
+        b.setAttribute("aria-selected", n === cur ? "true" : "false");
+      });
+      panel.innerHTML = opts.panelHtml(opts.items[cur], cur);
+      if (opts.countId) {
+        document.getElementById(opts.countId).textContent = (cur + 1) + " / " + opts.items.length;
+      }
+    }
+    if (opts.prevId) document.getElementById(opts.prevId).addEventListener("click", function () { show(cur - 1); });
+    if (opts.nextId) document.getElementById(opts.nextId).addEventListener("click", function () { show(cur + 1); });
+    host.addEventListener("keydown", function (e) {
+      if (e.key === "ArrowRight") { show(cur + 1); host.querySelectorAll("button")[cur].focus(); }
+      if (e.key === "ArrowLeft") { show(cur - 1); host.querySelectorAll("button")[cur].focus(); }
+    });
+    show(0);
+  }
+
+  /* ---------------------------------------------------------- boot sequence */
+  var BOOT = [
+    {
+      t: "Core subsystems",
+      h: "SubsystemsList: core + threads",
+      b: "<p>Before anything is parsed, <code>main()</code> registers the two subsystems that everything else depends on — the common runtime and the thread manager — and initialises them. If either fails the process exits immediately with the failing subsystem's name.</p>",
+      w: "Argument parsing itself needs working string, file and logging primitives, so this cannot wait until after the command line is read.",
+      s: "src/main.cpp:242"
+    },
+    {
+      t: "Parse arguments",
+      h: "ParseArgs → RunOptions",
+      b: "<p>Every flag maps onto a field of <code>Config::ConfigOptions</code>. Enum-valued flags such as <code>--shader-log-direction</code> are parsed with <code>magic_enum</code>, so the accepted strings are literally the enumerator names. <code>--game</code> accepts either a directory (then <code>/app0/eboot.bin</code> is used) or a single ELF file.</p>",
+      w: "There is exactly one source of configuration — the command line. The Qt launcher does not share state with the emulator; it just builds this command line.",
+      s: "src/main.cpp:106"
+    },
+    {
+      t: "Config &amp; log",
+      h: "Config, then Log, then param.json",
+      b: "<p>Configuration initialises first, then logging (which depends on it), and only then is <code>sce_sys/param.json</code> read. If it declares a flexible-memory budget, <code>SetFlexibleMemorySize()</code> is called <em>before</em> the memory subsystem starts.</p>",
+      w: "The memory manager sizes its pools at init time. A budget applied afterwards would be ignored, so the ordering is load-bearing rather than stylistic.",
+      s: "src/emulator.cpp:108"
+    },
+    {
+      t: "All subsystems",
+      h: "Dependency-ordered InitAll",
+      b: "<p>Audio, controller, file system, graphics, memory, network, profiler, pthread and timer are added with explicit dependency lists and initialised in topological order. Graphics depends on six others.</p>",
+      w: "Explicit dependencies mean a new subsystem cannot silently be initialised too early — a class of bug that is otherwise very hard to see.",
+      s: "src/emulator.cpp:141"
+    },
+    {
+      t: "Mount points",
+      h: "/app0, /hostapp, /download0, /temp0",
+      b: "<p>The game directory is mounted twice, at <code>/app0</code> and <code>/hostapp</code>. Then per-title sandbox directories are created under <code>_DownloadData/</code> and <code>_TempData/</code>, keyed by the <code>TITLE_ID</code> read from <code>param.json</code>.</p>",
+      w: "Titles must not see each other's temporary or downloaded data — the same isolation the console provides. If <code>TITLE_ID</code> is missing the directories fall back to <code>UNKNOWN</code>.",
+      s: "src/emulator.cpp:61"
+    },
+    {
+      t: "Register HLE",
+      h: "Libs::InitAll(rt-&gt;Symbols())",
+      b: "<p>Every <code>LIB_DEFINE</code> block runs, inserting thousands of NID → native-function-pointer entries into the shared symbol database. Nothing has been loaded from the game yet.</p>",
+      w: "The table must be complete before the first relocation is processed, because relocation is what binds a guest import to a Kyty implementation.",
+      s: "src/libs/libs.cpp:73"
+    },
+    {
+      t: "Load the ELF",
+      h: "RuntimeLinker::LoadProgram",
+      b: "<p>Parse the SELF container, parse the ELF, compute the total mapped size, reserve guest memory at the next module base, copy each <code>PT_LOAD</code> segment in, patch executable segments, apply page protection, flush the instruction cache, and record the TLS image and process-parameter block.</p>",
+      w: "Nothing is executed yet — not even module initialisers. Loading and running are deliberately separate so that all modules can be present before any relocation is resolved.",
+      s: "src/loader/runtimeLinker.cpp:1511"
+    },
+    {
+      t: "Guest thread",
+      h: "Spawn the guest, keep main for the window",
+      b: "<p><code>Execute()</code> starts a thread that runs <code>RuntimeLinker::Execute()</code>, then the original main thread enters <code>WindowRun()</code> and never returns from it.</p>",
+      w: "Window and input handling must own the process's first thread on macOS and Windows. Giving the game its own thread also means a hung game does not freeze the window.",
+      s: "src/emulator.cpp:171"
+    },
+    {
+      t: "Stack &amp; TLS",
+      h: "Guest stack, then 768 KB of host stack",
+      b: "<p>On the guest thread: initialise the thread's pthread state, allocate a guest stack, and on Windows walk the host stack's guard page down by 768&nbsp;KB to force commitment.</p>",
+      w: "PS5 code has no stack probes and can jump past a guard page; module initialisers also run on the host stack before the guest stack is in use.",
+      s: "src/loader/runtimeLinker.cpp:1584"
+    },
+    {
+      t: "Relocate",
+      h: "PreloadAdjacentPrograms → RelocateAll",
+      b: "<p>Any <code>.prx</code> modules sitting beside the executable are loaded, then every relocation in every module is processed: absolute, GOT, PLT, relative and TLS-module relocations. Imports resolve against the HLE database first, then other modules; unresolved ones get a lazy thunk.</p>",
+      w: "All modules must be present before relocation, because a symbol may be exported by a module loaded after the one that imports it.",
+      s: "src/loader/runtimeLinker.cpp:2436"
+    },
+    {
+      t: "Run",
+      h: "StartAllModules → RunEntry",
+      b: "<p>Optional JSON game patches are applied to guest memory, module initialisers run in dependency order, then <code>RunEntry()</code> switches to the guest stack and calls the entry point with <code>argc=1, argv[0]=\"KytyEmu\"</code> and an at-exit handler.</p>",
+      w: "From this instruction on, the CPU is executing the game's own code natively. Everything the emulator does afterwards is reactive — it responds to calls, to page faults, and to command buffers.",
+      s: "src/loader/runtimeLinker.cpp:1612"
+    }
+  ];
+
+  buildStepper({
+    tabsId: "boot-steps", panelId: "boot-panel", items: BOOT,
+    prevId: "boot-prev", nextId: "boot-next", countId: "boot-count",
+    buttonHtml: function (it, i) { return (i + 1) + " · " + it.t; },
+    panelHtml: function (it) {
+      return "<div><h4>" + it.h + "</h4>" + it.b +
+        '<div class="why"><strong>Why:</strong> ' + it.w + "</div>" +
+        '<div class="srcs" style="margin-bottom:0"><span class="src">' + it.s + "</span></div></div>";
+    }
+  });
+
+  /* ---------------------------------------------------------- memory map */
+  var BANDS = [
+    {
+      c: "h", a: "0x0000040000 – 0x07FFFFBFFF", n: "System managed",
+      sz: "~32 GB", ttl: "System managed",
+      d: "<p>Left to the host operating system. The emulator's own image, the C++ runtime, Qt, SDL, the Vulkan loader and the graphics driver all live here. Guest allocations never enter this band.</p><p>On Windows this is enforced by passing an explicit <code>LowestStartingAddress</code>/<code>HighestEndingAddress</code> pair to <code>VirtualAlloc2</code>.</p>",
+      s: "src/common/platform/sysWindowsVirtual.cpp:102"
+    },
+    {
+      c: "k", a: "0x07FFFFC000 – 0x0FFFFFFFFF", n: "System reserved",
+      sz: "~32 GB", ttl: "System reserved",
+      d: "<p>Reserved by Kyty for its own guest-facing structures. Two things live here:</p><ul><li><strong>Loaded modules</strong>, starting at <code>0x900000000</code> (system-reserved base plus a <code>0x100000000</code> code offset) and spaced <code>0x10000000</code> apart.</li><li><strong>Custom PLT tables</strong> — generated trampolines for guest imports.</li></ul><p>Because every module lands in a known band, the crash handler can walk a guest stack simply by checking whether a return address falls inside it.</p>",
+      s: "src/loader/runtimeLinker.cpp:337"
+    },
+    {
+      c: "g", a: "0x1000000000 – 0xFBFFFFFFFF", n: "User area", sz: "~1 TB", ttl: "User area (guest heap)",
+      d: "<p>Where all guest allocations go: direct memory mappings, flexible memory, memory pools, thread stacks and GPU-visible buffers. Kyty maintains its own free-list and page-attribute tables across this range, since it must answer <code>sceKernelVirtualQuery</code> with per-range protection, memory type, flags and the name the game assigned.</p><p>Page granularity here is the guest's 16&nbsp;KB, not the host's 4&nbsp;KB — so a single guest page maps to four host pages, and protection changes have to be applied in groups.</p>",
+      s: "src/kernel/memoryAddressSpace.inc:9"
+    },
+    {
+      c: "h", a: "0xFC00000000 and above", n: "Host high memory", sz: "—", ttl: "Host high memory",
+      d: "<p>Outside the guest's world. On Linux the emulator binary is linked with <code>--image-base=0x100000000000</code>, and on macOS with <code>-image_base 0x700000000000</code>, deliberately placing the emulator's own code far above anything the guest can allocate.</p><p>This matters more than it sounds: it guarantees a guest pointer and a host pointer can never be confused by their value alone, which makes a whole class of bug detectable by inspection.</p>",
+      s: "src/CMakeLists.txt:95"
+    }
+  ];
+
+  var bandHost = document.getElementById("bands");
+  var bandDetail = document.getElementById("band-detail");
+  BANDS.forEach(function (b, i) {
+    var el = document.createElement("button");
+    el.type = "button";
+    el.className = "band " + b.c;
+    el.setAttribute("role", "tab");
+    el.setAttribute("aria-selected", i === 2 ? "true" : "false");
+    el.innerHTML = '<span class="addr">' + b.a + '</span><span class="ttl">' + b.n + '</span><span class="sz">' + b.sz + '</span>';
+    el.addEventListener("click", function () { showBand(i); });
+    bandHost.appendChild(el);
+  });
+  function showBand(i) {
+    Array.prototype.forEach.call(bandHost.children, function (c, n) {
+      c.setAttribute("aria-selected", n === i ? "true" : "false");
+    });
+    var b = BANDS[i];
+    bandDetail.innerHTML = "<h4 style=\"margin-top:0;text-transform:none;letter-spacing:-.01em;font-size:15px;color:var(--ink)\">" +
+      b.ttl + "</h4>" + b.d + '<div class="srcs" style="margin-bottom:0"><span class="src">' + b.s + "</span></div>";
+  }
+  showBand(2);
+
+  /* ---------------------------------------------------------- PM4 decoder */
+  var OPS = {
+    0x10: "IT_NOP", 0x11: "IT_SET_BASE", 0x12: "IT_CLEAR_STATE", 0x13: "IT_INDEX_BUFFER_SIZE",
+    0x15: "IT_DISPATCH_DIRECT", 0x16: "IT_DISPATCH_INDIRECT", 0x20: "IT_SET_PREDICATION",
+    0x22: "IT_COND_EXEC", 0x24: "IT_DRAW_INDIRECT", 0x25: "IT_DRAW_INDEX_INDIRECT",
+    0x26: "IT_INDEX_BASE", 0x27: "IT_DRAW_INDEX_2", 0x28: "IT_CONTEXT_CONTROL",
+    0x2A: "IT_INDEX_TYPE", 0x2C: "IT_DRAW_INDIRECT_MULTI", 0x2D: "IT_DRAW_INDEX_AUTO",
+    0x2F: "IT_NUM_INSTANCES", 0x33: "IT_INDIRECT_BUFFER_CNST", 0x35: "IT_DRAW_INDEX_OFFSET_2",
+    0x37: "IT_WRITE_DATA", 0x38: "IT_DRAW_INDEX_INDIRECT_MULTI", 0x39: "IT_MEM_SEMAPHORE",
+    0x3A: "IT_DISPATCH_DRAW_PREAMBLE", 0x3F: "IT_INDIRECT_BUFFER", 0x40: "IT_COPY_DATA",
+    0x41: "IT_CP_DMA", 0x42: "IT_PFP_SYNC_ME", 0x43: "IT_SURFACE_SYNC", 0x46: "IT_EVENT_WRITE",
+    0x47: "IT_EVENT_WRITE_EOP", 0x48: "IT_EVENT_WRITE_EOS", 0x49: "IT_RELEASE_MEM",
+    0x50: "IT_DMA_DATA", 0x58: "IT_ACQUIRE_MEM", 0x59: "IT_REWIND",
+    0x63: "IT_SET_SH_REG_INDIRECT", 0x64: "IT_SET_UCONFIG_REG_INDIRECT",
+    0x68: "IT_SET_CONFIG_REG", 0x69: "IT_SET_CONTEXT_REG", 0x76: "IT_SET_SH_REG",
+    0x78: "IT_SET_QUEUE_REG", 0x79: "IT_SET_UCONFIG_REG", 0x7A: "IT_SET_UCONFIG_REG_INDEX",
+    0x81: "IT_WRITE_CONST_RAM", 0x83: "IT_DUMP_CONST_RAM", 0x84: "IT_INCREMENT_CE_COUNTER",
+    0x85: "IT_INCREMENT_DE_COUNTER", 0x86: "IT_WAIT_ON_CE_COUNTER",
+    0x88: "IT_WAIT_ON_DE_COUNTER_DIFF", 0x8D: "IT_DISPATCH_DRAW", 0x8E: "IT_GET_LOD_STATS",
+    0x9F: "IT_SET_CONTEXT_REG_INDIRECT"
+  };
+  var RREG = {
+    0x00: "R_ZERO", 0x05: "R_DRAW_RESET", 0x06: "R_WAIT_FLIP_DONE", 0x09: "R_DISPATCH_RESET",
+    0x0A: "R_WAIT_MEM_32", 0x0B: "R_PUSH_MARKER", 0x0C: "R_POP_MARKER", 0x14: "R_ACQUIRE_MEM",
+    0x15: "R_WRITE_DATA", 0x16: "R_WAIT_MEM_64", 0x17: "R_FLIP", 0x18: "R_RELEASE_MEM",
+    0x19: "R_DMA_DATA"
+  };
+  var PRESETS = [
+    ["draw", "0xC0032D00"], ["set context reg", "0xC0016900"], ["set SH reg", "0xC0027600"],
+    ["release mem", "0xC0044900"], ["flip (NOP+R)", "0xC000105C"], ["dispatch", "0xC0031500"]
+  ];
+  var pin = document.getElementById("pm4in");
+  var pbits = document.getElementById("pm4bits");
+  var pout = document.getElementById("pm4out");
+  var pres = document.getElementById("pm4presets");
+  PRESETS.forEach(function (p) {
+    var b = document.createElement("button");
+    b.type = "button"; b.textContent = p[0];
+    b.addEventListener("click", function () { pin.value = p[1]; decode(); });
+    pres.appendChild(b);
+  });
+
+  function hex(v, w) { var s = (v >>> 0).toString(16).toUpperCase(); while (s.length < w) s = "0" + s; return "0x" + s; }
+
+  function decode() {
+    var raw = pin.value.trim().replace(/^0[xX]/, "").replace(/[^0-9a-fA-F]/g, "");
+    var v = raw.length ? parseInt(raw, 16) >>> 0 : 0;
+    var type = v >>> 30;
+    var count = (v >>> 16) & 0x3fff;
+    var op = (v >>> 8) & 0xff;
+    var r = (v >>> 2) & 0x3f;
+    var shgx = (v & 0x2) === 0 ? "GX" : "CX";
+
+    pbits.innerHTML = "";
+    for (var i = 31; i >= 0; i--) {
+      var d = document.createElement("div");
+      var cls = "bit";
+      if (i >= 30) cls += " f0";
+      else if (i >= 16) cls += " f1";
+      else if (i >= 8) cls += " f2";
+      else if (i >= 2) cls += " f3";
+      d.className = cls;
+      d.textContent = (v >>> i) & 1;
+      pbits.appendChild(d);
+    }
+
+    var opName = OPS[op] || "&lt;unknown&gt;";
+    var rows = [
+      ["bits 31:30 · type", "TYPE" + type + (type === 3 ? "" : "  ← unsupported")],
+      ["bits 29:16 · count", count + " → body is " + (count + 1) + " dword" + (count === 0 ? "" : "s")],
+      ["bits 15:8 · opcode", hex(op, 2) + "  " + opName],
+      ["bits 7:2 · sub-selector", hex(r, 2) + (op === 0x10 ? "  " + (RREG[r] || "&lt;unknown&gt;") : "  (ignored unless IT_NOP)")],
+      ["bit 1 · engine", shgx],
+      ["total packet size", (count + 2) + " dwords (" + ((count + 2) * 4) + " bytes)"]
+    ];
+    pout.innerHTML = rows.map(function (kv) {
+      return '<div><div class="k">' + kv[0] + '</div><div class="v">' + kv[1] + "</div></div>";
+    }).join("");
+  }
+  pin.addEventListener("input", decode);
+  decode();
+
+  /* ---------------------------------------------------------- shader pipeline */
+  var PIPE = [
+    {
+      t: "Decode", h: "DecodeProgram — RDNA 2 words → instruction list",
+      b: "<p>Walk the code blob, decode each instruction from its encoding class (SOP1, SOP2, SOPP, VOP1, VOP2, VOP3, VOPC, SMEM, MUBUF, MTBUF, MIMG, FLAT, DS, EXP) and record opcode, operands, literal constants and program counter.</p><p>This is the point at which the AMD ISA manual is not optional: operand encodings are dense and there is no way to guess them.</p>",
+      w: "Everything downstream works on a typed instruction list, not on raw bits. The decoder is also where an unrecognised instruction produces a clean, locatable error.",
+      s: "…/decompiler/ShaderDecoder.cpp"
+    },
+    {
+      t: "Build CFG", h: "BuildGraph — basic blocks, dominators, loops",
+      b: "<p>Split the instruction list at branch targets and branch instructions, wire up predecessors and successors, then compute dominators, post-dominators, back edges, natural loops and strongly connected components.</p><p>Branch conditions are typed: <code>SccZero</code>, <code>VccNonZero</code>, <code>ExecZero</code> and so on — GPU branches test hardware condition registers, not general values.</p>",
+      w: "Reducibility is decided here. If a strongly connected component has more than one entry point, the graph is irreducible and the structured path is abandoned before it is attempted.",
+      s: "…/cfg/ShaderCFG.cpp"
+    },
+    {
+      t: "Structurize", h: "Structurize — find merge and continue blocks",
+      b: "<p>SPIR-V requires every conditional branch to declare a merge block and every loop to declare both a merge and a continue block. This pass computes them, using the nearest common post-dominator for selections and loop-exit analysis for loops.</p><p>If it cannot find a valid structure, the graph reverts to its unstructured form, is flagged <code>unsupported</code>, and a dispatcher-based emission is used instead.</p>",
+      w: "This is where GPU control flow, which is mask manipulation, becomes something a structured IR can express. It is the single most failure-prone stage, so failure is a documented fallback rather than an error.",
+      s: "…/cfg/ShaderCFG.cpp"
+    },
+    {
+      t: "Lower to IR", h: "LowerProgram — machine ops → IR opcodes",
+      b: "<p>Translate each decoded instruction into one or more IR instructions from a set of several hundred opcodes: <code>IAddU32</code>, <code>BitFieldExtractU32</code>, <code>CompareLtF32</code>, <code>BufferLoadDword</code>, <code>ImageSample</code>, <code>Export</code>, and so on. Register operands become IR values.</p><p>The wave size and lane-mask mode are attached to the program here, because they change what several instructions mean.</p>",
+      w: "The IR is deliberately close to the machine — this is a translator, not an optimising compiler. Staying close keeps the mapping auditable when a shader renders incorrectly.",
+      s: "…/ir/ShaderIR.cpp"
+    },
+    {
+      t: "Provenance", h: "BuildScalarProvenance — where did this scalar come from?",
+      b: "<p>A backwards dataflow analysis over scalar registers. For every scalar value, record whether it is a constant, a user-data slot, an arithmetic combination of known values, or unknown.</p>",
+      w: "Descriptors are loaded from addresses the shader computes. Without knowing how those addresses were built, there is no way to know which resource to bind — this analysis is what makes descriptor recovery possible at all.",
+      s: "…/ir/ScalarProvenance.cpp"
+    },
+    {
+      t: "SRT plan", h: "BuildSrtPlan — a recipe for reading descriptor tables",
+      b: "<p>Collect every reachable <code>ReadConst</code> — the shader reading its own resource table — and turn it into a plan. Constant offsets are assigned compact flat-buffer slots; genuinely dynamic offsets stay explicit and are never given a fake slot.</p>",
+      w: "Separating the plan from its execution is what allows one compiled shader to be reused across draws with different resources bound.",
+      s: "…/ir/SrtWalker.cpp"
+    },
+    {
+      t: "Track resources", h: "PatchSrtReads + TrackResources",
+      b: "<p>Rewrite descriptor reads to reference the plan, then classify every resource the shader uses: buffers (read-only, writable, formatted), images (sampled, storage, their dimensionality and format), and samplers.</p>",
+      w: "This produces the list from which the Vulkan descriptor set layout is generated. Get the classification wrong and the pipeline fails validation, or worse, silently reads the wrong memory.",
+      s: "…/ir/ResourceTracking.cpp"
+    },
+    {
+      t: "Materialize", h: "MaterializeResources + SpecializeResources",
+      b: "<p>Run the plan against actual user data and actual guest memory to obtain concrete descriptors, then specialise the IR against what was found — a buffer whose stride is now known, an image whose format is now known, can be emitted more directly.</p>",
+      w: "Specialisation is why the shader ID includes resource information: two draws with differently-shaped resources need different SPIR-V, so they must not collide in the pipeline cache.",
+      s: "…/ir/ResourceMaterialization.cpp"
+    },
+    {
+      t: "Bindings", h: "CollectShaderInfo + AllocateBindings",
+      b: "<p>Gather stage-specific facts — which vertex attributes are read, which pixel interpolators, workgroup size for compute — then assign descriptor set numbers, binding indices and push-constant offsets (up to 32 dwords).</p>",
+      w: "The renderer needs the exact same layout when it writes descriptor sets at draw time, so this allocation is stored alongside the SPIR-V rather than recomputed.",
+      s: "…/ir/BindingLayout.cpp"
+    },
+    {
+      t: "Optimise", h: "EliminateReadLane",
+      b: "<p><code>v_readlane</code> and <code>v_readfirstlane</code> read one lane of a vector register into a scalar. These map poorly onto SPIR-V subgroup operations. Where the value is provably uniform, the pass rewrites the read into a direct use and drops the cross-lane operation.</p>",
+      w: "Subgroup operations are the least portable part of SPIR-V. Every one that can be removed is one fewer host-driver difference to debug.",
+      s: "…/ir/ReadLaneElimination.cpp"
+    },
+    {
+      t: "Emit SPIR-V", h: "Spirv::EmitProgram",
+      b: "<p>The largest stage: about 516&nbsp;KB across a dozen files. Declares types, capabilities, entry point, interface variables and descriptors, then emits every IR instruction as SPIR-V — including all the lowering the machine gets for free, such as bounds-checked buffer access and image-format conversion.</p><p>Optionally validated with <code>spirv-val</code> and optimised with <code>spirv-opt</code> before it reaches the driver.</p>",
+      w: "SPIR-V is stricter than machine code in every respect: types must be declared, control flow must be structured, capabilities must be requested. This stage is where all that bookkeeping happens.",
+      s: "…/emitter/SpirvEmitter.cpp"
+    }
+  ];
+
+  buildStepper({
+    tabsId: "pipe", panelId: "pipe-panel", items: PIPE,
+    buttonHtml: function (it, i) {
+      return '<span class="i">' + String(i + 1).padStart(2, "0") + '</span><span class="t">' + it.t + "</span>";
+    },
+    panelHtml: function (it) {
+      return "<div><h4>" + it.h + "</h4>" + it.b +
+        '<div class="why"><strong>Why:</strong> ' + it.w + "</div>" +
+        '<div class="srcs" style="margin-bottom:0"><span class="src">' + it.s + "</span></div></div>";
+    }
+  });
+})();
+</script>
+
+</body>
+</html>
