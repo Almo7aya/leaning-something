@@ -654,16 +654,33 @@
   };
 
   /* ---------------- mount everything ---------------- */
+  /** Never fail silently: an unmounted widget must say so on the page, or a
+      stale cached script turns into an invisible blank gap. */
+  function problem(el, msg) {
+    el.classList.add("viz");
+    el.innerHTML =
+      '<div class="viz-head"><span>Interactive piece unavailable</span><span>' +
+      esc(el.dataset.viz) + "</span></div>" +
+      '<div class="viz-note">' + msg +
+      ' Try a hard refresh (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd>, or ' +
+      '<kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> on a Mac) — a stale cached script is the usual cause.</div>';
+  }
   function boot() {
     Array.prototype.forEach.call(document.querySelectorAll("[data-viz]"), function (el) {
       var f = REG[el.dataset.viz];
-      if (!f) return;
+      if (!f) {
+        problem(el, "This page asked for <code>" + esc(el.dataset.viz) +
+          "</code>, but no widget by that name is registered.");
+        if (window.console) console.error("viz: no widget registered for '" + el.dataset.viz + "'");
+        return;
+      }
       try { f(el); } catch (err) {
-        el.innerHTML = '<div class="viz-note">This visualisation failed to load.</div>';
+        problem(el, "This visualisation threw while starting up.");
         if (window.console) console.error("viz:" + el.dataset.viz, err);
       }
     });
   }
+  window.VIZ.problem = problem;
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
   else setTimeout(boot, 0);   // let a later-loaded file register first
 })();

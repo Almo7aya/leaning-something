@@ -7,7 +7,19 @@
    ============================================================ */
 (function () {
   "use strict";
-  if (!window.VIZ) { return; }
+  if (!window.VIZ || !window.VIZ.register) {
+    // viz.js is missing or is an older cached copy without the register() API.
+    // Say so on the page rather than leaving silent blank gaps.
+    document.addEventListener("DOMContentLoaded", function () {
+      Array.prototype.forEach.call(document.querySelectorAll("[data-viz]"), function (el) {
+        if (el.children.length) return;
+        el.innerHTML = '<div style="border:1px solid #c00;border-radius:3px;padding:12px;' +
+          'font-family:monospace;font-size:12px">Interactive piece unavailable — the shared ' +
+          'script is out of date. Hard refresh (Ctrl+Shift+R / Cmd+Shift+R) to fix.</div>';
+      });
+    });
+    return;
+  }
   var V = window.VIZ, frame = V.frame, svg = V.svg, mk = V.mk, box = V.box,
       arrowDefs = V.arrowDefs, driver = V.driver, litOnly = V.litOnly;
 
@@ -631,3 +643,4 @@
     return drv;
   });
 })();
+
