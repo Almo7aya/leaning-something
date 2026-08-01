@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KytyPS5 — The Lab</title>
+<meta name="description" content="Eleven interactive tools for understanding a PlayStation 5 emulator: step a guest call, translate addresses, decode registers, drive CPU/GPU memory coherency, run a shader wave, build a command buffer.">
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="assets/viz.css">
+<link rel="stylesheet" href="assets/lab.css">
+<script src="assets/viz.js" defer></script>
+<script src="assets/lab.js" defer></script>
+<style>
+:root{
+  --ground:#EFF1F2; --surface:#FCFCFB; --surface-2:#F4F6F7; --surface-3:#E9EDEF;
+  --ink:#161B21; --ink-2:#3D4753; --muted:#5E6975; --faint:#8A939D;
+  --rule:#D9DEE1; --rule-2:#C2CACF;
+  --guest:#31649E; --kyty:#B07A0E; --host:#A83B5C;
+  --mono:ui-monospace,"Cascadia Mono","SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  --serif:Charter,"Iowan Old Style","Palatino Linotype","Book Antiqua",Georgia,serif;
+  --s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:24px;--s6:32px;--s7:48px;--s8:72px;--s9:104px;
+}
+@media (prefers-color-scheme:dark){:root{
+  --ground:#0E1317; --surface:#12171C; --surface-2:#171E24; --surface-3:#1D262D;
+  --ink:#DCE3E9; --ink-2:#B3BEC8; --muted:#8A97A4; --faint:#69757F;
+  --rule:#232C34; --rule-2:#33404A;
+  --guest:#4A8AC8; --kyty:#BE8A22; --host:#C85874;
+}}
+:root[data-theme="dark"]{
+  --ground:#0E1317;--surface:#12171C;--surface-2:#171E24;--surface-3:#1D262D;
+  --ink:#DCE3E9;--ink-2:#B3BEC8;--muted:#8A97A4;--faint:#69757F;
+  --rule:#232C34;--rule-2:#33404A;--guest:#4A8AC8;--kyty:#BE8A22;--host:#C85874;
+}
+:root[data-theme="light"]{
+  --ground:#EFF1F2;--surface:#FCFCFB;--surface-2:#F4F6F7;--surface-3:#E9EDEF;
+  --ink:#161B21;--ink-2:#3D4753;--muted:#5E6975;--faint:#8A939D;
+  --rule:#D9DEE1;--rule-2:#C2CACF;--guest:#31649E;--kyty:#B07A0E;--host:#A83B5C;
+}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--serif);font-size:17.5px;line-height:1.66;-webkit-font-smoothing:antialiased}
+p{margin:0 0 var(--s4);max-width:66ch}p:last-child{margin-bottom:0}
+a{color:inherit;text-decoration:underline;text-decoration-color:var(--rule-2);text-underline-offset:3px}
+a:hover{text-decoration-color:currentColor}
+:focus-visible{outline:2px solid var(--guest);outline-offset:3px;border-radius:2px}
+h1,h2,h3{font-family:var(--mono);font-weight:600;text-wrap:balance;margin:0}
+code{font-family:var(--mono);font-size:.87em;background:var(--surface-3);padding:1px 5px;border-radius:3px;color:var(--ink-2)}
+ul,ol{max-width:66ch;padding-left:1.35em;margin:0 0 var(--s4)}
+li{margin-bottom:var(--s2)}li:last-child{margin-bottom:0}
+
+.progress{position:fixed;inset:0 auto auto 0;height:2px;width:0;background:var(--ink);z-index:60;transition:width .1s linear}
+@media (prefers-reduced-motion:reduce){.progress{transition:none}}
+
+.shell{display:grid;grid-template-columns:262px minmax(0,1fr)}
+.rail{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;padding:var(--s5) var(--s3) var(--s6) var(--s5);border-right:1px solid var(--rule);background:var(--surface)}
+.rail-brand{font-family:var(--mono);font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:var(--s4)}
+.rail-brand strong{display:block;color:var(--ink);font-size:15px;letter-spacing:.01em;text-transform:none;margin-top:2px}
+.rail nav{display:flex;flex-direction:column;gap:0}
+.rail nav .pt{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin:var(--s4) 0 var(--s1);padding-left:2px}
+.rail nav a{display:block;font-family:var(--mono);font-size:12px;line-height:1.35;padding:6px var(--s2) 6px var(--s3);margin-left:-12px;text-decoration:none;color:var(--muted);border-left:2px solid transparent}
+.rail nav a:hover{color:var(--ink)}
+.rail nav a.on{color:var(--ink);border-left-color:var(--ink);font-weight:600}
+.xlinks{margin-top:var(--s6);padding-top:var(--s4);border-top:1px solid var(--rule);font-family:var(--mono);font-size:10.5px;line-height:1.8;color:var(--faint)}
+.xlinks b{display:block;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);margin-bottom:4px;font-weight:600}
+.xlinks a{display:block;color:var(--muted);text-decoration:none}
+.xlinks a:hover{color:var(--ink);text-decoration:underline}
+.xlinks a.here{color:var(--ink);font-weight:600}
+main{min-width:0}
+.col{max-width:1060px;margin:0 auto;padding:0 var(--s6) var(--s9)}
+@media (max-width:980px){
+  .shell{grid-template-columns:1fr}
+  .rail{position:static;height:auto;border-right:0;border-bottom:1px solid var(--rule);padding:var(--s4)}
+  .rail nav{flex-direction:row;overflow-x:auto;gap:var(--s1);padding-bottom:var(--s2)}
+  .rail nav a{border-left:0;border-bottom:2px solid transparent;margin-left:0;padding:6px var(--s3);white-space:nowrap}
+  .rail nav a.on{border-left-color:transparent;border-bottom-color:var(--ink)}
+  .rail nav .pt{display:none}
+  .col{padding:0 var(--s4) var(--s8)}
+  body{font-size:16.5px}
+}
+
+.hero{padding:var(--s9) 0 var(--s6);border-bottom:1px solid var(--rule)}
+.eyebrow{font-family:var(--mono);font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-bottom:var(--s4)}
+.hero h1{font-size:clamp(30px,5.2vw,50px);line-height:1.05;letter-spacing:-.02em;margin-bottom:var(--s5);max-width:16ch}
+.hero .lede{font-size:clamp(18px,2.2vw,21px);line-height:1.55;color:var(--ink-2);max-width:62ch}
+.howto{margin-top:var(--s6);border:1px solid var(--rule);border-left:3px solid var(--kyty);border-radius:3px;background:var(--surface);padding:var(--s4) var(--s5)}
+.howto .lbl{font-family:var(--mono);font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--kyty);display:block;margin-bottom:var(--s2)}
+.howto ul{margin-bottom:0}
+
+section{padding-top:var(--s8);scroll-margin-top:var(--s4)}
+.sh{display:flex;align-items:baseline;gap:var(--s4);margin-bottom:var(--s4);padding-bottom:var(--s3);border-bottom:1px solid var(--rule)}
+.sn{font-family:var(--mono);font-size:12px;color:var(--faint);letter-spacing:.08em;flex:none;font-variant-numeric:tabular-nums}
+.sh h2{font-size:clamp(21px,2.9vw,29px);letter-spacing:-.018em;line-height:1.14}
+.deck{font-size:18.5px;line-height:1.55;color:var(--ink-2);max-width:62ch;margin-bottom:var(--s5)}
+.try{border-left:3px solid var(--guest);padding:var(--s2) 0 var(--s2) var(--s4);margin:var(--s5) 0;color:var(--ink-2)}
+.try .lbl{font-family:var(--mono);font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--guest);display:block;margin-bottom:5px}
+.try ul{margin-bottom:0}
+.src{display:inline-block;font-family:var(--mono);font-size:11px;padding:1px 6px;border:1px solid var(--rule);border-radius:2px;background:var(--surface-2);color:var(--muted);white-space:nowrap}
+.srcs{display:flex;flex-wrap:wrap;gap:5px;margin:var(--s3) 0 var(--s5)}
+.foot{margin-top:var(--s9);padding-top:var(--s5);border-top:1px solid var(--rule);font-size:14px;color:var(--muted)}
+.foot p{max-width:72ch}
+</style>
+</head>
+<body>
+
+<div class="progress" id="prog"></div>
+
+<div class="shell">
+  <aside class="rail">
+    <span class="rail-brand">The lab<strong>KytyPS5</strong></span>
+    <nav id="toc">
+      <div class="pt">01 · CPU</div>
+      <a href="#t-cpustep">Step a guest call</a>
+      <div class="pt">02 · Memory</div>
+      <a href="#t-vaddr">Translate an address</a>
+      <a href="#t-allocator">Allocate memory</a>
+      <a href="#t-memflow">Host ↔ guest coherency</a>
+      <div class="pt">03 · Bits</div>
+      <a href="#t-regdecode">Decode a register</a>
+      <a href="#t-tileaddr">Tiling arithmetic</a>
+      <div class="pt">04 · Shaders</div>
+      <a href="#t-wavelab">Run a wave</a>
+      <a href="#t-isa2spirv">ISA → SPIR-V</a>
+      <div class="pt">05 · GPU</div>
+      <a href="#t-pm4build">Build a command buffer</a>
+      <a href="#t-timeline">Fences and lifetime</a>
+      <a href="#t-pipekey">Pipeline cache keys</a>
+    </nav>
+    <div class="xlinks"><b>Also here</b>
+      <a href="index.html">Overview</a>
+      <a href="kytyps5-lab.html" class="here">The lab &mdash; 11 tools</a>
+      <a href="kytyps5-atlas.html">Visual atlas &mdash; 19 animations</a>
+      <a href="kytyps5-book.html">The complete book</a>
+      <a href="kytyps5-guide.html">Architecture guide</a>
+      <a href="kytyps5-learning-path.html">Learning path</a>
+    </div>
+  </aside>
+
+  <main>
+    <div class="col">
+
+<header class="hero">
+  <div class="eyebrow">Eleven tools · nothing here plays on its own</div>
+  <h1>Drive the emulator's hard parts yourself</h1>
+  <p class="lede">The animations elsewhere show you a fixed story. These do not: every tool here takes your input and computes a real answer. Type an address and watch it decompose. Click bytes and watch pages fault. Run a shader across 64 lanes and step it instruction by instruction. Build a command buffer and find out why your draw produced nothing.</p>
+
+  <div class="howto">
+    <span class="lbl">Why these are different</span>
+    <ul>
+      <li><strong>Real computation, not scripted playback.</strong> The address walker uses the actual band constants; the register decoder uses the actual shifts and masks from <code>pm4.h</code>; the wave simulator is a working interpreter for a slice of the RDNA&nbsp;2 instruction set.</li>
+      <li><strong>You can break things on purpose.</strong> Draw without setting a render target. Exhaust the flexible-memory budget. Read registers with the wrong ABI. The error you get back is the one the emulator would give.</li>
+      <li><strong>Nothing is on a timer</strong>, so nothing moves until you move it.</li>
+    </ul>
+  </div>
+</header>
+
+<!-- ============================== CPU -->
+<section id="t-cpustep">
+  <div class="sh"><span class="sn">01</span><h2>Step a guest function call</h2></div>
+  <p class="deck">The PS5's CPU is x86-64, the same as your PC, so guest code needs no translation. What it does need is agreement about <em>which register holds which argument</em> — and that is where the emulator has to intervene.</p>
+  <figure data-viz="cpustep"></figure>
+  <div class="try">
+    <span class="lbl">Try this</span>
+    <ul>
+      <li>Run it once with the callee set to <strong>System V</strong>. All six arguments arrive correctly — this is what <code>KYTY_SYSV_ABI</code> buys.</li>
+      <li>Now switch to <strong>Microsoft x64</strong> without resetting. Nothing about the register file changed, but <code>handle</code> is suddenly the <code>buffer</code> pointer and two arguments were never passed at all. That is what a missing ABI attribute looks like.</li>
+      <li>Change an argument value and watch which register it lands in.</li>
+    </ul>
+  </div>
+  <div class="srcs"><span class="src">src/common/abi.h</span><span class="src">src/loader/jit.h:119</span></div>
+</section>
+
+<!-- ============================== MEMORY -->
+<section id="t-vaddr">
+  <div class="sh"><span class="sn">02</span><h2>Translate a guest address</h2></div>
+  <p class="deck">Kyty claims whole bands of the host address space and allocates inside them itself. Feed it any address and see which band owns it, which module it falls in, and how it splits into a page index and an offset.</p>
+  <figure data-viz="vaddr"></figure>
+  <div class="try">
+    <span class="lbl">Try this</span>
+    <ul>
+      <li>Start at <code>0x900012F40</code> — inside <code>eboot.bin</code>. Add <code>0x10000000</code> and you land in the next module, because that is the spacing the loader uses.</li>
+      <li>Watch the bit ruler as you change the last few hex digits: only the low 14 bits move, because a guest page is <code>0x4000</code> bytes.</li>
+      <li>Try <code>0x700000001234</code>. That is the emulator's own image — deliberately linked far above anything the guest can allocate, so a guest pointer and a host pointer can never be confused by value.</li>
+    </ul>
+  </div>
+  <div class="srcs"><span class="src">src/kernel/memoryAddressSpace.inc:9</span><span class="src">src/loader/runtimeLinker.cpp:337</span></div>
+</section>
+
+<section id="t-allocator">
+  <div class="sh"><span class="sn">02·2</span><h2>Allocate guest memory</h2></div>
+  <p class="deck">Three allocation models, because games use all three, and each behaves differently when it runs out.</p>
+  <figure data-viz="allocator"></figure>
+  <div class="try">
+    <span class="lbl">Try this</span>
+    <ul>
+      <li>Allocate several <strong>flexible</strong> blocks until the budget bar fills. The failure you get is the real one — flexible memory comes from a fixed per-title budget declared in <code>param.json</code>, not from whatever is free.</li>
+      <li><strong>Fragment it:</strong> allocate five 64 MB blocks, free the second and fourth, then try to allocate 128 MB. There is plenty of free space and it still fails, because no single hole is big enough.</li>
+      <li>Allocate <strong>direct</strong> memory and select it. Note it has a physical offset <em>and</em> a virtual address — two separate steps on this hardware, and one physical range can be mapped twice.</li>
+    </ul>
+  </div>
+  <div class="srcs"><span class="src">src/kernel/memory.cpp</span><span class="src">src/kernel/memory.h:22</span></div>
+</section>
+
+<section id="t-memflow">
+  <div class="sh"><span class="sn">02·3</span><h2>Host and guest memory, kept in step</h2></div>
+  <p class="deck">The hardest problem in the project. On a console CPU and GPU share one pool of memory; on a PC the Vulkan resource is a copy, and nothing in the game's code says when it goes stale.</p>
+  <figure data-viz="memflow"></figure>
+  <div class="try">
+    <span class="lbl">Try this</span>
+    <ul>
+      <li>Click a few bytes in different pages, then press <strong>Draw</strong>. Only the pages you touched are copied — read the log to see how many it found.</li>
+      <li>After the upload every page is write-protected. Click a byte again: you get a <strong>fault</strong>, and the log shows the handler marking the page dirty and lifting protection so the write can complete. The game never learns any of this happened.</li>
+      <li>Press <strong>GPU writes a render target</strong>, then <strong>CPU reads it back</strong>. That is the download path — the same machinery running the other way.</li>
+      <li>Notice that clicking one byte dirties all eight in its row. Granularity is the 16 KB guest page, which is correct but conservative.</li>
+    </ul>
+  </div>
+  <div class="srcs"><span class="src">src/graphics/host_gpu/pageManager.h</span><span class="src">…/memoryTracker.h</span><span class="src">src/loader/runtimeLinker.cpp:763</span></div>
+</section>
+
+<!-- ============================== BITS -->
+<section id="t-regdecode">
+  <div class="sh"><span class="sn">03</span><h2>Decode a hardware register</h2></div>
+  <p class="deck">Most PM4 packets are register writes, and a register is a packed bundle of bit fields. Unpacking them into something typed is what 174 KB of <code>pm4Handlers.cpp</code> spends its time on.</p>
+  <figure data-viz="regdecode"></figure>
+  <div class="try">
+    <span class="lbl">Try this</span>
+    <ul>
+      <li><strong>Click individual bits</strong> in the ruler and watch a named field change meaning. Bits 2–6 of <code>CB_COLOR0_INFO</code> are the surface format; flip them and you change what the render target <em>is</em>.</li>
+      <li>Switch to <code>DB_DEPTH_CONTROL</code> and set <code>ZFUNC</code> to 7. That is "always" — depth testing that never rejects anything.</li>
+      <li>Press <strong>Random</strong> a few times. Most random values decode to nonsense, which is a decent intuition for why the handlers assert so aggressively on fields they do not recognise.</li>
+    </ul>
+  </div>
+  <div class="srcs"><span class="src">src/graphics/guest_gpu/pm4.h</span><span class="src">…/gpu_defs.h</span></div>
+</section>
+
+<section id="t-tileaddr">
+  <div class="sh"><span class="sn">03·2</span><h2>Tiling arithmetic</h2></div>
+  <p class="deck">GPUs do not store images row by row. Work out where a texel actually lands, and watch what that does to cache behaviour.</p>
+  <figure data-viz="tileaddr"></figure>
+  <div class="try">
+    <span class="lbl">Try this</span>
+    <ul>
+      <li>Set the layout to <strong>linear</strong> and look at the bottom line: a 2×2 bilinear fetch touches <strong>two</strong> cache lines. Switch to <strong>tiled</strong> and it touches <strong>one</strong>. That single difference is the entire reason tiling exists.</li>
+      <li>Change bytes-per-texel from 4 to 16 and watch the offsets stretch — and the locality benefit shrink, because fewer texels now fit in a line.</li>
+      <li>Click around the grid and watch which other texels light up as sharing your cache line.</li>
+    </ul>
+  </div>
+  <div class="srcs"><span class="src">src/graphics/guest_gpu/tile.cpp</span><span class="src">…/renderer/image/tiler.cpp</span></div>
+</section>
+
+<!-- ============================== SHADERS -->
+<section id="t-wavelab">
+  <div class="sh"><span class="sn">04</span><h2>Run a shader across a wave</h2></div>
+  <p class="deck">A working interpreter for part of the RDNA&nbsp;2 instruction set. This is the clearest way to see why converting GPU control flow to SPIR-V is the recompiler's hardest job.</p>
+  <figure data-viz="wavelab"></figure>
+  <div class="try">
+    <span class="lbl">Try this</span>
+    <ul>
+      <li>Step the <strong>if / else</strong> program to the end. Watch <code>EXEC</code> change at <code>s_and_saveexec_b64</code> — <strong>that instruction is the branch</strong>. No jump happened; a mask was recomputed.</li>
+      <li>Notice that the <em>then</em> body and the <em>else</em> body both execute, one after the other. All 64 lanes pay for both. That is what divergence costs.</li>
+      <li>Set lane data to <strong>all positive</strong> and run again. Zero divergence, and the else body still runs — with <code>EXEC</code> at zero, so it writes nothing.</li>
+      <li>Try <strong>early exit</strong>: <code>s_cbranch_execz</code> is the one place a real jump happens, and only because <em>every</em> lane failed.</li>
+      <li>Switch to <strong>nested if</strong> and watch a second saved mask appear in the scalar registers. This is the nesting the structuriser has to recover as merge blocks.</li>
+    </ul>
+  </div>
+  <div class="srcs"><span class="src">…/recompiler/cfg/ShaderCFG.cpp</span><span class="src">…/emitter/spirvEmitterControlFlow.cpp</span></div>
+</section>
+
+<section id="t-isa2spirv">
+  <div class="sh"><span class="sn">04·2</span><h2>One instruction, all four forms</h2></div>
+  <p class="deck">What the recompiler holds at each stage: raw bits, a decoded instruction, IR, and emitted SPIR-V.</p>
+  <figure data-viz="isa2spirv"></figure>
+  <div class="try">
+    <span class="lbl">Try this</span>
+    <ul>
+      <li>Start with <code>v_add_f32</code> — a near one-to-one mapping, and the easy case.</li>
+      <li>Now look at <code>buffer_load_dword</code>. The hardware bounds-checks buffer access for free; SPIR-V does not, so the emitter has to generate a comparison and a branch. This is why some instructions cannot appear in a loop header.</li>
+      <li><code>s_and_saveexec_b64</code> has <strong>no SPIR-V equivalent at all</strong> — it <em>is</em> the control flow, and what it becomes depends on whether structurisation succeeded.</li>
+      <li>Toggle <strong>neg</strong>, <strong>abs</strong> and <strong>clamp</strong> and watch extra SPIR-V appear. RDNA&nbsp;2 folds these into the encoding; SPIR-V needs them spelled out.</li>
+    </ul>
+  </div>
+  <div class="srcs"><span class="src">…/decompiler/ShaderDecoder.h</span><span class="src">…/emitter/spirvEmitterAluOps.cpp</span></div>
+</section>
+
+<!-- ============================== GPU -->
+<section id="t-pm4build">
+  <div class="sh"><span class="sn">05</span><h2>Build a command buffer</h2></div>
+  <p class="deck">Append packets, press Run, and find out whether you produced a frame. A draw packet carries almost nothing — everything it needs must already be in the register file.</p>
+  <figure data-viz="pm4build"></figure>
+  <div class="try">
+    <span class="lbl">Try this</span>
+    <ul>
+      <li>Append <strong>only</strong> a draw and run it. The error names exactly which registers are missing — that is the state a draw silently depends on.</li>
+      <li>Add the render target, both shaders and the primitive type, then draw. Now it works, but nothing appears: you never flipped.</li>
+      <li>Press <strong>Load a valid frame</strong> to see the minimum viable sequence, then remove packets one at a time and watch where it breaks.</li>
+      <li>Look at the encoded dwords. They come from the real <code>KYTY_PM4</code> macro, so the count field is genuinely <code>len − 2</code>.</li>
+    </ul>
+  </div>
+  <div class="srcs"><span class="src">src/graphics/guest_gpu/pm4.h:13</span><span class="src">…/command_processor/pm4Handlers.cpp</span></div>
+</section>
+
+<section id="t-timeline">
+  <div class="sh"><span class="sn">05·2</span><h2>Fences and resource lifetime</h2></div>
+  <p class="deck">Why a staging buffer cannot be freed when the draw is recorded, and what happens when all eight command buffers are in flight.</p>
+  <figure data-viz="timeline"></figure>
+  <div class="try">
+    <span class="lbl">Try this</span>
+    <ul>
+      <li>Record a couple of draws, submit, and repeat until you have used all eight buffers without completing any. The status line tells you the scheduler would now <strong>block</strong> — that is back-pressure from the GPU.</li>
+      <li>Complete the oldest and watch its retained resources release. They could not have been freed earlier: the GPU was still reading them.</li>
+      <li>Notice the tick only ever increases. That monotonic counter is what a timeline semaphore gives you, and it is how Kyty orders work across queues.</li>
+    </ul>
+  </div>
+  <div class="srcs"><span class="src">…/renderer/commandScheduler.h</span><span class="src">…/renderer/masterSemaphore.h</span></div>
+</section>
+
+<section id="t-pipekey">
+  <div class="sh"><span class="sn">05·3</span><h2>Pipeline cache keys</h2></div>
+  <p class="deck">Vulkan bakes fixed-function state into an immutable pipeline object. Toggle state and watch how quickly the cache multiplies.</p>
+  <figure data-viz="pipekey"></figure>
+  <div class="try">
+    <span class="lbl">Try this</span>
+    <ul>
+      <li>Press <strong>Look up</strong> — a miss, and a pipeline is created. Press it again with nothing changed: a hit.</li>
+      <li>Change one setting and look up again. Another miss, another pipeline. Do this a few times and watch how a handful of toggles produces a long cache list — this is why shader-heavy games stutter on first encounter with each state combination.</li>
+      <li>Turn <strong>depth test</strong> off and note that the fields depending on it grey out and zero in the key. Kyty does the same thing: state that cannot affect the result must not affect the hash, or you get duplicate pipelines that are actually identical.</li>
+    </ul>
+  </div>
+  <div class="srcs"><span class="src">…/renderer/pipeline/pipelineCache.h:34</span></div>
+</section>
+
+<div class="foot">
+  <p>Built by reading the <a href="https://github.com/KytyPS5/KytyPS5">KytyPS5</a> source tree at <code>v0.2.2</code>. The constants, bit layouts, band boundaries and packet encodings in these tools are taken from the source; the simulations around them are simplified models, and each says so where it matters — the tiling tool in particular uses a 2×2 interleave rather than AMD's real swizzle, and the wave simulator implements a small slice of the instruction set rather than all of it.</p>
+  <p>These are unofficial. Where a tool and the code disagree, the code is right. KytyPS5 is GPL-2.0-only and based on <a href="https://github.com/InoriRus/Kyty">InoriRus/Kyty</a> (MIT). Not affiliated with Sony Interactive Entertainment.</p>
+</div>
+
+    </div>
+  </main>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var prog=document.getElementById("prog");
+  var links=Array.prototype.slice.call(document.querySelectorAll("#toc a"));
+  var targets=links.map(function(a){return document.querySelector(a.getAttribute("href"))}).filter(Boolean);
+  var toc=document.getElementById("toc");
+  function spy(){
+    var hh=document.documentElement,max=hh.scrollHeight-hh.clientHeight;
+    prog.style.width=(max>0?(hh.scrollTop/max)*100:0)+"%";
+    var idx=0;
+    for(var i=0;i<targets.length;i++){ if(targets[i].getBoundingClientRect().top<=150) idx=i; }
+    links.forEach(function(a,i){a.classList.toggle("on",i===idx)});
+    var on=links[idx];
+    if(on&&on.offsetParent){
+      var r=on.getBoundingClientRect(),pr=toc.parentElement.getBoundingClientRect();
+      if(r.top<pr.top||r.bottom>pr.bottom) on.scrollIntoView({block:"nearest"});
+    }
+  }
+  window.addEventListener("scroll",spy,{passive:true});
+  window.addEventListener("resize",spy);
+  spy();
+})();
+</script>
+</body>
+</html>

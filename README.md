@@ -10,17 +10,42 @@ you source. Use the link above.
 
 ---
 
-## The four documents
+## The five documents
 
 | | Audience | Length |
 |---|---|---|
+| **[The Lab](https://almo7aya.dev/leaning-something/kytyps5-lab.html)** | Learn by experimenting — you drive it | 11 tools, open-ended |
 | **[The Visual Atlas](https://almo7aya.dev/leaning-something/kytyps5-atlas.html)** | Learn by watching — animation-led | 19 animations, ~40 minutes |
 | **[The Complete Book](https://almo7aya.dev/leaning-something/kytyps5-book.html)** | New to emulation — assumes nothing | 39 chapters, ~3–4 hours |
 | **[Architecture Guide](https://almo7aya.dev/leaning-something/kytyps5-guide.html)** | Already comfortable with systems programming | 15 sections, ~45 minutes |
 | **[Learning Path](https://almo7aya.dev/leaning-something/kytyps5-learning-path.html)** | Want to learn by doing | 7 levels, ~3 weeks part-time |
 
-They overlap on purpose. The atlas is the fastest way in if you prefer watching to
-reading; the book is written to stand alone, so you never need to switch mid-topic.
+They overlap on purpose. The lab is the one to reach for if you want to poke at
+something until it makes sense; the atlas is the fastest way in if you prefer
+watching; the book is written to stand alone, so you never need to switch mid-topic.
+
+### The Lab
+
+Eleven tools, none of which play on their own. Every one takes your input and computes
+a real answer, and every one can be made to fail in the way the emulator would fail.
+
+| Tool | What you drive |
+|---|---|
+| **cpustep** | Set six argument values, run the call, then switch the callee's ABI and watch every argument become wrong |
+| **vaddr** | Type any guest address; get its band, its module, its page index and the four host pages it covers |
+| **allocator** | Allocate direct / flexible / pooled memory until you exhaust the budget or fragment the space |
+| **memflow** | Click bytes to write as the CPU, upload, then click again and watch the page fault |
+| **regdecode** | Click individual bits of `CB_COLOR0_INFO` and friends and watch named fields change meaning |
+| **tileaddr** | Pick a texel and layout; see the full offset derivation and how many cache lines a bilinear fetch touches |
+| **wavelab** | A working RDNA 2 interpreter — step an `if` across 64 lanes and watch `EXEC` do the branching |
+| **isa2spirv** | Pick an instruction and toggle its modifiers; see bits, decoded struct, IR and emitted SPIR-V side by side |
+| **pm4build** | Append packets and run the buffer; draw without a render target and read the error you get |
+| **timeline** | Submit until all eight command buffers are in flight, then watch fences release retained resources |
+| **pipekey** | Toggle pipeline state and watch the packed key, the hash, and the cache multiply |
+
+Verified by an automated suite that drives every tool in headless Chrome and asserts on
+the computed results — 44 checks, including the arithmetic (a texel at (3,2) in a
+256-wide RGBA8 texture really is at byte 2060 linear and 2068 tiled).
 
 ### The Visual Atlas
 
@@ -121,6 +146,7 @@ conventions**.
 ```
 docs/                          served by GitHub Pages
 ├─ index.html                  landing page
+├─ kytyps5-lab.html            the lab (11 interactive tools)
 ├─ kytyps5-atlas.html          the visual atlas (19 animations)
 ├─ kytyps5-book.html           the book
 ├─ kytyps5-guide.html          the guide
@@ -128,6 +154,7 @@ docs/                          served by GitHub Pages
 └─ assets/
    ├─ viz.css / viz.js         the seven shared animations
    ├─ atlas.css / atlas.js     twelve deeper animations for the atlas
+   ├─ lab.css / lab.js         eleven input-driven tools for the lab
    └─ shot-*.jpg               emulator screenshots (lazy-loaded)
 ```
 
@@ -161,5 +188,6 @@ memory model and AVPlayer. Screenshots are from the KytyPS5 repository.
 
 Not affiliated with Sony Interactive Entertainment. No games or system software are
 distributed here.
+
 
 
