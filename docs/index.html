@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KytyPS5 — Learning the emulator</title>
+<meta name="description" content="Three documents for learning the KytyPS5 PlayStation 5 emulator codebase: a complete book, an architecture guide, and a hands-on learning path.">
+<style>
+:root{
+  --ground:#EFF1F2;--surface:#FCFCFB;--surface-2:#F4F6F7;--surface-3:#E9EDEF;
+  --ink:#161B21;--ink-2:#3D4753;--muted:#5E6975;--faint:#8A939D;
+  --rule:#D9DEE1;--rule-2:#C2CACF;
+  --guest:#31649E;--kyty:#B07A0E;--host:#A83B5C;
+  --mono:ui-monospace,"Cascadia Mono","SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  --serif:Charter,"Iowan Old Style","Palatino Linotype","Book Antiqua",Georgia,serif;
+}
+@media (prefers-color-scheme:dark){:root{
+  --ground:#0E1317;--surface:#12171C;--surface-2:#171E24;--surface-3:#1D262D;
+  --ink:#DCE3E9;--ink-2:#B3BEC8;--muted:#8A97A4;--faint:#69757F;
+  --rule:#232C34;--rule-2:#33404A;
+  --guest:#4A8AC8;--kyty:#BE8A22;--host:#C85874;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--serif);font-size:17.5px;line-height:1.66;-webkit-font-smoothing:antialiased}
+.wrap{max-width:920px;margin:0 auto;padding:0 24px 104px}
+a{color:inherit;text-decoration:underline;text-decoration-color:var(--rule-2);text-underline-offset:3px}
+a:hover{text-decoration-color:currentColor}
+:focus-visible{outline:2px solid var(--guest);outline-offset:3px;border-radius:2px}
+h1,h2,h3{font-family:var(--mono);font-weight:600;margin:0;text-wrap:balance}
+p{margin:0 0 16px;max-width:66ch}
+code{font-family:var(--mono);font-size:.87em;background:var(--surface-3);padding:1px 5px;border-radius:3px}
+
+header{padding:96px 0 40px;border-bottom:1px solid var(--rule)}
+.eyebrow{font-family:var(--mono);font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-bottom:16px}
+h1{font-size:clamp(30px,5.4vw,48px);line-height:1.06;letter-spacing:-.02em;margin-bottom:20px;max-width:17ch}
+.lede{font-size:clamp(17px,2.1vw,20px);line-height:1.55;color:var(--ink-2);max-width:60ch}
+
+.cards{display:grid;gap:16px;margin:40px 0 0}
+.card{display:block;text-decoration:none;border:1px solid var(--rule);border-radius:4px;background:var(--surface);padding:24px;transition:border-color .15s,transform .15s}
+.card:hover{border-color:var(--rule-2);transform:translateY(-1px)}
+@media (prefers-reduced-motion:reduce){.card{transition:none}.card:hover{transform:none}}
+.card .top{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
+.badge{font-family:var(--mono);font-size:10px;letter-spacing:.11em;text-transform:uppercase;padding:3px 8px;border-radius:2px;border:1px solid var(--rule-2);color:var(--muted)}
+.badge.a{color:var(--guest);border-color:color-mix(in srgb,var(--guest) 45%,transparent);background:color-mix(in srgb,var(--guest) 9%,transparent)}
+.badge.b{color:var(--kyty);border-color:color-mix(in srgb,var(--kyty) 45%,transparent);background:color-mix(in srgb,var(--kyty) 9%,transparent)}
+.badge.c{color:var(--host);border-color:color-mix(in srgb,var(--host) 45%,transparent);background:color-mix(in srgb,var(--host) 9%,transparent)}
+.card h2{font-size:20px;letter-spacing:-.01em;margin-bottom:8px}
+.card p{font-size:15.5px;color:var(--ink-2);margin:0 0 12px;max-width:64ch}
+.card .meta{font-family:var(--mono);font-size:11.5px;color:var(--faint)}
+
+h3{font-size:12.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:56px 0 14px;padding-bottom:6px;border-bottom:1px solid var(--rule)}
+.shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.shots figure{margin:0}
+.shots img{width:100%;height:auto;display:block;border:1px solid var(--rule);border-radius:3px;background:var(--surface-3)}
+.shots figcaption{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-top:5px}
+.foot{margin-top:56px;padding-top:20px;border-top:1px solid var(--rule);font-size:14px;color:var(--muted)}
+.foot p{max-width:70ch}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Unofficial learning material</div>
+  <h1>Learning the KytyPS5 emulator</h1>
+  <p class="lede">KytyPS5 takes a program built for a games console — with its own operating system, its own graphics API, and its own idea of what memory looks like — and persuades it to run on a PC. These three documents explain how, from first principles to SPIR-V shader recompilation.</p>
+</header>
+
+<div class="cards">
+
+  <a class="card" href="kytyps5-book.html">
+    <div class="top"><span class="badge a">Start here if new</span><span class="badge">39 chapters</span><span class="badge">~3–4 hours</span></div>
+    <h2>The Complete Book</h2>
+    <p>The full treatment, assuming no prior knowledge of emulation. Part I teaches the background — calling conventions, virtual memory, ELF linking, how a GPU actually draws — before any emulator code appears. Then every layer, with real source throughout.</p>
+    <p class="meta">Interactive: PM4 decoder · GPU descriptor decoder · wave/EXEC-mask visualiser · tiling visualiser · boot stepper · shader pipeline stepper</p>
+  </a>
+
+  <a class="card" href="kytyps5-guide.html">
+    <div class="top"><span class="badge b">If you know systems</span><span class="badge">15 sections</span><span class="badge">~45 minutes</span></div>
+    <h2>Architecture Guide</h2>
+    <p>A condensed tour for readers who already have the background. Same subject, much less scaffolding — useful as a refresher, or as orientation before diving into one subsystem.</p>
+    <p class="meta">Interactive: PM4 decoder · address-space map · boot stepper · shader pipeline stepper</p>
+  </a>
+
+  <a class="card" href="kytyps5-learning-path.html">
+    <div class="top"><span class="badge c">To actually learn it</span><span class="badge">7 levels</span><span class="badge">~3 weeks part-time</span></div>
+    <h2>Learning Path</h2>
+    <p>A workbook, not a document. Seven levels and 32 tickable tasks against the real repository, ordered so each level ends with a capability you did not have before. Progress saves in your browser.</p>
+    <p class="meta">Plus a debugging playbook, a command cheat sheet, and the codebase's reading conventions</p>
+  </a>
+
+</div>
+
+<h3>What the emulator produces</h3>
+<div class="shots">
+  <figure><img loading="lazy" src="assets/shot-disgaea6.jpg" alt="Disgaea 6 running in KytyPS5" width="880" height="494"><figcaption>Disgaea 6</figcaption></figure>
+  <figure><img loading="lazy" src="assets/shot-silenthill.jpg" alt="SILENT HILL: The Short Message running in KytyPS5" width="880" height="494"><figcaption>SILENT HILL: The Short Message</figcaption></figure>
+  <figure><img loading="lazy" src="assets/shot-neptunia.jpg" alt="Neptunia ReVerse running in KytyPS5" width="880" height="494"><figcaption>Neptunia ReVerse</figcaption></figure>
+</div>
+
+<div class="foot">
+  <p>Written by reading the <a href="https://github.com/KytyPS5/KytyPS5">KytyPS5</a> source tree at <code>v0.2.2</code>; file and line references point at that revision and will drift. These are unofficial — a reading of the source, not maintainer-authored documentation. Where a document and the code disagree, the code is right.</p>
+  <p>KytyPS5 is GPL-2.0-only and based on <a href="https://github.com/InoriRus/Kyty">InoriRus/Kyty</a> (MIT). Screenshots are from the KytyPS5 repository. Not affiliated with Sony Interactive Entertainment.</p>
+</div>
+
+</div>
+</body>
+</html>

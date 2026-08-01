@@ -1,96 +1,69 @@
-# KytyPS5 documentation
+# Learning KytyPS5
 
-Unofficial learning material for the KytyPS5 codebase, written by reading the source
-tree at **v0.2.2**. Three self-contained HTML documents, plus the screenshots used by
-the repository README.
+Unofficial learning material for the [KytyPS5](https://github.com/KytyPS5/KytyPS5)
+PlayStation 5 emulator, written by reading the source tree at **v0.2.2**.
 
-Each document is a single file with no external assets — no CSS, no JavaScript, no
-images to fetch. Clone or download the repository and open the file in any browser.
-Both light and dark themes are supported and follow your system preference.
+**Read it online → [almo7aya.dev/leaning-something](https://almo7aya.dev/leaning-something/)**
 
-> GitHub does not render `.html` files in the web interface. Clicking a link below
-> shows you the source. To read a document, download it (or clone the repo) and open
-> it locally.
+GitHub does not render `.html` in the web interface, so clicking a file here shows
+you source. Use the link above.
 
 ---
 
-## Which one do I want?
+## The three documents
 
-| If you… | Read |
-|---|---|
-| are new to emulation and want the whole picture in one place | [The Complete Book](#the-complete-book) |
-| already know systems programming and want a fast architectural tour | [Architecture Guide](#architecture-guide) |
-| want to actually learn the codebase by working through it | [Learning Path](#learning-path) |
+| | Audience | Length |
+|---|---|---|
+| **[The Complete Book](https://almo7aya.dev/leaning-something/kytyps5-book.html)** | New to emulation — assumes nothing | 39 chapters, ~3–4 hours |
+| **[Architecture Guide](https://almo7aya.dev/leaning-something/kytyps5-guide.html)** | Already comfortable with systems programming | 15 sections, ~45 minutes |
+| **[Learning Path](https://almo7aya.dev/leaning-something/kytyps5-learning-path.html)** | Want to learn by doing | 7 levels, ~3 weeks part-time |
 
-They overlap on purpose. The book is written to stand alone, so you never need to
+They overlap on purpose. The book is written to stand alone — you never need to
 switch documents mid-topic.
 
----
+### The Complete Book
 
-## The Complete Book
-
-**[`kytyps5-book.html`](kytyps5-book.html)** — 315 KB · 39 chapters · ~3–4 hours to read through
-
-The full treatment, assuming no prior knowledge of emulation. Part I teaches the
-background before any KytyPS5 code appears; the rest walks every layer of the
-emulator with real source excerpts throughout (~120 code blocks).
-
-**Contents**
+Part I teaches the background before any emulator code appears: what an emulator is,
+the PS5 as hardware, x86-64 calling conventions, virtual memory, ELF and dynamic
+linking, how a GPU actually draws, and Vulkan/SPIR-V. Parts II–VII then walk every
+layer of the emulator with real source excerpts (~120 code blocks).
 
 | Part | Chapters | Covers |
 |---|---|---|
-| I · Foundations | 1–8 | What an emulator is; the PS5 as hardware; why there is no CPU emulator; x86-64 calling conventions; virtual memory; ELF and dynamic linking; how a GPU actually draws; Vulkan and SPIR-V |
-| II · The skeleton | 9–12 | Repository layout, build system, the subsystem framework, the boot sequence |
-| III · Running guest code | 13–21 | SELF/ELF format, memory mapping, relocation and NIDs, instruction patching, import thunks, the exception handler, memory management, threads and TLS, event queues and files |
-| IV · HLE libraries | 22–24 | Anatomy of an HLE module, a tour of all 58 files, and a worked example of implementing a missing function |
-| V · Graphics | 25–33 | AGC and PM4, the command processor, hardware registers, sharps and SRTs, tiling, the shader recompiler, the Vulkan renderer, memory coherency, presentation |
-| VI · The rest | 34–36 | Audio/input/video, debugging and tooling, tests |
-| VII · Reference | 37–39 | A reading order for the source, a glossary, and collected further reading |
+| I · Foundations | 1–8 | Background, assuming no prior knowledge |
+| II · The skeleton | 9–12 | Layout, build, subsystems, boot sequence |
+| III · Running guest code | 13–21 | ELF loading, relocation, NIDs, instruction patching, exceptions, memory, threads |
+| IV · HLE libraries | 22–24 | How a console system call gets served, plus a worked example |
+| V · Graphics | 25–33 | PM4, the command processor, registers, descriptors, tiling, the shader recompiler, Vulkan, coherency, presentation |
+| VI · The rest | 34–36 | Audio/input/video, debugging, tests |
+| VII · Reference | 37–39 | Reading order, glossary, further reading |
 
 **Interactive pieces**
 
-- **PM4 packet decoder** — type a header dword, see the type/count/opcode fields
-  extracted the way `pm4.cpp` does it
-- **Sharp decoder** — decode V# / T# / S# GPU resource descriptors field by field,
-  using the bit layouts from `shaderBindings.h`
-- **Calling convention comparison** — change the argument count and watch System V
-  and Microsoft x64 diverge
-- **Boot sequence stepper** — 11 steps, each with why it happens where it does
-- **Shader pipeline stepper** — the 11 recompiler stages
-- **Address space map** — click a band for detail
-- Filterable chapter nav and glossary
+- **Wave / EXEC-mask visualiser** — step an `if` through 64 shader lanes and watch
+  the execution mask do the branching. The clearest way to see why GPU control flow
+  has no structure to recover.
+- **Tiling visualiser** — watch memory order walk a texture in linear vs tiled layout
+- **PM4 packet decoder** — type a header dword, see the fields extracted
+- **GPU descriptor decoder** — decode V# / T# / S# resource descriptors field by field
+- **Calling convention comparison** — System V vs Microsoft x64, side by side
+- **ELF → memory diagram**, **boot stepper**, **shader pipeline stepper**,
+  **address-space map**, filterable nav and glossary
 
-**Further reading** is linked in context throughout (15 "Learn more" boxes) and
-collected in chapter 39 — AMD's RDNA 2 ISA guide, the SPIR-V spec, Fabian Giesen's
-graphics pipeline series, Eli Bendersky on GOT/PLT, the fail0verflow PS4 talk, and
-others.
+**Further reading** is linked in context (15 boxes) and collected in chapter 39 —
+AMD's RDNA 2 ISA guide, the SPIR-V spec, Fabian Giesen's graphics pipeline series,
+Eli Bendersky on GOT/PLT, the fail0verflow PS4 talk, and others.
 
----
+### Architecture Guide
 
-## Architecture Guide
+A condensed tour: what the emulator does, a map of the codebase, boot, loader,
+memory, kernel layer, HLE libraries, the three graphics layers, presentation,
+build and tooling, a short learning path, and a glossary.
 
-**[`kytyps5-guide.html`](kytyps5-guide.html)** — 127 KB · 15 sections · ~45 minutes
+### Learning Path
 
-A condensed tour for readers who already have the systems background. Same subject,
-much less scaffolding. Useful as a refresher or as an orientation document before
-diving into a specific subsystem.
-
-Covers: what the emulator actually does, a map of the codebase, the boot sequence,
-the loader, memory, the kernel layer, the HLE libraries, the three graphics layers,
-presentation, build and tooling, a short learning path, and a glossary.
-
-Includes the PM4 decoder, boot stepper, shader pipeline stepper and address-space
-map, and a chart of lines of code per subsystem.
-
----
-
-## Learning Path
-
-**[`kytyps5-learning-path.html`](kytyps5-learning-path.html)** — 56 KB · 7 levels · ~3 weeks part-time
-
-A workbook rather than a document. Seven levels with 32 tickable tasks, ordered so
-each level ends with a capability you did not have before. Progress is saved in your
-browser's local storage.
+Seven levels with 32 tickable tasks against the real repository. Progress is saved
+in your browser's local storage.
 
 | Level | Focus | Ends with |
 |---|---|---|
@@ -102,26 +75,46 @@ browser's local storage.
 | 5 | One shader compiled | Debug a wrong-pixels bug |
 | 6 | CPU/GPU coherency | Work on texture corruption |
 
-Each level has an ordered reading list with file and line references, concrete
-exercises against this repository, and self-check questions with revealable answers.
+Each level has an ordered reading list with file references, concrete exercises, and
+self-check questions with revealable answers. Three appendices: a symptom → flag →
+file **debugging playbook**, a **command cheat sheet**, and the codebase's **reading
+conventions**.
 
-Three appendices you will keep returning to: a symptom → flag → file **debugging
-playbook**, a **command cheat sheet** (including where each dump lands — `_Shaders/`,
-`_Buffers/`, `_Textures/`), and the **reading conventions** used in the codebase.
+---
+
+## Repository layout
+
+```
+docs/                          served by GitHub Pages
+├─ index.html                  landing page
+├─ kytyps5-book.html           the book
+├─ kytyps5-guide.html          the guide
+├─ kytyps5-learning-path.html  the workbook
+└─ assets/                     screenshots (JPEG)
+```
+
+Each document is one HTML file with inline CSS and JavaScript — no build step, no
+dependencies, no tracking. The only external files are the screenshots in `assets/`,
+which are lazy-loaded. Light and dark themes follow your system preference.
 
 ---
 
 ## Caveats
 
-- **Line references drift.** Every file and line reference points at the tree as of
-  `v0.2.2`. The prose stays accurate much longer than the line numbers do — treat a
-  reference as "look for this function", not "go to this line".
-- **These are unofficial.** They are a reading of the source, not maintainer-authored
+- **Line references drift.** Everything points at KytyPS5 `v0.2.2`. The prose stays
+  accurate far longer than the line numbers — treat a reference as "look for this
+  function", not "go to this line".
+- **These are unofficial.** A reading of the source, not maintainer-authored
   documentation. Where a document and the code disagree, the code is right.
-- **Outbound links need a connection.** The documents themselves work offline; the
+- **Outbound links need a connection.** The documents work offline; the
   further-reading links obviously do not.
 
-## Screenshots
+## Credits
 
-[`screenshots/`](screenshots/) holds the images used by the repository README. Not
-related to the documents above.
+[KytyPS5](https://github.com/KytyPS5/KytyPS5) is GPL-2.0-only and based on a heavily
+modified version of [InoriRus/Kyty](https://github.com/InoriRus/Kyty) (MIT), and
+credits [shadPS4](https://github.com/shadps4-emu/shadPS4) as a reference for the
+memory model and AVPlayer. Screenshots are from the KytyPS5 repository.
+
+Not affiliated with Sony Interactive Entertainment. No games or system software are
+distributed here.
