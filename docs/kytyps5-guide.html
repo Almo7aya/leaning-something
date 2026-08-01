@@ -8,7 +8,13 @@
 <meta name="color-scheme" content="light dark">
 <link rel="stylesheet" href="assets/viz.css">
 <script src="assets/viz.js" defer></script>
-</head>
+<style>
+.xlinks{margin-top:var(--s6);padding-top:var(--s4);border-top:1px solid var(--rule);font-family:var(--mono);font-size:10.5px;line-height:1.8;color:var(--faint)}
+.xlinks b{display:block;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);margin-bottom:4px;font-weight:600}
+.xlinks a{display:block;color:var(--muted);text-decoration:none}
+.xlinks a:hover{color:var(--ink);text-decoration:underline}
+.xlinks a.here{color:var(--ink);font-weight:600}
+</style></head>
 <body><style>
 /* ============================================================
    TOKENS
@@ -415,6 +421,7 @@ details[open] summary { border-bottom: 1px solid var(--rule); }
       <a href="#path"><span>13</span>A learning path</a>
       <a href="#glossary"><span>14</span>Glossary</a>
     </nav>
+      <div class="xlinks"><b>Also here</b><a href="index.html">Overview</a><a href="kytyps5-atlas.html">Visual atlas &mdash; 19 animations</a><a href="kytyps5-book.html">The complete book</a><a href="kytyps5-guide.html" class="here">Architecture guide</a><a href="kytyps5-learning-path.html">Learning path</a></div>
     <div class="rail-foot">
       KytyPS5 v0.2.2<br>
       GPL-2.0-only<br>
@@ -1665,3 +1672,4 @@ cmake --install _Build/windows --prefix _Build/windows/install</pre>
 
 </body>
 </html>
+

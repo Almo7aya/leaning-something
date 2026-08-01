@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KytyPS5 — The Visual Atlas</title>
+<meta name="description" content="Nineteen animated explainers covering how a PlayStation 5 emulator runs guest code, maps memory, starts a game, schedules threads, and drives a GPU.">
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="assets/viz.css">
+<link rel="stylesheet" href="assets/atlas.css">
+<script src="assets/viz.js" defer></script>
+<script src="assets/atlas.js" defer></script>
+<style>
+:root{
+  --ground:#EFF1F2; --surface:#FCFCFB; --surface-2:#F4F6F7; --surface-3:#E9EDEF;
+  --ink:#161B21; --ink-2:#3D4753; --muted:#5E6975; --faint:#8A939D;
+  --rule:#D9DEE1; --rule-2:#C2CACF;
+  --guest:#31649E; --kyty:#B07A0E; --host:#A83B5C;
+  --mono:ui-monospace,"Cascadia Mono","SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  --serif:Charter,"Iowan Old Style","Palatino Linotype","Book Antiqua",Georgia,serif;
+  --s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:24px;--s6:32px;--s7:48px;--s8:72px;--s9:104px;
+}
+@media (prefers-color-scheme:dark){:root{
+  --ground:#0E1317; --surface:#12171C; --surface-2:#171E24; --surface-3:#1D262D;
+  --ink:#DCE3E9; --ink-2:#B3BEC8; --muted:#8A97A4; --faint:#69757F;
+  --rule:#232C34; --rule-2:#33404A;
+  --guest:#4A8AC8; --kyty:#BE8A22; --host:#C85874;
+}}
+:root[data-theme="dark"]{
+  --ground:#0E1317;--surface:#12171C;--surface-2:#171E24;--surface-3:#1D262D;
+  --ink:#DCE3E9;--ink-2:#B3BEC8;--muted:#8A97A4;--faint:#69757F;
+  --rule:#232C34;--rule-2:#33404A;--guest:#4A8AC8;--kyty:#BE8A22;--host:#C85874;
+}
+:root[data-theme="light"]{
+  --ground:#EFF1F2;--surface:#FCFCFB;--surface-2:#F4F6F7;--surface-3:#E9EDEF;
+  --ink:#161B21;--ink-2:#3D4753;--muted:#5E6975;--faint:#8A939D;
+  --rule:#D9DEE1;--rule-2:#C2CACF;--guest:#31649E;--kyty:#B07A0E;--host:#A83B5C;
+}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--serif);font-size:17.5px;line-height:1.66;-webkit-font-smoothing:antialiased}
+p{margin:0 0 var(--s4);max-width:66ch}p:last-child{margin-bottom:0}
+a{color:inherit;text-decoration:underline;text-decoration-color:var(--rule-2);text-underline-offset:3px}
+a:hover{text-decoration-color:currentColor}
+:focus-visible{outline:2px solid var(--guest);outline-offset:3px;border-radius:2px}
+h1,h2,h3{font-family:var(--mono);font-weight:600;text-wrap:balance;margin:0}
+code{font-family:var(--mono);font-size:.87em;background:var(--surface-3);padding:1px 5px;border-radius:3px;color:var(--ink-2)}
+ul{max-width:66ch;padding-left:1.35em;margin:0 0 var(--s4)}
+li{margin-bottom:var(--s2)}li:last-child{margin-bottom:0}
+
+.progress{position:fixed;inset:0 auto auto 0;height:2px;width:0;background:var(--ink);z-index:60;transition:width .1s linear}
+@media (prefers-reduced-motion:reduce){.progress{transition:none}}
+
+.shell{display:grid;grid-template-columns:266px minmax(0,1fr)}
+.rail{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;padding:var(--s5) var(--s3) var(--s6) var(--s5);border-right:1px solid var(--rule);background:var(--surface)}
+.rail-brand{font-family:var(--mono);font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:var(--s4)}
+.rail-brand strong{display:block;color:var(--ink);font-size:15px;letter-spacing:.01em;text-transform:none;margin-top:2px}
+.rail nav{display:flex;flex-direction:column;gap:0}
+.rail nav .pt{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin:var(--s4) 0 var(--s1);padding-left:2px}
+.rail nav a{display:block;font-family:var(--mono);font-size:12px;line-height:1.35;padding:6px var(--s2) 6px var(--s3);margin-left:-12px;text-decoration:none;color:var(--muted);border-left:2px solid transparent}
+.rail nav a:hover{color:var(--ink)}
+.rail nav a.on{color:var(--ink);border-left-color:var(--ink);font-weight:600}
+.rail-foot{margin-top:var(--s6);padding-top:var(--s4);border-top:1px solid var(--rule);font-family:var(--mono);font-size:10.5px;line-height:1.7;color:var(--faint)}
+.rail-foot a{color:var(--muted)}
+main{min-width:0}
+.col{max-width:1020px;margin:0 auto;padding:0 var(--s6) var(--s9)}
+@media (max-width:980px){
+  .shell{grid-template-columns:1fr}
+  .rail{position:static;height:auto;border-right:0;border-bottom:1px solid var(--rule);padding:var(--s4)}
+  .rail nav{flex-direction:row;overflow-x:auto;gap:var(--s1);padding-bottom:var(--s2)}
+  .rail nav a{border-left:0;border-bottom:2px solid transparent;margin-left:0;padding:6px var(--s3);white-space:nowrap}
+  .rail nav a.on{border-left-color:transparent;border-bottom-color:var(--ink)}
+  .rail nav .pt{display:none}
+  .col{padding:0 var(--s4) var(--s8)}
+  body{font-size:16.5px}
+}
+
+.hero{padding:var(--s9) 0 var(--s6);border-bottom:1px solid var(--rule)}
+.eyebrow{font-family:var(--mono);font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-bottom:var(--s4)}
+.hero h1{font-size:clamp(30px,5.2vw,50px);line-height:1.05;letter-spacing:-.02em;margin-bottom:var(--s5);max-width:17ch}
+.hero .lede{font-size:clamp(18px,2.2vw,21px);line-height:1.55;color:var(--ink-2);max-width:62ch}
+.howto{margin-top:var(--s6);border:1px solid var(--rule);border-left:3px solid var(--kyty);border-radius:3px;background:var(--surface);padding:var(--s4) var(--s5)}
+.howto .lbl{font-family:var(--mono);font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--kyty);display:block;margin-bottom:var(--s2)}
+.howto ul{margin-bottom:0}
+
+section{padding-top:var(--s8);scroll-margin-top:var(--s4)}
+.sh{display:flex;align-items:baseline;gap:var(--s4);margin-bottom:var(--s4);padding-bottom:var(--s3);border-bottom:1px solid var(--rule)}
+.sn{font-family:var(--mono);font-size:12px;color:var(--faint);letter-spacing:.08em;flex:none;font-variant-numeric:tabular-nums}
+.sh h2{font-size:clamp(22px,3vw,30px);letter-spacing:-.018em;line-height:1.14}
+.deck{font-size:18.5px;line-height:1.55;color:var(--ink-2);max-width:62ch;margin-bottom:var(--s5)}
+h3{font-size:15.5px;letter-spacing:-.005em;margin:var(--s7) 0 var(--s3)}
+h3::before{content:"▸ ";color:var(--faint)}
+
+.legend{display:flex;flex-wrap:wrap;gap:var(--s3);margin:var(--s4) 0;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;padding:2px 7px;border-radius:2px;border:1px solid}
+.chip::before{content:"";width:7px;height:7px;border-radius:1px;background:currentColor}
+.chip.guest{color:var(--guest);border-color:color-mix(in srgb,var(--guest) 42%,transparent);background:color-mix(in srgb,var(--guest) 9%,transparent)}
+.chip.kyty{color:var(--kyty);border-color:color-mix(in srgb,var(--kyty) 42%,transparent);background:color-mix(in srgb,var(--kyty) 9%,transparent)}
+.chip.host{color:var(--host);border-color:color-mix(in srgb,var(--host) 42%,transparent);background:color-mix(in srgb,var(--host) 9%,transparent)}
+
+.src{display:inline-block;font-family:var(--mono);font-size:11px;padding:1px 6px;border:1px solid var(--rule);border-radius:2px;background:var(--surface-2);color:var(--muted);white-space:nowrap}
+.srcs{display:flex;flex-wrap:wrap;gap:5px;margin:var(--s3) 0 var(--s5)}
+.foot{margin-top:var(--s9);padding-top:var(--s5);border-top:1px solid var(--rule);font-size:14px;color:var(--muted)}
+.foot p{max-width:72ch}
+</style>
+<style>
+.xlinks{margin-top:var(--s6);padding-top:var(--s4);border-top:1px solid var(--rule);font-family:var(--mono);font-size:10.5px;line-height:1.8;color:var(--faint)}
+.xlinks b{display:block;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);margin-bottom:4px;font-weight:600}
+.xlinks a{display:block;color:var(--muted);text-decoration:none}
+.xlinks a:hover{color:var(--ink);text-decoration:underline}
+.xlinks a.here{color:var(--ink);font-weight:600}
+</style></head>
+<body>
+
+<div class="progress" id="prog"></div>
+
+<div class="shell">
+  <aside class="rail">
+    <span class="rail-brand">Visual atlas<strong>KytyPS5</strong></span>
+    <nav id="toc">
+      <div class="pt">Orientation</div>
+      <a href="#whole">The whole machine</a>
+      <div class="pt">01 · CPU</div>
+      <a href="#cpu-native">No CPU emulator</a>
+      <a href="#cpu-abi">Calling conventions</a>
+      <a href="#cpu-patch">Patching instructions</a>
+      <a href="#cpu-fault">Faults as control flow</a>
+      <div class="pt">02 · Memory</div>
+      <a href="#mem-map">The address space</a>
+      <a href="#mem-grain">Page granularity</a>
+      <a href="#mem-coherency">CPU / GPU coherency</a>
+      <div class="pt">03 · Startup</div>
+      <a href="#start-elf">File to memory</a>
+      <a href="#start-reloc">Wiring the imports</a>
+      <a href="#start-call">Reaching emulator code</a>
+      <div class="pt">04 · Threads</div>
+      <a href="#thr-model">Who runs what</a>
+      <a href="#thr-queues">GPU queues</a>
+      <div class="pt">05 · GPU</div>
+      <a href="#gpu-pm4">The command stream</a>
+      <a href="#gpu-wave">Waves and lanes</a>
+      <a href="#gpu-shader">Shader recompilation</a>
+      <a href="#gpu-srt">Finding a texture</a>
+      <a href="#gpu-tiling">Tiling</a>
+      <div class="pt">06 · Present</div>
+      <a href="#pres-flip">The flip model</a>
+      <div class="pt">Reference</div>
+      <a href="#index">All nineteen</a>
+    </nav>
+    <div class="xlinks"><b>Also here</b><a href="index.html">Overview</a><a href="kytyps5-atlas.html" class="here">Visual atlas &mdash; 19 animations</a><a href="kytyps5-book.html">The complete book</a><a href="kytyps5-guide.html">Architecture guide</a><a href="kytyps5-learning-path.html">Learning path</a></div>
+  </aside>
+
+  <main>
+    <div class="col">
+
+<header class="hero">
+  <div class="eyebrow">Nineteen animated explainers · no prose you have to wade through</div>
+  <h1>How a PlayStation&nbsp;5 emulator actually works</h1>
+  <p class="lede">Every hard idea in KytyPS5, shown moving. How guest code runs without a CPU emulator, how the address space is carved up, how a file becomes a running program, which thread does what, and how command packets become pixels. Each animation plays on its own and can be stepped by hand.</p>
+
+  <div class="legend" style="margin-top:var(--s6)">
+    <span class="chip guest">Guest — the PS5 and its software</span>
+    <span class="chip kyty">Kyty — the translation layer</span>
+    <span class="chip host">Host — the real PC, OS and GPU</span>
+  </div>
+
+  <div class="howto">
+    <span class="lbl">How to use this page</span>
+    <ul>
+      <li>Every animation <strong>plays while it is on screen</strong> and pauses when you scroll away, so nothing moves out of sight.</li>
+      <li><strong>Next</strong> and <strong>Back</strong> step it by hand — the caption under each one changes with the step, and that is where the actual explanation lives.</li>
+      <li>If your system asks for reduced motion, nothing auto-plays; step through instead.</li>
+      <li>Deeper on any topic: the <a href="kytyps5-book.html">book</a> covers all of this in prose with real source code.</li>
+    </ul>
+  </div>
+</header>
+
+<!-- ============================== ORIENTATION -->
+<section id="whole">
+  <div class="sh"><span class="sn">00</span><h2>The whole machine, once through</h2></div>
+  <p class="deck">Start here. Everything else on this page is one of these eight boxes opened up.</p>
+  <figure data-viz="pipeline"></figure>
+  <p>The thing to notice is that <strong>no step in that chain is a function call the emulator can intercept</strong>. The game writes command packets into memory it owns, then hands over a pointer. Everything after that is Kyty reading those packets and rebuilding the work in Vulkan.</p>
+</section>
+
+<!-- ============================== 01 CPU -->
+<section id="cpu-native">
+  <div class="sh"><span class="sn">01</span><h2>The CPU — how guest code runs at all</h2></div>
+  <p class="deck">The PS5's processor is an 8-core AMD Zen&nbsp;2 running x86-64 — the same instruction set as your PC. That single fact reshapes the entire project.</p>
+  <figure data-viz="nativeexec"></figure>
+  <p>So KytyPS5 is not a simulator that steps through the game. It is a <strong>host environment the game runs inside</strong> — closer in spirit to Wine than to Dolphin. The emulator only regains control when the game calls a function it provides, or when the hardware raises a fault.</p>
+  <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp</span><span class="src">src/emulator.cpp</span></div>
+</section>
+
+<section id="cpu-abi">
+  <div class="sh"><span class="sn">01·2</span><h2>The instructions match; the conventions do not</h2></div>
+  <p class="deck">Machine code has no concept of a "function argument". Which register carries which parameter is a convention — and the PS5 and Windows disagree about almost all of it.</p>
+  <figure data-viz="abiflow"></figure>
+  <p>There is a second gap in the same family. Under System&nbsp;V a variadic function receives the count of vector registers used in <code>al</code>, which is why the generated import thunk begins with <code>push rax</code>, and why the guest's <code>printf</code> cannot simply be forwarded to the host's — <code>guestPrintf.cpp</code> is 25&nbsp;KB reimplementing the format-string interpreter for exactly this reason.</p>
+  <div class="srcs"><span class="src">src/common/abi.h</span><span class="src">src/loader/jit.h:119</span><span class="src">src/libs/guestPrintf.cpp</span></div>
+</section>
+
+<section id="cpu-patch">
+  <div class="sh"><span class="sn">01·3</span><h2>Rewriting the guest's own instructions</h2></div>
+  <p class="deck">Two instruction patterns in PS5 code cannot execute on Windows. With no recompiler in the pipeline, the loader rewrites the bytes in place — before the code is ever run.</p>
+  <figure data-viz="patchbytes"></figure>
+  <p>You can watch this happen for real. Run any title, grep the log for <code>Patch tls at addr</code>, then look at those nine bytes in a debugger: the file on disk has <code>64 48 8B 04 25 00 00 00 00</code> and memory has <code>E8 …</code>. Seeing it once makes the whole mechanism concrete.</p>
+  <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp:1309</span><span class="src">src/loader/jit.h</span></div>
+</section>
+
+<section id="cpu-fault">
+  <div class="sh"><span class="sn">01·4</span><h2>Faults are a control-flow mechanism</h2></div>
+  <p class="deck">Because there is no code generation step, the emulator cannot instrument guest code. The CPU's own fault mechanism becomes the hook — and three of the handler's four branches are deliberate design.</p>
+  <figure data-viz="faultpath"></figure>
+  <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp:763</span><span class="src">src/loader/x64InstructionEmulator.cpp</span></div>
+</section>
+
+<!-- ============================== 02 MEMORY -->
+<section id="mem-map">
+  <div class="sh"><span class="sn">02</span><h2>Memory — carving up the address space</h2></div>
+  <p class="deck">Console software hard-codes addresses and assumes allocations land in particular ranges. It also hands pointers to the GPU. So Kyty claims whole bands of the host address space up front and allocates inside them itself.</p>
+  <figure data-viz="addrmap"></figure>
+  <p>Three ways a game asks for memory, and Kyty models each separately: <strong>direct</strong> memory is a physical reservation that gets mapped as a second step; <strong>flexible</strong> memory comes from a fixed per-title budget; <strong>pooled</strong> memory is reserve-then-commit with a batch interface. On top sit <code>sceKernelVirtualQuery</code> — which forces real bookkeeping, since the guest can ask what protection, type, and <em>name</em> a range has — plus PRT apertures for sparse textures.</p>
+  <div class="srcs"><span class="src">src/kernel/memoryAddressSpace.inc</span><span class="src">src/kernel/memory.cpp</span><span class="src">src/kernel/memory.h:22</span></div>
+</section>
+
+<section id="mem-grain">
+  <div class="sh"><span class="sn">02·2</span><h2>16 KB guest pages on 4 KB host pages</h2></div>
+  <p class="deck">A mismatch that sounds like a footnote and turns out to shape the whole coherency design.</p>
+  <figure data-viz="pagegrain"></figure>
+  <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp:2160</span><span class="src">src/graphics/host_gpu/regionManager.h</span></div>
+</section>
+
+<section id="mem-coherency">
+  <div class="sh"><span class="sn">02·3</span><h2>Keeping CPU and GPU copies in step</h2></div>
+  <p class="deck">The hardest problem in the project. A console has unified memory, so games contain no synchronisation for this at all. On a PC, every shared resource is a copy that can go stale — and nothing tells the emulator when it does.</p>
+  <figure data-viz="coherency"></figure>
+  <p>The code is unusually defensive about this, and the reason is worth internalising: a coherency bug produces corruption <em>many frames after</em> its cause, with no traceable link. So each invariant becomes an immediate crash instead — re-entering the tracker from inside an upload callback is a hard failure, and an invalidation that leaves GPU-owned pages behind aborts on the spot.</p>
+  <div class="srcs"><span class="src">src/graphics/host_gpu/pageManager.h</span><span class="src">…/memoryTracker.h</span><span class="src">tests/MemoryTrackerTests.cpp</span></div>
+</section>
+
+<!-- ============================== 03 STARTUP -->
+<section id="start-elf">
+  <div class="sh"><span class="sn">03</span><h2>Startup — a file becoming a running program</h2></div>
+  <p class="deck">A PS5 executable is a SELF: a signed container wrapping standard ELF64, with Sony's own segment types and dynamic tags bolted on.</p>
+  <figure data-viz="elfmap"></figure>
+  <div class="srcs"><span class="src">src/loader/elf.h</span><span class="src">src/loader/runtimeLinker.cpp:2141</span></div>
+</section>
+
+<section id="start-reloc">
+  <div class="sh"><span class="sn">03·2</span><h2>Wiring up the imports</h2></div>
+  <p class="deck">PS5 modules do not export readable names — they export hashes. Resolution is where the emulator inserts itself into the game.</p>
+  <figure data-viz="relocgot"></figure>
+  <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp:1654</span><span class="src">src/libs/libs.h:39</span></div>
+</section>
+
+<section id="start-call">
+  <div class="sh"><span class="sn">03·3</span><h2>How a console call reaches emulator code</h2></div>
+  <p class="deck">The single most important mechanism in the project, and it hinges on one pointer.</p>
+  <figure data-viz="gotplt"></figure>
+  <p>This is also the easiest place to contribute. Find a stubbed NID in a log, add a <code>LIB_FUNC</code> pointing at a function that logs its arguments and returns <code>OK</code>, and re-run — the stub message disappears and the game gets a little further. Two ways it silently fails: one wrong character in the NID string, or a <code>LIB_VERSION</code> whose library or module version does not match what the game imports.</p>
+</section>
+
+<!-- ============================== 04 THREADS -->
+<section id="thr-model">
+  <div class="sh"><span class="sn">04</span><h2>Threads — who runs what</h2></div>
+  <p class="deck">Three actors, three completely different jobs, and a separation that is required rather than stylistic.</p>
+  <figure data-viz="threads"></figure>
+  <p>Guest threads are real host threads, but with two pieces of state Kyty maintains itself: a <strong>guest stack</strong> allocated inside the guest bands, because guest code computes addresses relative to it and may hand them to the GPU; and a per-thread copy of every loaded module's <strong>TLS image</strong>, allocated lazily and freed through the game's own allocator if it installed one.</p>
+  <div class="srcs"><span class="src">src/kernel/pthread.cpp</span><span class="src">src/emulator.cpp:171</span><span class="src">src/loader/runtimeLinker.cpp:2073</span></div>
+</section>
+
+<section id="thr-queues">
+  <div class="sh"><span class="sn">04·2</span><h2>Fifty-seven GPU queues</h2></div>
+  <p class="deck">One graphics queue plus seven compute pipes of eight, mirroring the hardware — because games rely on that topology for asynchronous compute.</p>
+  <figure data-viz="queuebank"></figure>
+  <div class="srcs"><span class="src">src/graphics/guest_gpu/graphicsRun.cpp:79</span><span class="src">…/command_processor/commandProcessor.h</span></div>
+</section>
+
+<!-- ============================== 05 GPU -->
+<section id="gpu-pm4">
+  <div class="sh"><span class="sn">05</span><h2>The GPU — packets in, pixels out</h2></div>
+  <p class="deck">The game never calls a draw function. It builds raw command packets — the same binary format a real AMD command processor reads — and submits the buffer. So Kyty implements a command processor in software.</p>
+  <figure data-viz="pm4stream"></figure>
+  <p>Beyond register writes and draws, a real command processor has mechanisms Kyty has to model too: two engines (drawing and constant) synchronised by counters, a 48&nbsp;KB constant-RAM scratch area, end-of-pipe fences, indirect buffers that work like calls, predication that makes packets conditional, and blocking waits that suspend a submission rather than spinning.</p>
+  <div class="srcs"><span class="src">src/graphics/guest_gpu/pm4.cpp:122</span><span class="src">…/pm4Handlers.cpp</span><span class="src">…/hardwareContext.h</span></div>
+</section>
+
+<section id="gpu-wave">
+  <div class="sh"><span class="sn">05·2</span><h2>Waves, lanes, and why shaders are hard</h2></div>
+  <p class="deck">A GPU does not run one shader invocation at a time. It runs 32 or 64 in lockstep on one instruction stream — which means branching cannot work the way you expect.</p>
+  <figure data-viz="wave"></figure>
+  <div class="srcs"><span class="src">src/graphics/shader/recompiler/cfg/ShaderCFG.cpp</span></div>
+</section>
+
+<section id="gpu-shader">
+  <div class="sh"><span class="sn">05·3</span><h2>RDNA 2 machine code becoming SPIR-V</h2></div>
+  <p class="deck">26,000 lines of real compiler: decoder, control-flow graph, intermediate representation, dataflow analyses, code generator.</p>
+  <figure data-viz="shaderflow"></figure>
+  <p>Structurisation is the stage most likely to fail, and failure is a <em>supported outcome</em>. When merge and continue blocks cannot be recovered — genuinely irreducible control flow, or a loop header holding an instruction whose own lowering emits control flow — the recompiler emits the whole shader as a <strong>dispatcher</strong>: one loop around a switch on a program-counter variable, each basic block a case. Slower, universally correct.</p>
+  <div class="srcs"><span class="src">…/ShaderRecompiler.cpp:640</span><span class="src">…/emitter/SpirvEmitter.cpp</span></div>
+</section>
+
+<section id="gpu-srt">
+  <div class="sh"><span class="sn">05·4</span><h2>Finding the texture a shader wants</h2></div>
+  <p class="deck">On RDNA 2 there are no texture slots. A shader holds its resource descriptors in registers, or loads them from memory itself — so the emulator has to evaluate the shader's own address arithmetic before the shader ever runs.</p>
+  <figure data-viz="srtwalk"></figure>
+  <div class="srcs"><span class="src">…/ir/ScalarProvenance.cpp</span><span class="src">…/ir/SrtWalker.cpp</span><span class="src">src/graphics/shader/shader.h:44</span></div>
+</section>
+
+<section id="gpu-tiling">
+  <div class="sh"><span class="sn">05·5</span><h2>Why textures are not stored in rows</h2></div>
+  <p class="deck">Guest memory holds swizzled data; Vulkan wants something else. Converting between them is 59 KB of address arithmetic plus a compute shader per layout family.</p>
+  <figure data-viz="tiling"></figure>
+  <div class="srcs"><span class="src">src/graphics/guest_gpu/tile.cpp</span><span class="src">…/renderer/image/tiler.cpp</span><span class="src">…/host_gpu/shaders/</span></div>
+</section>
+
+<!-- ============================== 06 PRESENT -->
+<section id="pres-flip">
+  <div class="sh"><span class="sn">06</span><h2>Presentation — the flip model</h2></div>
+  <p class="deck">A game does not present a frame. It registers buffers, renders into one, and asks the display to scan it out at the next vertical blank.</p>
+  <figure data-viz="flipmodel"></figure>
+  <div class="srcs"><span class="src">src/graphics/presentation/videoOut.cpp</span><span class="src">…/window/swapchain.cpp</span></div>
+</section>
+
+<!-- ============================== INDEX -->
+<section id="index">
+  <div class="sh"><span class="sn">—</span><h2>All nineteen, in one list</h2></div>
+  <p class="deck">Every animation on this page, what it explains, and where the prose version lives.</p>
+  <div style="overflow-x:auto;border:1px solid var(--rule);border-radius:3px;background:var(--surface)">
+    <table style="border-collapse:collapse;width:100%;font-size:14px">
+      <thead><tr>
+        <th style="text-align:left;padding:9px 16px;border-bottom:1px solid var(--rule);background:var(--surface-2);font-family:var(--mono);font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--muted)">Animation</th>
+        <th style="text-align:left;padding:9px 16px;border-bottom:1px solid var(--rule);background:var(--surface-2);font-family:var(--mono);font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--muted)">Explains</th>
+        <th style="text-align:left;padding:9px 16px;border-bottom:1px solid var(--rule);background:var(--surface-2);font-family:var(--mono);font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--muted)">In the book</th>
+      </tr></thead>
+      <tbody>
+        <tr><td style="padding:8px 16px;border-bottom:1px solid var(--rule)"><a href="#whole">pipeline</a></td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">Game code to pixels, eight stages</td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">ch 3, 25</td></tr>
+        <tr><td style="padding:8px 16px;border-bottom:1px solid var(--rule)"><a href="#cpu-native">nativeexec</a></td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">Interpreter cost vs native execution</td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">ch 1, 3</td></tr>
+        <tr><td style="padding:8px 16px;border-bottom:1px solid var(--rule)"><a href="#cpu-abi">abiflow</a></td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">System V vs Microsoft x64, and the mismatch</td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">ch 4</td></tr>
+        <tr><td style="padding:8px 16px;border-bottom:1px solid var(--rule)"><a href="#cpu-patch">patchbytes</a></td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">The <code>fs:[0]</code> nine-byte rewrite</td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">ch 16</td></tr>
+        <tr><td style="padding:8px 16px;border-bottom:1px solid var(--rule)"><a href="#cpu-fault">faultpath</a></td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">The exception handler's four branches</td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">ch 18</td></tr>
+        <tr><td style="padding:8px 16px;border-bottom:1px solid var(--rule)"><a href="#mem-map">addrmap</a></td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">Address bands filling with allocations</td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">ch 5, 19</td></tr>
+        <tr><td style="padding:8px 16px;border-bottom:1px solid var(--rule)"><a href="#mem-grain">pagegrain</a></td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">16 KB guest pages over 4 KB host pages</td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">ch 5</td></tr>
+        <tr><td style="padding:8px 16px;border-bottom:1px solid var(--rule)"><a href="#mem-coherency">coherency</a></td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">Page faults as a notification channel</td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">ch 32</td></tr>
+        <tr><td style="padding:8px 16px;border-bottom:1px solid var(--rule)"><a href="#start-elf">elfmap</a></td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">Segments mapped, patched, protected</td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">ch 13, 14</td></tr>
+        <tr><td style="padding:8px 16px;border-bottom:1px solid var(--rule)"><a href="#start-reloc">relocgot</a></td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">NIDs resolving into GOT slots</td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">ch 15, 17</td></tr>
+        <tr><td style="padding:8px 16px;border-bottom:1px solid var(--rule)"><a href="#start-call">gotplt</a></td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">A console call landing in emulator C++</td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">ch 15, 22</td></tr>
+        <tr><td style="padding:8px 16px;border-bottom:1px solid var(--rule)"><a href="#thr-model">threads</a></td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">Main, guest and GPU threads over time</td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">ch 12, 20</td></tr>
+        <tr><td style="padding:8px 16px;border-bottom:1px solid var(--rule)"><a href="#thr-queues">queuebank</a></td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">57 queues and a blocked submission</td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">ch 25, 26</td></tr>
+        <tr><td style="padding:8px 16px;border-bottom:1px solid var(--rule)"><a href="#gpu-pm4">pm4stream</a></td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">Packets consumed, registers filling, draw</td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">ch 26, 27</td></tr>
+        <tr><td style="padding:8px 16px;border-bottom:1px solid var(--rule)"><a href="#gpu-wave">wave</a></td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">An <code>if</code> across 64 lanes via the EXEC mask</td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">ch 7, 30</td></tr>
+        <tr><td style="padding:8px 16px;border-bottom:1px solid var(--rule)"><a href="#gpu-shader">shaderflow</a></td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">Five forms from machine code to SPIR-V</td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">ch 30</td></tr>
+        <tr><td style="padding:8px 16px;border-bottom:1px solid var(--rule)"><a href="#gpu-srt">srtwalk</a></td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">User data → table → descriptor → binding</td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">ch 28</td></tr>
+        <tr><td style="padding:8px 16px;border-bottom:1px solid var(--rule)"><a href="#gpu-tiling">tiling</a></td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">Memory order, linear vs tiled</td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">ch 29</td></tr>
+        <tr><td style="padding:8px 16px"><a href="#pres-flip">flipmodel</a></td><td style="padding:8px 16px">Buffers, flip queue, vblank, scanout</td><td style="padding:8px 16px">ch 33</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="foot">
+    <p>Written by reading the <a href="https://github.com/KytyPS5/KytyPS5">KytyPS5</a> source tree at <code>v0.2.2</code>; file and line references point at that revision and will drift. These are unofficial — a reading of the source, not maintainer-authored documentation. Where a document and the code disagree, the code is right.</p>
+    <p>Some animations are deliberately simplified and say so in their own notes — the tiling one in particular shows 2×2 Morton ordering to make the idea visible, where the real families vary block size by bytes-per-element, XOR block coordinates across memory channels, and pack small mips into a tail.</p>
+    <p>KytyPS5 is GPL-2.0-only and based on <a href="https://github.com/InoriRus/Kyty">InoriRus/Kyty</a> (MIT), and credits <a href="https://github.com/shadps4-emu/shadPS4">shadPS4</a> as a reference for the memory model and AVPlayer. Not affiliated with Sony Interactive Entertainment.</p>
+  </div>
+</section>
+
+    </div>
+  </main>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var prog=document.getElementById("prog");
+  var links=Array.prototype.slice.call(document.querySelectorAll("#toc a"));
+  var targets=links.map(function(a){return document.querySelector(a.getAttribute("href"))}).filter(Boolean);
+  var toc=document.getElementById("toc");
+  function spy(){
+    var h=document.documentElement,max=h.scrollHeight-h.clientHeight;
+    prog.style.width=(max>0?(h.scrollTop/max)*100:0)+"%";
+    var idx=0;
+    for(var i=0;i<targets.length;i++){ if(targets[i].getBoundingClientRect().top<=150) idx=i; }
+    links.forEach(function(a,i){a.classList.toggle("on",i===idx)});
+    var on=links[idx];
+    if(on&&on.offsetParent){
+      var r=on.getBoundingClientRect(),pr=toc.parentElement.getBoundingClientRect();
+      if(r.top<pr.top||r.bottom>pr.bottom) on.scrollIntoView({block:"nearest"});
+    }
+  }
+  window.addEventListener("scroll",spy,{passive:true});
+  window.addEventListener("resize",spy);
+  spy();
+})();
+</script>
+</body>
+</html>
+

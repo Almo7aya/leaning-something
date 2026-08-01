@@ -10,16 +10,31 @@ you source. Use the link above.
 
 ---
 
-## The three documents
+## The four documents
 
 | | Audience | Length |
 |---|---|---|
+| **[The Visual Atlas](https://almo7aya.dev/leaning-something/kytyps5-atlas.html)** | Learn by watching — animation-led | 19 animations, ~40 minutes |
 | **[The Complete Book](https://almo7aya.dev/leaning-something/kytyps5-book.html)** | New to emulation — assumes nothing | 39 chapters, ~3–4 hours |
 | **[Architecture Guide](https://almo7aya.dev/leaning-something/kytyps5-guide.html)** | Already comfortable with systems programming | 15 sections, ~45 minutes |
 | **[Learning Path](https://almo7aya.dev/leaning-something/kytyps5-learning-path.html)** | Want to learn by doing | 7 levels, ~3 weeks part-time |
 
-They overlap on purpose. The book is written to stand alone — you never need to
-switch documents mid-topic.
+They overlap on purpose. The atlas is the fastest way in if you prefer watching to
+reading; the book is written to stand alone, so you never need to switch mid-topic.
+
+### The Visual Atlas
+
+Animation-led rather than prose-led. Nineteen explainers grouped into six parts — CPU,
+memory, startup, threads, GPU, presentation — each auto-playing while on screen and
+steppable by hand. The explanation lives in the caption, which changes with every step.
+
+Twelve of the nineteen are specific to this document and go deeper than the shared set:
+interpreter cost vs native execution, the calling-convention mismatch with a wrong-ABI
+demonstration, the `fs:[0]` byte-level rewrite, the exception handler's four branches,
+address bands filling with real allocations, 16 KB pages over 4 KB pages, ELF segments
+being mapped and patched and protected, NIDs resolving into GOT slots, a PM4 stream
+being consumed while the register file fills, 57 queues with one blocked submission,
+the pointer chase from user data to a bound Vulkan image, and the flip model.
 
 ### The Complete Book
 
@@ -48,8 +63,9 @@ layer of the emulator with real source excerpts (~120 code blocks).
 
 ## Animated explainers
 
-Seven animations in `docs/assets/viz.js`, shared by all three documents and placed
-wherever the concept comes up. Each auto-plays while on screen, pauses when scrolled
+Nineteen animations in total: seven shared ones in `docs/assets/viz.js` used across all
+four documents, plus twelve deeper ones in `docs/assets/atlas.js` used by the atlas.
+Each is placed wherever the concept comes up. Each auto-plays while on screen, pauses when scrolled
 away, and can be stepped manually. All respect `prefers-reduced-motion`.
 
 | Animation | Explains | Appears in |
@@ -61,6 +77,9 @@ away, and can be stepped manually. All respect `prefers-reduced-motion`.
 | **tiling** | Memory order walking an 8×8 patch in linear vs tiled layout, showing why a 2×2 neighbourhood lands in one cache line. | book ch 29, guide §08 |
 | **threads** | Which of the three threads runs what, over the life of the process. | book ch 12, guide §03, path L1 |
 | **shaderflow** | The five forms shader code passes through: machine words → instructions → CFG → IR → SPIR-V. | book ch 30, guide §09, path L5 |
+
+The twelve atlas-only animations are listed, with what each explains, in the atlas's own
+[closing index](https://almo7aya.dev/leaning-something/kytyps5-atlas.html#index).
 
 Verified by rendering every widget in headless Chrome in both light and dark themes
 and stepping through all of its stages.
@@ -102,12 +121,13 @@ conventions**.
 ```
 docs/                          served by GitHub Pages
 ├─ index.html                  landing page
+├─ kytyps5-atlas.html          the visual atlas (19 animations)
 ├─ kytyps5-book.html           the book
 ├─ kytyps5-guide.html          the guide
 ├─ kytyps5-learning-path.html  the workbook
 └─ assets/
-   ├─ viz.css                  styles for the animated explainers
-   ├─ viz.js                   the seven animations
+   ├─ viz.css / viz.js         the seven shared animations
+   ├─ atlas.css / atlas.js     twelve deeper animations for the atlas
    └─ shot-*.jpg               emulator screenshots (lazy-loaded)
 ```
 
@@ -116,8 +136,9 @@ and page JavaScript; the shared pieces are the two `viz.*` files and the screens
 The animations consume the host page's design tokens, so they theme themselves — light
 and dark both follow your system preference.
 
-To add an animation anywhere, drop in `<figure data-viz="NAME"></figure>` and make sure
-the page links `assets/viz.css` and `assets/viz.js`.
+To add an animation anywhere, drop in `<figure data-viz="NAME"></figure>` and link
+`assets/viz.css` + `assets/viz.js` (plus the `atlas.*` pair for the deeper set).
+`viz.js` exposes `window.VIZ.register(name, fn)` so more can be added without touching it.
 
 ---
 
@@ -140,3 +161,5 @@ memory model and AVPlayer. Screenshots are from the KytyPS5 repository.
 
 Not affiliated with Sony Interactive Entertainment. No games or system software are
 distributed here.
+
+

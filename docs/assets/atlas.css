@@ -1,0 +1,217 @@
+/* ============================================================
+   atlas.css — styles for the deep-dive widgets in atlas.js
+   Extends viz.css; consumes the same host-page design tokens.
+   ============================================================ */
+
+.atl-two { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s5, 24px); }
+@media (max-width: 700px) { .atl-two { grid-template-columns: 1fr; } }
+.atl-col h5 {
+  margin: 0 0 var(--s3, 12px); font-family: var(--mono); font-size: 11.5px;
+  letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600;
+}
+.atl-two.atl-dim-left > .atl-col:first-child { opacity: .45; transition: opacity .3s; }
+.atl-two.atl-warn > .atl-col:last-child { animation: atl-shake .4s; }
+@keyframes atl-shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-3px)} 75%{transform:translateX(3px)} }
+@media (prefers-reduced-motion: reduce) {
+  .atl-two.atl-warn > .atl-col:last-child { animation: none; }
+  .atl-two.atl-dim-left > .atl-col:first-child { transition: none; }
+}
+
+/* ---- code / instruction lists ---- */
+.atl-code { border: 1px solid var(--rule); border-radius: 3px; overflow: hidden; }
+.atl-ln {
+  font-family: var(--mono); font-size: 12px; padding: 5px var(--s3, 12px);
+  border-bottom: 1px solid var(--rule); color: var(--muted); background: var(--surface-2);
+}
+.atl-ln.hot { color: var(--ink); background: color-mix(in srgb, var(--guest) 12%, var(--surface)); font-weight: 600; }
+.atl-sub {
+  font-family: var(--mono); font-size: 10.5px; padding: 2px var(--s3, 12px) 2px 26px;
+  color: var(--faint); background: var(--surface); border-bottom: 1px solid var(--rule);
+}
+.atl-meter {
+  display: flex; justify-content: space-between; align-items: baseline;
+  margin-top: var(--s3, 12px); padding-top: 6px; border-top: 1px solid var(--rule);
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
+}
+.atl-meter b { font-size: 22px; color: var(--ink); font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+
+/* ---- registers ---- */
+.atl-regs { border: 1px solid var(--rule); border-radius: 3px; overflow: hidden; }
+.atl-reg {
+  display: grid; grid-template-columns: 5.5em 1fr; gap: var(--s3, 12px);
+  padding: 6px var(--s3, 12px); border-bottom: 1px solid var(--rule);
+  font-family: var(--mono); font-size: 12px; background: var(--surface-2);
+}
+.atl-reg:last-child { border-bottom: 0; }
+.atl-reg .r { color: var(--ink); font-weight: 600; }
+.atl-reg .v { color: var(--muted); }
+.atl-reg.st { background: var(--surface); }
+.atl-reg.st .r { color: var(--faint); }
+.atl-reg.bad { background: color-mix(in srgb, var(--host) 16%, var(--surface)); }
+.atl-reg.bad .v { color: var(--host); font-weight: 600; }
+
+/* ---- byte grid ---- */
+.atl-bytes-row { display: flex; gap: var(--s3, 12px); align-items: flex-start; }
+.atl-tag {
+  font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--muted); flex: 0 0 6em; padding-top: 8px; display: block;
+}
+.atl-bytes { display: flex; gap: 3px; flex-wrap: wrap; }
+.atl-byte {
+  position: relative; min-width: 40px; padding: 6px 4px 16px; text-align: center;
+  border: 1px solid var(--rule); border-radius: 2px; background: var(--surface-2);
+  font-family: var(--mono); font-size: 12px; color: var(--ink-2);
+  transition: background .25s, border-color .25s, color .25s;
+}
+.atl-byte .bl {
+  position: absolute; left: 0; right: 0; bottom: 2px;
+  font-size: 7.5px; letter-spacing: .02em; color: var(--faint); white-space: nowrap; overflow: hidden;
+}
+.atl-byte.sig { background: color-mix(in srgb, var(--guest) 24%, var(--surface)); border-color: var(--guest); color: var(--ink); }
+.atl-byte.hot { background: var(--kyty); border-color: var(--kyty); color: #fff; font-weight: 600; }
+.atl-byte.hot .bl { color: rgba(255,255,255,.85); }
+.atl-byte.old { background: color-mix(in srgb, var(--host) 18%, var(--surface)); border-color: color-mix(in srgb, var(--host) 45%, transparent); }
+.atl-byte.new { background: color-mix(in srgb, var(--guest) 22%, var(--surface)); border-color: var(--guest); color: var(--ink); }
+@media (prefers-reduced-motion: reduce) { .atl-byte { transition: none; } }
+.atl-asm {
+  font-family: var(--mono); font-size: 11.5px; color: var(--muted);
+  padding: 6px 0 0 calc(6em + var(--s3, 12px));
+}
+
+/* ---- address space ---- */
+.atl-space { display: flex; gap: 3px; margin-bottom: 6px; align-items: stretch; }
+.atl-band {
+  border: 1px solid var(--rule); border-radius: 3px; padding: 8px; min-height: 108px;
+  background: var(--surface-2); transition: border-color .25s, background .25s; overflow: hidden;
+}
+.atl-band .bn { display: block; font-family: var(--mono); font-size: 10.5px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.atl-band .ba { display: block; font-family: var(--mono); font-size: 9.5px; color: var(--faint); margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.atl-band.bh { border-top: 3px solid var(--host); }
+.atl-band.bk { border-top: 3px solid var(--kyty); }
+.atl-band.bg { border-top: 3px solid var(--guest); }
+.atl-band.bx { border-top: 3px solid var(--faint); }
+.atl-band.lit { background: var(--surface-3); border-color: var(--rule-2); }
+.atl-band .bi { display: flex; flex-direction: column; gap: 3px; }
+.chipm {
+  font-family: var(--mono); font-size: 9px; padding: 3px 5px; border-radius: 2px;
+  background: color-mix(in srgb, var(--guest) 14%, var(--surface)); color: var(--ink-2);
+  border: 1px solid color-mix(in srgb, var(--guest) 32%, transparent); line-height: 1.3;
+}
+.chipm.nu { background: var(--kyty); border-color: var(--kyty); color: #fff; font-weight: 600; }
+.atl-scale { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 10px; color: var(--faint); }
+
+/* ---- page granularity ---- */
+.atl-gp { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.atl-hp { display: grid; grid-template-columns: repeat(16, 1fr); gap: 3px; }
+.atl-pgbox {
+  border: 1px solid var(--rule); border-radius: 3px; background: var(--surface-2);
+  padding: 10px 8px; font-family: var(--mono); font-size: 11px; color: var(--ink-2);
+  transition: background .25s, border-color .25s;
+}
+.atl-pgbox span { display: block; font-size: 9.5px; color: var(--faint); margin-top: 2px; }
+.atl-pgsm {
+  aspect-ratio: 1; display: grid; place-items: center; border: 1px solid var(--rule);
+  border-radius: 2px; background: var(--surface-2); font-family: var(--mono); font-size: 9px;
+  color: var(--faint); transition: background .25s, border-color .25s;
+}
+.atl-pgbox.lock, .atl-pgsm.lock { background: color-mix(in srgb, var(--host) 16%, var(--surface)); border-color: color-mix(in srgb, var(--host) 45%, transparent); color: var(--ink); }
+.atl-pgbox.dirty, .atl-pgsm.dirty { background: color-mix(in srgb, var(--kyty) 26%, var(--surface)); border-color: var(--kyty); color: var(--ink); }
+.atl-pgsm.fault { background: var(--host); border-color: var(--host); color: #fff; font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { .atl-pgbox, .atl-pgsm { transition: none; } }
+
+/* ---- ELF segments ---- */
+.atl-elf.atl-reserved > .atl-col:last-child .atl-segs { border-color: var(--rule-2); background: var(--surface-2); }
+.atl-segs { border: 1px dashed var(--rule); border-radius: 3px; padding: 5px; display: flex; flex-direction: column; gap: 4px; min-height: 200px; }
+.atl-seg {
+  border: 1px solid var(--rule); border-radius: 2px; padding: 7px 9px; background: var(--surface-2);
+  font-family: var(--mono); font-size: 11px; color: var(--ink-2); transition: background .25s, border-color .25s, opacity .25s;
+}
+.atl-seg.g { border-left: 3px solid var(--guest); }
+.atl-seg.k { border-left: 3px solid var(--kyty); }
+.atl-seg.lit { background: color-mix(in srgb, var(--kyty) 20%, var(--surface)); border-color: var(--kyty); color: var(--ink); font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { .atl-seg { transition: none; } }
+
+/* ---- relocation table ---- */
+.atl-reloc { border: 1px solid var(--rule); border-radius: 3px; overflow: hidden; }
+.atl-rr {
+  display: grid; grid-template-columns: 11ch minmax(0, 1fr) 1.6em minmax(0, 1.3fr);
+  gap: var(--s3, 12px); align-items: center; padding: 7px var(--s3, 12px);
+  border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: 11.5px; background: var(--surface-2);
+}
+.atl-rr:last-child { border-bottom: 0; }
+.atl-rr.lit { background: color-mix(in srgb, var(--kyty) 14%, var(--surface)); }
+.atl-rr .nid { color: var(--ink); font-weight: 600; }
+.atl-rr .lib { color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+.atl-rr .arw { color: var(--faint); text-align: center; }
+.atl-rr .tgt { color: var(--faint); }
+.atl-rr .tgt.ok { color: var(--guest); }
+.atl-rr .tgt.stub { color: var(--host); }
+
+/* ---- PM4 stream ---- */
+.atl-pm4 { display: grid; grid-template-columns: 1.15fr 1fr; gap: var(--s5, 24px); }
+@media (max-width: 760px) { .atl-pm4 { grid-template-columns: 1fr; } }
+.atl-stream { border: 1px solid var(--rule); border-radius: 3px; overflow: hidden; }
+.atl-pk {
+  display: grid; grid-template-columns: 11ch minmax(0, 1fr) 6ch; gap: 8px;
+  padding: 6px var(--s3, 12px); border-bottom: 1px solid var(--rule);
+  font-family: var(--mono); font-size: 11px; background: var(--surface-2); color: var(--faint);
+  transition: background .2s, color .2s;
+}
+.atl-pk:last-child { border-bottom: 0; }
+.atl-pk .d { font-variant-numeric: tabular-nums; }
+.atl-pk .c { text-align: right; }
+.atl-pk.done { color: var(--muted); }
+.atl-pk.done .o { color: var(--ink-2); }
+.atl-pk.cur { background: color-mix(in srgb, var(--kyty) 20%, var(--surface)); color: var(--ink); font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { .atl-pk { transition: none; } }
+.atl-regfile { border: 1px solid var(--rule); border-radius: 3px; padding: 5px; display: flex; flex-direction: column; gap: 3px; min-height: 150px; }
+.atl-rg {
+  font-family: var(--mono); font-size: 10.5px; padding: 5px 8px; border-radius: 2px;
+  background: color-mix(in srgb, var(--guest) 12%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--guest) 30%, transparent); color: var(--ink-2);
+}
+.atl-rg.nu { background: var(--guest); border-color: var(--guest); color: #fff; font-weight: 600; }
+.atl-rg.empty { background: none; border: 1px dashed var(--rule); color: var(--faint); }
+.atl-out { margin-top: 8px; font-family: var(--mono); font-size: 11.5px; color: var(--faint); min-height: 1.6em; }
+.atl-out.hot { color: var(--ink); }
+
+/* ---- queues ---- */
+.atl-qgfx .atl-q {
+  border: 1px solid var(--rule); border-radius: 3px; padding: 8px 12px; background: var(--surface-2);
+  font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--ink-2);
+  display: flex; justify-content: space-between; transition: background .25s, border-color .25s;
+}
+.atl-q span { font-weight: 400; color: var(--faint); }
+.atl-q.busy { background: color-mix(in srgb, var(--guest) 18%, var(--surface)); border-color: var(--guest); color: var(--ink); }
+.atl-q.busy span { color: var(--guest); }
+.atl-q.blocked { background: color-mix(in srgb, var(--host) 18%, var(--surface)); border-color: var(--host); color: var(--ink); }
+.atl-q.blocked span { color: var(--host); }
+/* 8 columns = one compute pipe per row, so the 7x8 topology stays readable */
+.atl-qbank { display: grid; grid-template-columns: 4.5em repeat(8, 1fr); gap: 3px; max-width: 460px; align-items: center; }
+.atl-qbank .pl { font-family: var(--mono); font-size: 9.5px; color: var(--faint); text-align: right; padding-right: 4px; }
+.atl-qs { aspect-ratio: 1; border: 1px solid var(--rule); border-radius: 2px; background: var(--surface-2); transition: background .25s, border-color .25s; }
+.atl-qs.busy { background: var(--kyty); border-color: var(--kyty); }
+@media (prefers-reduced-motion: reduce) { .atl-q, .atl-qs { transition: none; } }
+
+/* ---- flip model ---- */
+.atl-bufs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.atl-buf {
+  border: 1px solid var(--rule); border-radius: 3px; padding: 10px; background: var(--surface-2);
+  font-family: var(--mono); font-size: 11.5px; color: var(--ink-2); transition: background .25s, border-color .25s;
+}
+.atl-buf span { display: block; font-size: 10px; color: var(--faint); margin-top: 3px; }
+.atl-buf.render { background: color-mix(in srgb, var(--guest) 18%, var(--surface)); border-color: var(--guest); }
+.atl-buf.flipq { background: color-mix(in srgb, var(--kyty) 20%, var(--surface)); border-color: var(--kyty); }
+.atl-buf.scanout { background: color-mix(in srgb, var(--host) 18%, var(--surface)); border-color: var(--host); }
+.atl-flipbar {
+  display: flex; justify-content: space-between; align-items: center; margin: 10px 0;
+  font-family: var(--mono); font-size: 11px; color: var(--muted);
+  padding: 7px 12px; border: 1px solid var(--rule); border-radius: 3px; background: var(--surface-2);
+}
+.atl-flipbar .vb { color: var(--faint); letter-spacing: .1em; text-transform: uppercase; font-size: 10px; }
+.atl-flipbar .vb.fire { color: #fff; background: var(--host); padding: 3px 8px; border-radius: 2px; font-weight: 600; }
+.atl-swap .atl-sw {
+  border: 1px dashed var(--rule); border-radius: 3px; padding: 10px 12px;
+  font-family: var(--mono); font-size: 11.5px; color: var(--faint); text-align: center;
+}
+.atl-swap .atl-sw.lit { border-style: solid; border-color: var(--host); background: color-mix(in srgb, var(--host) 14%, var(--surface)); color: var(--ink); }

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>KytyPS5 — Learning the emulator</title>
-<meta name="description" content="Three documents for learning the KytyPS5 PlayStation 5 emulator codebase: a complete book, an architecture guide, and a hands-on learning path.">
+<meta name="description" content="Four documents for learning the KytyPS5 PlayStation 5 emulator codebase: an animated visual atlas, a complete book, an architecture guide, and a hands-on learning path.">
 <style>
 :root{
   --ground:#EFF1F2;--surface:#FCFCFB;--surface-2:#F4F6F7;--surface-3:#E9EDEF;
@@ -61,12 +61,19 @@ h3{font-size:12.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--mut
 <div class="wrap">
 
 <header>
-  <div class="eyebrow">Unofficial learning material</div>
+  <div class="eyebrow">Unofficial learning material · four documents</div>
   <h1>Learning the KytyPS5 emulator</h1>
-  <p class="lede">KytyPS5 takes a program built for a games console — with its own operating system, its own graphics API, and its own idea of what memory looks like — and persuades it to run on a PC. These three documents explain how, from first principles to SPIR-V shader recompilation.</p>
+  <p class="lede">KytyPS5 takes a program built for a games console — with its own operating system, its own graphics API, and its own idea of what memory looks like — and persuades it to run on a PC. These four documents explain how, from first principles to SPIR-V shader recompilation.</p>
 </header>
 
 <div class="cards">
+
+  <a class="card" href="kytyps5-atlas.html">
+    <div class="top"><span class="badge a">If you learn by watching</span><span class="badge">19 animations</span><span class="badge">~40 minutes</span></div>
+    <h2>The Visual Atlas</h2>
+    <p>Every hard idea in the emulator, shown moving. How guest code runs with no CPU emulator, how the address space is carved up, how a file becomes a running program, which thread does what, and how command packets become pixels. Each animation plays on its own and steps by hand.</p>
+    <p class="meta">CPU · memory · startup · threads · GPU · presentation — the explanation lives in the caption that changes with each step</p>
+  </a>
 
   <a class="card" href="kytyps5-book.html">
     <div class="top"><span class="badge a">Start here if new</span><span class="badge">39 chapters</span><span class="badge">~3–4 hours</span></div>
@@ -106,3 +113,5 @@ h3{font-size:12.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--mut
 </div>
 </body>
 </html>
+
+

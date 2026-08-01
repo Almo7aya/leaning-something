@@ -642,6 +642,17 @@
     return drv;
   };
 
+  /* ---------------- public API ----------------
+     Exposed so a second file (atlas.js) can register more widgets and reuse
+     the helpers. Both files are loaded with `defer`, so they execute in order
+     and everything is registered before DOMContentLoaded mounts it. */
+  window.VIZ = {
+    register: function (name, fn) { REG[name] = fn; },
+    frame: frame, svg: svg, mk: mk, box: box, arrowDefs: arrowDefs,
+    driver: driver, litOnly: litOnly, esc: esc,
+    get REDUCED() { return REDUCED; }
+  };
+
   /* ---------------- mount everything ---------------- */
   function boot() {
     Array.prototype.forEach.call(document.querySelectorAll("[data-viz]"), function (el) {
@@ -654,5 +665,5 @@
     });
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
-  else boot();
+  else setTimeout(boot, 0);   // let a later-loaded file register first
 })();
