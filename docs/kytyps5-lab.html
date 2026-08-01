@@ -6,10 +6,10 @@
 <title>KytyPS5 — The Lab</title>
 <meta name="description" content="Eleven interactive tools for understanding a PlayStation 5 emulator: step a guest call, translate addresses, decode registers, drive CPU/GPU memory coherency, run a shader wave, build a command buffer.">
 <meta name="color-scheme" content="light dark">
-<link rel="stylesheet" href="assets/viz.css?v=3">
-<link rel="stylesheet" href="assets/lab.css?v=3">
-<script src="assets/viz.js?v=3" defer></script>
-<script src="assets/lab.js?v=3" defer></script>
+<link rel="stylesheet" href="assets/viz.css?v=4">
+<link rel="stylesheet" href="assets/lab.css?v=4">
+<script src="assets/viz.js?v=4" defer></script>
+<script src="assets/lab.js?v=4" defer></script>
 <style>
 :root{
   --ground:#EFF1F2; --surface:#FCFCFB; --surface-2:#F4F6F7; --surface-3:#E9EDEF;
@@ -148,7 +148,8 @@ section{padding-top:var(--s8);scroll-margin-top:var(--s4)}
     <ul>
       <li><strong>Real computation, not scripted playback.</strong> The address walker uses the actual band constants; the register decoder uses the actual shifts and masks from <code>pm4.h</code>; the wave simulator is a working interpreter for a slice of the RDNA&nbsp;2 instruction set.</li>
       <li><strong>You can break things on purpose.</strong> Draw without setting a render target. Exhaust the flexible-memory budget. Read registers with the wrong ABI. The error you get back is the one the emulator would give.</li>
-      <li><strong>Nothing is on a timer</strong>, so nothing moves until you move it.</li>
+      <li><strong>Every tool has a <span style="color:var(--guest)">▶ Run demo</span> button.</strong> Press it and the tool drives itself through a worked scenario, narrating each step — including the failure cases. Then the controls are yours.</li>
+      <li><strong>Nothing else is on a timer</strong>, so once a demo finishes nothing moves until you move it.</li>
     </ul>
   </div>
 </header>
@@ -363,4 +364,6 @@ section{padding-top:var(--s8);scroll-margin-top:var(--s4)}
 </script>
 </body>
 </html>
+
+
 

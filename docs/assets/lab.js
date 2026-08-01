@@ -76,6 +76,56 @@
   function status(row) { var s = h("span", "lab-status"); row.appendChild(s); return s; }
 
   /**
+   * Self-running demo. Every tool gets one so it can be understood without
+   * typing anything first; the controls stay live throughout, and starting to
+   * poke at them mid-demo just means you take over.
+   * steps = [{ say: "narration", run: fn, ms: optional override }]
+   */
+  function demoRunner(row, steps, ms) {
+    var btn = h("button", "lab-btn demo", "▶ Run demo");
+    btn.type = "button";
+    row.appendChild(btn);
+    var bar = h("div", "lab-demo");
+    bar.hidden = true;
+    row.parentNode.insertBefore(bar, row.nextSibling);
+
+    var i = 0, timer = null;
+    function stop() {
+      if (timer) { clearTimeout(timer); timer = null; }
+      btn.textContent = "▶ Run demo";
+      btn.classList.remove("on");
+      bar.hidden = true;
+    }
+    function tick() {
+      if (i >= steps.length) {
+        bar.innerHTML = '<span class="n">done</span>Now change anything above — it is all live.';
+        timer = setTimeout(stop, 3200);
+        return;
+      }
+      var s = steps[i++];
+      try { if (s.run) s.run(); } catch (err) { if (window.console) console.error("demo step", err); }
+      bar.innerHTML = '<span class="n">' + i + " / " + steps.length + "</span>" + s.say;
+      timer = setTimeout(tick, s.ms || ms || 2400);
+    }
+    btn.addEventListener("click", function () {
+      if (timer) { stop(); return; }
+      i = 0; bar.hidden = false;
+      btn.textContent = "■ Stop"; btn.classList.add("on");
+      tick();
+    });
+    // stop if the reader scrolls away
+    if ("IntersectionObserver" in window) {
+      new IntersectionObserver(function (e) {
+        e.forEach(function (en) { if (!en.isIntersecting && timer) stop(); });
+      }, { threshold: 0 }).observe(row.parentNode);
+    }
+    return { stop: stop };
+  }
+  /** Fire the events a control would fire if a person had touched it. */
+  function setInput(el, v) { el.value = v; el.dispatchEvent(new Event("input", { bubbles: true })); }
+  function setSelect(el, v) { el.value = v; el.dispatchEvent(new Event("change", { bubbles: true })); }
+
+  /**
    * 32-bit ruler. fields = [{name, shift, width, cls}]. Clicking a bit toggles it
    * and calls onToggle with the new value.
    */
@@ -210,6 +260,23 @@
     abiSel.addEventListener("change", render);
     argIn.forEach(function (i) { i.addEventListener("input", function () { reset(); }); });
     reset();
+
+    demoRunner(row2, [
+      { say: "Six arguments to pass. The guest sets them one register at a time.",
+        run: function () { ["A1", "B2", "C3", "D4", "E5", "F6"].forEach(function (v, k) { setInput(argIn[k], v); }); setSelect(abiSel, "sysv"); } },
+      { say: "Stepping the first three <code>mov</code> instructions — watch <code>rdi</code>, <code>rsi</code> and <code>rdx</code> fill.",
+        run: function () { step(); step(); step(); } },
+      { say: "And the rest: <code>rcx</code>, <code>r8</code>, <code>r9</code>. The call is now set up.",
+        run: function () { step(); step(); step(); step(); } },
+      { say: "The callee has <code>KYTY_SYSV_ABI</code>, so it reads System&nbsp;V registers. <b>All six arguments arrive correctly.</b>",
+        run: function () { setSelect(abiSel, "sysv"); }, ms: 3000 },
+      { say: "Now suppose someone forgot the attribute. Same registers, read as <b>Microsoft x64</b> instead…",
+        run: function () { setSelect(abiSel, "ms"); }, ms: 3400 },
+      { say: "<b>Every argument is wrong.</b> <code>handle</code> is now the <code>buffer</code> pointer, and the last two were never passed at all — they would be read from the stack as garbage.",
+        ms: 4200 },
+      { say: "Put the attribute back and the two worlds line up again.",
+        run: function () { setSelect(abiSel, "sysv"); }, ms: 2600 }
+    ]);
   });
 
   /* ============================================================
@@ -246,10 +313,13 @@
       b.addEventListener("click", function () { addrIn.value = p[1]; update(); });
     });
 
+    // The band/module facts are wide-format text, so they get the full width
+    // rather than being squeezed into a column beside the bit ruler.
+    body.appendChild(h("div", "lab-h", "which band, and what lives there"));
+    var bandEl = h("div", "lab-fields two"); body.appendChild(bandEl);
+
     var out = h("div", "lab-2");
     var oL = h("div"), oR = h("div");
-    oL.appendChild(h("div", "lab-h", "which band, and what lives there"));
-    var bandEl = h("div", "lab-fields"); oL.appendChild(bandEl);
     oL.appendChild(h("div", "lab-h", "page decomposition"));
     var pageEl = h("div", "lab-steps"); oL.appendChild(pageEl);
     oR.appendChild(h("div", "lab-h", "low 32 bits — page index vs offset"));
@@ -274,20 +344,20 @@
       }
 
       var rows = [];
-      rows.push(['<span class="fn">address</span><span class="fb">&nbsp;</span><span class="fv">0x' + hx64(addr, 10) + "</span>", false]);
-      rows.push(['<span class="fn">band</span><span class="fb">&nbsp;</span><span class="fv">' +
+      rows.push(['<span class="fn">address</span><span class="fv">0x' + hx64(addr, 10) + "</span>", false]);
+      rows.push(['<span class="fn">band</span><span class="fv">' +
         (band ? band.n : "outside every known band") + "</span>", !band]);
       if (band) {
-        rows.push(['<span class="fn">band range</span><span class="fb">&nbsp;</span><span class="fv">0x' +
+        rows.push(['<span class="fn">band range</span><span class="fv">0x' +
           hx64(band.lo, 10) + " – 0x" + hx64(band.hi, 10) + "</span>", false]);
-        rows.push(['<span class="fn">owner</span><span class="fb">&nbsp;</span><span class="fv" style="color:var(--muted)">' + band.who + "</span>", false]);
+        rows.push(['<span class="fn">owner</span><span class="fv" style="color:var(--muted)">' + band.who + "</span>", false]);
       }
       if (mod) {
-        rows.push(['<span class="fn">module</span><span class="fb">&nbsp;</span><span class="fv">' + mod.n + "</span>", false]);
-        rows.push(['<span class="fn">module base</span><span class="fb">&nbsp;</span><span class="fv">0x' + hx64(mod.base, 10) + "</span>", false]);
-        rows.push(['<span class="fn">offset in module</span><span class="fb">&nbsp;</span><span class="fv">+0x' + hx64(addr - mod.base, 0) + "</span>", false]);
+        rows.push(['<span class="fn">module</span><span class="fv">' + mod.n + "</span>", false]);
+        rows.push(['<span class="fn">module base</span><span class="fv">0x' + hx64(mod.base, 10) + "</span>", false]);
+        rows.push(['<span class="fn">offset in module</span><span class="fv">+0x' + hx64(addr - mod.base, 0) + "</span>", false]);
       } else if (band && band.k === "kyty") {
-        rows.push(['<span class="fn">module</span><span class="fb">&nbsp;</span><span class="fv" style="color:var(--muted)">no module loaded at this address</span>', false]);
+        rows.push(['<span class="fn">module</span><span class="fv" style="color:var(--muted)">no module loaded at this address</span>', false]);
       }
       bandEl.innerHTML = rows.map(function (r) { return '<div class="' + (r[1] ? "hi" : "") + '">' + r[0] + "</div>"; }).join("");
 
@@ -317,6 +387,21 @@
     }
     addrIn.addEventListener("input", update);
     update();
+
+    demoRunner(row, [
+      { say: "Start inside the main executable, at <code>0x900012F40</code>. The band is <b>system reserved</b> and the module is <code>eboot.bin</code>.",
+        run: function () { setInput(addrIn, "0x900012F40"); }, ms: 3200 },
+      { say: "Add <code>0x10000000</code> — 256 MB, the spacing the loader uses. We land in the <b>next module</b>.",
+        run: function () { setInput(addrIn, "0x910000080"); }, ms: 3200 },
+      { say: "Change only the last few digits and watch the bit ruler: <b>just the low 14 bits move</b>, because a guest page is <code>0x4000</code> bytes.",
+        run: function () { setInput(addrIn, "0x910003FFF"); }, ms: 3400 },
+      { say: "One more byte and the page index increments — a new 16 KB page, and four new host pages.",
+        run: function () { setInput(addrIn, "0x910004000"); }, ms: 3400 },
+      { say: "Jump to the <b>user area</b>. This is where every guest allocation lives: direct, flexible, pooled, and thread stacks.",
+        run: function () { setInput(addrIn, "0x1000A34000"); }, ms: 3200 },
+      { say: "And here is the emulator's own image, linked far above anything the guest can reach — which is why a guest pointer and a host pointer can never be confused by value alone.",
+        run: function () { setInput(addrIn, "0x700000001234"); }, ms: 4000 }
+    ]);
   });
 
   /* ============================================================
@@ -423,6 +508,26 @@
     rnd.addEventListener("click", function () { cur = (Math.random() * 0xFFFFFFFF) >>> 0; valIn.value = "0x" + hx(cur, 8); render(); });
     zero.addEventListener("click", function () { cur = 0; valIn.value = "0x00000000"; render(); });
     fromInput();
+
+    function flip(bit) { cur = (cur ^ (1 << bit)) >>> 0; valIn.value = "0x" + hx(cur, 8); render(); }
+    demoRunner(row, [
+      { say: "<code>CB_COLOR0_INFO</code> describes a render target. Bits 6:2 are the surface format — right now <b>16</b>.",
+        run: function () { setSelect(sel, "CB_COLOR0_INFO"); setInput(valIn, "0x0000280A"); }, ms: 3200 },
+      { say: "Flip bit 3 and the format becomes something else entirely. <b>One bit changes what the render target is.</b>",
+        run: function () { flip(3); }, ms: 3200 },
+      { say: "Bit 13 is <code>FAST_CLEAR</code>. Turning it off means the surface can no longer be cleared through metadata alone.",
+        run: function () { flip(13); }, ms: 3000 },
+      { say: "Now <code>DB_DEPTH_CONTROL</code>. <code>Z_ENABLE</code> and <code>Z_WRITE_ENABLE</code> are on, and <code>ZFUNC</code> is a three-bit compare function.",
+        run: function () { setSelect(sel, "DB_DEPTH_CONTROL"); setInput(valIn, "0x00000047"); }, ms: 3400 },
+      { say: "Set <code>ZFUNC</code> to 7 — <b>always</b>. Depth testing that never rejects anything, which is a common way to lose all depth sorting.",
+        run: function () { setInput(valIn, "0x00000077"); }, ms: 3600 },
+      { say: "The same machinery decodes GPU resource descriptors. This is dword 3 of a <b>T#</b> — an image — carrying its mip range, tiling mode and dimensionality.",
+        run: function () { setSelect(sel, "T# dword 3 (image descriptor)"); }, ms: 3600 },
+      { say: "And a <b>V#</b> buffer descriptor. Note bits 31:30: the type field is how the emulator tells a buffer from a sampler.",
+        run: function () { setSelect(sel, "V# dword 3 (buffer descriptor)"); }, ms: 3600 },
+      { say: "Random values mostly decode to nonsense — a decent intuition for why the real handlers assert so hard on fields they do not recognise.",
+        run: function () { rnd.click(); }, ms: 3000 }
+    ]);
   });
 
   /* ============================================================
@@ -579,6 +684,31 @@
 
     rstBtn.addEventListener("click", reset);
     reset();
+
+    function clickByte(idx) {
+      var c = cpuEl.querySelector('[data-i="' + idx + '"]');
+      if (c) c.click();
+    }
+    demoRunner(row, [
+      { say: "Guest memory on the left, the GPU's copy on the right — empty, because nothing has been uploaded yet.",
+        run: reset, ms: 2800 },
+      { say: "The game writes a texture with the CPU. Two bytes, in two different pages.",
+        run: function () { clickByte(9); clickByte(34); }, ms: 3000 },
+      { say: "A draw needs that texture. <b>Only the dirty pages are copied</b> — read the log for how many it found.",
+        run: function () { drawBtn.click(); }, ms: 3600 },
+      { say: "Upload done, and every page is now <b>write-protected</b>. The GPU owns this data.",
+        ms: 3000 },
+      { say: "The game writes again — and this time the page is protected, so the CPU <b>faults</b>.",
+        run: function () { clickByte(50); }, ms: 3800 },
+      { say: "The handler marked the page dirty, lifted protection and resumed. The store completed and <b>the game never knew any of it happened</b>.",
+        ms: 4000 },
+      { say: "Next draw re-uploads that one page. Not the whole surface — just what changed.",
+        run: function () { drawBtn.click(); }, ms: 3400 },
+      { say: "Now the other direction: the GPU writes a render target, so guest memory becomes the stale copy.",
+        run: function () { gpuBtn.click(); }, ms: 3400 },
+      { say: "The CPU reads it, and the download path copies it back. Same machinery, running the other way.",
+        run: function () { readBtn.click(); }, ms: 3400 }
+    ]);
   });
 
   /* ============================================================
@@ -737,6 +867,25 @@
       sel = +d.dataset.pick; render();
     });
     render();
+
+    function alloc(kind, size) { setSelect(kindSel, kind); setInput(sizeIn, String(size)); addBtn.click(); }
+    demoRunner(row, [
+      { say: "Empty user area, 512 MB of it. Watch it fill.", run: function () { rstBtn.click(); }, ms: 2400 },
+      { say: "Seven <b>direct</b> allocations of 64 MB. Direct memory is a physical reservation that then gets mapped — note the physical offset on the selected one.",
+        run: function () { for (var k = 0; k < 7; k++) alloc("direct", 64); }, ms: 3600 },
+      { say: "Free the second and the fourth. Two 64 MB holes.",
+        run: function () { sel = 1; freeBtn.click(); sel = 2; freeBtn.click(); }, ms: 3200 },
+      { say: "Now ask for 128 MB. There is <b>plenty</b> of free space — but no single hole is big enough. <b>That is fragmentation</b>, and it is a real failure mode.",
+        run: function () { alloc("direct", 128); }, ms: 4400 },
+      { say: "64 MB fits, though, because it matches a hole exactly.",
+        run: function () { alloc("direct", 64); }, ms: 3000 },
+      { say: "<b>Flexible</b> memory is different: it comes from a fixed per-title budget declared in <code>param.json</code>, not from whatever is free.",
+        run: function () { rstBtn.click(); alloc("flexible", 96); }, ms: 3600 },
+      { say: "Ask for another 96 MB and it fails with <code>ENOMEM</code> — even though the address space is almost entirely empty.",
+        run: function () { alloc("flexible", 96); }, ms: 4200 },
+      { say: "The same request as <b>pooled</b> memory succeeds, because it draws on a different pool entirely.",
+        run: function () { alloc("pooled", 96); }, ms: 3400 }
+    ]);
   });
 
   /* ============================================================
@@ -938,6 +1087,29 @@
     rstBtn.addEventListener("click", reset);
     [wSel, pSel, dSel].forEach(function (s) { s.addEventListener("change", reset); });
     reset();
+
+    demoRunner(row2, [
+      { say: "64 lanes, each holding its own value of <code>x</code>. One program counter for all of them.",
+        run: function () { setSelect(wSel, "64"); setSelect(pSel, "if / else"); setSelect(dSel, "half"); }, ms: 3000 },
+      { say: "<code>v_cmp_gt_f32</code> compares in <b>every lane at once</b>. It does not branch — it fills a 64-bit mask in <code>VCC</code>.",
+        run: step, ms: 3400 },
+      { say: "<b>This instruction is the branch.</b> <code>s_and_saveexec_b64</code> saves the old mask and narrows <code>EXEC</code> to the lanes that passed. No jump happened.",
+        run: step, ms: 4200 },
+      { say: "The <em>then</em> body runs. Only the blue lanes keep their result — but all 64 lanes spent the time.",
+        run: step, ms: 3400 },
+      { say: "<code>s_andn2_b64</code> flips <code>EXEC</code> to exactly the lanes that failed. Again: arithmetic, not a jump.",
+        run: step, ms: 3400 },
+      { say: "The <em>else</em> body runs for those. <b>Both branches have now executed, one after the other.</b> That is what divergence costs.",
+        run: step, ms: 4000 },
+      { say: "<code>EXEC</code> is restored and the wave continues whole. Nowhere in that sequence was there a merge point — which is precisely what the recompiler has to invent for SPIR-V.",
+        run: function () { step(); step(); }, ms: 4400 },
+      { say: "With <b>no divergence</b> — every lane positive — the else body still executes, with <code>EXEC</code> at zero, writing nothing.",
+        run: function () { setSelect(dSel, "allpos"); runBtn.click(); }, ms: 4000 },
+      { say: "A <b>nested</b> if needs a second saved mask. Watch the scalar registers: that nesting is what the structuriser has to rebuild as nested merge blocks.",
+        run: function () { setSelect(pSel, "nested if"); runBtn.click(); }, ms: 4200 },
+      { say: "And <code>s_cbranch_execz</code> is the one place a <b>real jump</b> happens — only because every single lane failed the test.",
+        run: function () { setSelect(pSel, "early exit"); setSelect(dSel, "alt"); runBtn.click(); }, ms: 4000 }
+    ]);
   });
 
   /* ============================================================
@@ -1068,6 +1240,26 @@
     }
     iSel.addEventListener("change", render);
     render();
+
+    function press(b, on) { if ((b.getAttribute("aria-pressed") === "true") !== on) b.click(); }
+    demoRunner(row, [
+      { say: "<code>v_add_f32</code> — the easy case. Raw bits, decoded instruction, IR, SPIR-V: almost one to one.",
+        run: function () { setSelect(iSel, "v_add_f32"); press(negBtn, false); press(absBtn, false); press(clampBtn, false); }, ms: 3400 },
+      { say: "RDNA&nbsp;2 folds modifiers into the encoding. Turn on <b>clamp</b> and SPIR-V needs an extra explicit instruction.",
+        run: function () { press(clampBtn, true); }, ms: 3400 },
+      { say: "Add <b>neg</b> and <b>abs</b> — three folded modifiers, three more SPIR-V instructions the emitter has to generate.",
+        run: function () { press(negBtn, true); press(absBtn, true); }, ms: 3800 },
+      { say: "Now a buffer load. The hardware bounds-checks it <b>for free</b>…",
+        run: function () { press(negBtn, false); press(absBtn, false); press(clampBtn, false); setSelect(iSel, "buffer_load_dword"); }, ms: 3200 },
+      { say: "…but SPIR-V does not, so the emitter has to produce a comparison <em>and a branch</em>. This is exactly why such an instruction cannot sit in a loop header — it would split the block.",
+        ms: 4600 },
+      { say: "<code>s_and_saveexec_b64</code> has <b>no SPIR-V equivalent at all</b>. It <em>is</em> the control flow, and what it becomes depends entirely on whether structurisation succeeded.",
+        run: function () { setSelect(iSel, "s_and_saveexec_b64"); }, ms: 4600 },
+      { say: "Image sampling maps fairly cleanly — as long as the T# and S# descriptors have already been recovered, which is its own problem.",
+        run: function () { setSelect(iSel, "image_sample"); }, ms: 3600 },
+      { say: "And <code>exp</code> — the only way a shader outputs anything at all.",
+        run: function () { setSelect(iSel, "exp (mrt0)"); }, ms: 3200 }
+    ]);
   });
 
   /* ============================================================
@@ -1176,6 +1368,23 @@
     [xIn, yIn, pIn].forEach(function (i) { i.addEventListener("input", render); });
     [bppSel, mSel].forEach(function (s) { s.addEventListener("change", render); });
     render();
+
+    demoRunner(row, [
+      { say: "Texel (3, 2) in a 256-wide RGBA8 texture, stored <b>linearly</b>. Row stride is 1024 bytes, so the offset is 2·1024 + 3·4 = 2060.",
+        run: function () { setInput(xIn, "3"); setInput(yIn, "2"); setInput(pIn, "256"); setSelect(bppSel, "4"); setSelect(mSel, "linear"); }, ms: 4000 },
+      { say: "Look at the bottom line: a 2×2 bilinear fetch — the four texels any filtered sample reads — touches <b>two cache lines</b>, because the row below is 1024 bytes away.",
+        ms: 4400 },
+      { say: "Switch to <b>tiled</b>. The offset changes to 2068, and the four texels of that same fetch now share <b>one cache line</b>. <b>That is the entire reason tiling exists.</b>",
+        run: function () { setSelect(mSel, "tiled"); }, ms: 4800 },
+      { say: "The highlighted texels are the ones sharing your cache line — see how they form a 2D block instead of a horizontal run.",
+        ms: 3600 },
+      { say: "At 16 bytes per texel fewer of them fit in a line, so the benefit shrinks. Layout choice depends on format, which is why <code>tile.cpp</code> has a family per bytes-per-element.",
+        run: function () { setSelect(bppSel, "16"); }, ms: 4400 },
+      { say: "And a warning worth knowing: make the texture narrow enough that a whole row fits in one cache line and <b>both layouts behave identically</b>. Tiling only pays off at scale.",
+        run: function () { setSelect(bppSel, "4"); setInput(pIn, "8"); setSelect(mSel, "linear"); }, ms: 4800 },
+      { say: "Back to a realistic size.",
+        run: function () { setInput(pIn, "256"); setSelect(mSel, "tiled"); }, ms: 2600 }
+    ]);
   });
 
   /* ============================================================
@@ -1297,6 +1506,30 @@
       run();
     });
     render();
+
+    function add(name) {
+      var b = null;
+      [].slice.call(pal.querySelectorAll("[data-k]")).forEach(function (x) { if (x.dataset.k === name) b = x; });
+      if (b) b.click();
+    }
+    demoRunner(row2, [
+      { say: "An empty command buffer. We will build a frame packet by packet.",
+        run: function () { clrBtn.click(); }, ms: 2600 },
+      { say: "Start with just a <b>draw</b>. Run it.",
+        run: function () { add("DRAW_INDEX_AUTO"); runBtn.click(); }, ms: 3400 },
+      { say: "It fails, and the error names exactly what is missing. <b>A draw packet carries only an index count and flags</b> — everything else must already be in the register file.",
+        ms: 4400 },
+      { say: "Add a render target and try again. Better, but still not enough.",
+        run: function () { clrBtn.click(); add("SET_CONTEXT_REG · render target"); add("DRAW_INDEX_AUTO"); runBtn.click(); }, ms: 4000 },
+      { say: "Add both shaders and the primitive type. Now the draw is valid…",
+        run: function () { clrBtn.click(); add("SET_CONTEXT_REG · render target"); add("SET_CONTEXT_REG · depth"); add("SET_SH_REG · vertex shader"); add("SET_SH_REG · pixel shader"); add("SET_UCONFIG_REG · primitive"); add("DRAW_INDEX_AUTO"); runBtn.click(); }, ms: 4200 },
+      { say: "…but nothing reaches the screen, because we never flipped. Rendering and presenting are separate on this hardware.",
+        ms: 3800 },
+      { say: "Add an end-of-pipe fence and a flip. <b>That is a complete frame</b> — eight packets.",
+        run: function () { add("RELEASE_MEM · fence"); add("NOP · R_FLIP"); runBtn.click(); }, ms: 4200 },
+      { say: "The dwords on the left are real encodings from the <code>KYTY_PM4</code> macro — the count field genuinely holds <code>len − 2</code>.",
+        ms: 3800 }
+    ]);
   });
 
   /* ============================================================
@@ -1387,6 +1620,25 @@
     });
     rstBtn.addEventListener("click", reset);
     reset();
+
+    demoRunner(row, [
+      { say: "Eight command buffers, one recording, nothing in flight, semaphore at zero.",
+        run: reset, ms: 2800 },
+      { say: "Record two draws into buffer 0. Each retains a staging buffer and a descriptor set against that buffer's fence.",
+        run: function () { recBtn.click(); recBtn.click(); }, ms: 3400 },
+      { say: "Submit it. The semaphore will reach tick 1 when the GPU finishes — and <b>those resources cannot be freed until then</b>, because the GPU is still reading them.",
+        run: function () { subBtn.click(); }, ms: 4200 },
+      { say: "Keep going. Record and submit until the rotation is nearly used up.",
+        run: function () { for (var k = 0; k < 5; k++) { recBtn.click(); subBtn.click(); } }, ms: 3800 },
+      { say: "Two more, and every one of the eight is in flight.",
+        run: function () { recBtn.click(); subBtn.click(); recBtn.click(); subBtn.click(); }, ms: 3600 },
+      { say: "<b>Now the scheduler would block.</b> There is no free buffer to record into, so the CPU has to wait for a fence — this is back-pressure from the GPU, and it is how a game gets paced.",
+        ms: 4600 },
+      { say: "The GPU finishes the oldest. Its fence signals, and its retained resources are released all at once.",
+        run: function () { cmpBtn.click(); }, ms: 4000 },
+      { say: "Complete two more and the rotation frees up. Note the tick only ever increases — that monotonic counter is what a timeline semaphore gives you.",
+        run: function () { cmpBtn.click(); cmpBtn.click(); }, ms: 4000 }
+    ]);
   });
 
   /* ============================================================
@@ -1498,6 +1750,29 @@
     });
     clrBtn.addEventListener("click", function () { cache = []; st.textContent = ""; render(false); });
     render(false);
+
+    function set(k, v) { state[k] = v; render(true); }
+    demoRunner(row, [
+      { say: "An empty pipeline cache and one state configuration. Look it up.",
+        run: function () { clrBtn.click(); }, ms: 2800 },
+      { say: "<b>Miss</b> — so Vulkan has to create a pipeline. On a real driver that is milliseconds, and it happens mid-frame.",
+        run: function () { lookBtn.click(); }, ms: 3600 },
+      { say: "Look up the identical state again: <b>hit</b>. This is the common case, and it is free.",
+        run: function () { lookBtn.click(); }, ms: 3200 },
+      { say: "Turn blend on. One toggle, and the packed key bytes change — the changed ones are highlighted.",
+        run: function () { set("blend", 1); }, ms: 3400 },
+      { say: "Another miss, another pipeline. <b>Two now.</b>",
+        run: function () { lookBtn.click(); }, ms: 3200 },
+      { say: "Change the depth compare, and the topology. Each distinct combination is its own immutable object.",
+        run: function () { set("zfunc", 2); lookBtn.click(); set("topology", 2); lookBtn.click(); }, ms: 4000 },
+      { say: "Four pipelines from three toggles. Multiply that by every material in a game and you have the first-encounter stutter people complain about.",
+        ms: 4200 },
+      { say: "Now turn <b>depth test off</b>. The fields that depend on it grey out and <b>zero in the key</b> — state that cannot affect the result must not affect the hash, or you get duplicate pipelines that are actually identical.",
+        run: function () { set("depthtest", 0); }, ms: 5000 },
+      { say: "Turn it back on with the same compare function and you land on an existing entry again: <b>hit</b>.",
+        run: function () { set("depthtest", 1); lookBtn.click(); }, ms: 4000 }
+    ]);
   });
 })();
+
 

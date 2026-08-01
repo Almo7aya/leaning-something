@@ -48,6 +48,26 @@
 .lab-status.err { color: var(--host); }
 .lab-status.ok { color: var(--guest); }
 
+/* ---- self-running demo ---- */
+.lab-btn.demo {
+  background: var(--guest); border-color: var(--guest); color: #fff; font-weight: 600;
+}
+.lab-btn.demo:hover { color: #fff; filter: brightness(1.08); }
+.lab-btn.demo.on { background: var(--host); border-color: var(--host); }
+.lab-demo {
+  margin: 0 0 var(--s4,16px); padding: var(--s3,12px) var(--s4,16px);
+  border: 1px solid color-mix(in srgb, var(--guest) 40%, transparent);
+  border-left: 3px solid var(--guest); border-radius: 3px;
+  background: color-mix(in srgb, var(--guest) 8%, var(--surface));
+  font-family: var(--serif); font-size: 15px; line-height: 1.5; color: var(--ink);
+}
+.lab-demo .n {
+  font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--guest); font-weight: 600; margin-right: 8px;
+}
+.lab-demo code { font-family: var(--mono); font-size: .87em; }
+.lab-demo[hidden] { display: none; }
+
 /* ---- generic split layout ---- */
 .lab-2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s5,24px); }
 .lab-2.wide-l { grid-template-columns: 1.4fr 1fr; }
@@ -88,9 +108,13 @@
 }
 .lab-fields .fn { font-family: var(--mono); font-size: 11.5px; color: var(--ink); }
 .lab-fields .fb { font-family: var(--mono); font-size: 10px; color: var(--faint); }
-.lab-fields .fv { font-family: var(--mono); font-size: 11.5px; color: var(--guest); word-break: break-all; }
+/* anywhere, not break-all: long hex still wraps, but words are not split mid-syllable */
+.lab-fields .fv { font-family: var(--mono); font-size: 11.5px; color: var(--guest); overflow-wrap: anywhere; }
 .lab-fields > div.hi { background: var(--surface-3); }
-@media (max-width: 620px) { .lab-fields > div { grid-template-columns: 1fr; gap: 2px; } }
+/* two-column variant for tools with no "bits" column to show */
+.lab-fields.two > div { grid-template-columns: minmax(0, 9.5em) minmax(0, 1fr); }
+.lab-fields.two .fv { text-align: right; }
+@media (max-width: 620px) { .lab-fields > div, .lab-fields.two > div { grid-template-columns: 1fr; gap: 2px; } .lab-fields.two .fv { text-align: left; } }
 
 /* ---- registers ---- */
 .lab-regs { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 3px; }
