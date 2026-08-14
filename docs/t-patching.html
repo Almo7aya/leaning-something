@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Patching guest instructions — KytyPS5</title>
+<meta name="description" content="Some guest instructions cannot run as written on the host. The loader rewrites them before execution.">
+<link rel="stylesheet" href="assets/viz.css?v=17">
+<link rel="stylesheet" href="assets/atlas.css?v=17">
+<link rel="stylesheet" href="assets/lab.css?v=17">
+<link rel="stylesheet" href="assets/tutor.css?v=17">
+<link rel="stylesheet" href="assets/app.css?v=17">
+<link rel="stylesheet" href="assets/highlight.css?v=17">
+</head>
+<body>
+
+<main class="topic" data-app-content>
+
+  <p class="topic-eyebrow">Loading a game · 08</p>
+  <h1 id="patching-guest-instructions">Patching guest instructions</h1>
+  <p class="topic-deck">
+    Guest code assumes a working <code>fs</code> segment and a FreeBSD-shaped world. On Windows those assumptions are false, and since the code runs natively there is no interpreter to fix them up on the fly. So the loader edits the instructions themselves.
+  </p>
+
+  <section class="band band-read">
+    <div class="band-h"><span class="band-t">Read</span></div>
+    <div class="prose">
+<p class="deck">Two instruction patterns in PS5 code cannot execute on Windows. Since there is no recompiler to fix them during translation, the loader rewrites the bytes in place before the code is ever run.</p>
+
+  <h4 id="problem-1-thread-local-storage-through-fs">Problem 1 — thread-local storage through <code>fs</code></h4>
+  <p>PS5 code reads its thread control block with a single instruction:</p>
+<pre>64 48 8B 04 25 00 00 00 00     mov rax, qword ptr <b>fs:[0]</b></pre>
+
+  <p>On Windows the <code>fs</code> segment belongs to the operating system and points at the Thread Information Block. Reading <code>fs:[0]</code> returns something unrelated, and the guest then dereferences it.</p>
+
+  <p>The fix replaces those exact nine bytes with a call to a generated stub, then moves the result into whatever register the original targeted:</p>
+
+  <div class="filename">src/loader/runtimeLinker.cpp:1337</div>
+<pre>const uint8_t tls_pattern[5] = {0x64, 0x48, 0x8B, 0x00, 0x25};
+
+for (auto* ptr = start_ptr; ptr &lt;= end_ptr; ptr++) {
+    auto*  inst_ptr     = ptr;
+    size_t prefix_count = 0;
+    <i>// compilers pad this sequence with up to three 0x66 prefixes</i>
+    while (prefix_count &lt; 3 &amp;&amp; inst_ptr &lt; start_ptr + size &amp;&amp; *inst_ptr == 0x66) {
+        inst_ptr++; prefix_count++;
+    }
+
+    const uint8_t modrm = inst_ptr[3];
+    if (memcmp(inst_ptr, tls_pattern, 3) == 0 &amp;&amp; (modrm &amp; 0xc7u) == 0x04u &amp;&amp;
+        inst_ptr[4] == tls_pattern[4] &amp;&amp;
+        *reinterpret_cast&lt;const uint32_t*&gt;(inst_ptr + 5) == 0) {
+
+        const auto reg = (modrm &gt;&gt; 3u) &amp; 7u;      <i>// which register was the destination</i>
+        EXIT_NOT_IMPLEMENTED(reg == 4u);          <i>// rsp would be nonsense</i>
+
+        auto* code = new (ptr) <b>Jit::Call9</b>;
+        code-&gt;SetFunc(reg == 0 ? program-&gt;tls.handler_vaddr
+                               : program-&gt;tls.handler_vaddr + Jit::TlsRegStub::GetOffset(reg));
+        ...
+    }
+}</pre>
+
+  <p><code>Jit::Call9</code> is exactly nine bytes, so the replacement is size-neutral and no addresses shift:</p>
+
+  <div class="filename">src/loader/jit.h:68</div>
+<pre>struct Call9 {
+    void SetFunc(Handler func) { <i>// compute a rip-relative displacement</i> }
+    static uint64_t GetSize() { return 9; }
+
+    <i>// call func      E8 xx xx xx xx</i>
+    <i>// mov  rax,rax   48 89 C0</i>
+    <i>// nop            90</i>
+    uint8_t code[9] = {0xE8, 0, 0, 0, 0, 0x48, 0x89, 0xC0, 0x90};
+};</pre>
+
+  <p>The <code>mov rax,rax</code> byte is rewritten by <code>SetOutputReg</code> so the value lands in the register the original instruction wanted. For registers other than <code>rax</code> the stub jumps to a per-register variant at a fixed offset (<code>TlsRegStub::GetOffset(reg)</code>), each of which does <code>call handler; mov &lt;reg&gt;, rax</code>.</p>
+
+  <h4 id="what-the-handler-does">What the handler does</h4>
+  <div class="filename">src/loader/runtimeLinker.cpp:1296</div>
+<pre>static KYTY_MS_ABI uint8_t* TlsMainGetAddr() {
+    if (g_tls_cached_main_program == g_tls_main_program &amp;&amp; g_tls_cached_main_tcb != nullptr) {
+        return g_tls_cached_main_tcb;                       <i>// fast path</i>
+    }
+    g_tls_cached_main_program = g_tls_main_program;
+    g_tls_cached_main_tcb =
+        RuntimeLinker::TlsGetAddr(g_tls_main_program) + g_tls_main_program-&gt;tls.tcb_offset;
+    return g_tls_cached_main_tcb;
+}</pre>
+
+  <p>Note <code>KYTY_MS_ABI</code>: this is called from generated code that has already switched conventions. The <code>SafeCall</code> stub of <a href="t-calling-conventions.html">topic 03</a> sits between them, saving flags and volatile registers, aligning the stack and reserving shadow space.</p>
+
+  <div class="callout h">
+    <span class="lbl">Why this is expensive but acceptable</span>
+    <p>A single instruction has become a call plus register spills. Thread-local reads are common but not usually in the hottest loops, and the cached fast path keeps the handler short. The alternative — a full recompiler — costs vastly more.</p>
+  </div>
+
+  <h4 id="problem-2-the-stack-canary">Problem 2 — the stack canary</h4>
+  <p>Compiler stack-protector code stores a guard value through <code>fs:[0x28]</code>. With <code>fs</code> wrong, that becomes a write to address <code>0x28</code> and faults immediately:</p>
+
+  <div class="filename">src/loader/runtimeLinker.cpp:1313</div>
+<pre>const uint8_t fs_store_pattern[8] = {0x64, 0xc7, 0x04, 0x25, 0x28, 0x00, 0x00, 0x00};
+
+for (auto* ptr = start_ptr; ptr &lt;= end_ptr; ptr++) {
+    if (memcmp(ptr, fs_store_pattern, sizeof(fs_store_pattern)) == 0) {
+        LOGF("Patch fs:[0x28] store at addr: [%016" PRIx64 "]\n", (uint64_t)ptr);
+
+        <i>// recognise the specific "canary failed → ud2" epilogue</i>
+        if (ptr + 16 &lt; start_ptr + size &amp;&amp; ptr[12] == 0xcd &amp;&amp; ptr[13] == 0x45 &amp;&amp;
+            ptr[14] == 0x90 &amp;&amp; ptr[15] == 0x0f &amp;&amp; ptr[16] == 0x0b) {
+            ptr[0] = <b>0x5d</b>;                    <i>// pop rbp</i>
+            ptr[1] = <b>0xc3</b>;                    <i>// ret</i>
+            std::memset(ptr + 2, 0x90, 15);   <i>// nop the rest</i>
+        } else {
+            std::memset(ptr, 0x90, 12);       <i>// just nop the store</i>
+        }
+    }
+}</pre>
+
+  <p>Removing the canary weakens a security feature that is meaningless here — the guest is already running unsandboxed in the emulator's own process — so nothing is lost.</p>
+
+  <h4 id="how-to-see-this-yourself">How to see this yourself</h4>
+  <p>Run any title and grep the log for <code>Patch tls at addr</code>. Take one of those addresses into a debugger and look at the nine bytes: you will find <code>E8 …</code> where the ELF file on disk has <code>64 48 8B 04 25 00 00 00 00</code>. Seeing that once makes the whole mechanism concrete in a way no description does.</p>
+    </div>
+  </section>
+
+  <section class="band band-watch">
+    <div class="band-h"><span class="band-t">Watch</span></div>
+    <p class="band-why">
+      Byte by byte: an instruction the host cannot honour, replaced in place with one it can. Note that the replacement must be the same length or everything after it shifts.
+    </p>
+    <div data-viz="patchbytes"></div>
+    <p class="band-why" style="margin-top:26px">
+      And the newer, Windows-only pass: the 128 bytes System V promises a leaf function, which Windows feels free to overwrite.
+    </p>
+    <div data-viz="redzone"></div>
+  </section>
+  <section class="band band-do">
+    <div class="band-h"><span class="band-t">Do</span></div>
+    <p class="band-why">
+      Find the patcher and read what it actually looks for.
+    </p>
+
+    <div class="check">
+      <p class="check-h">Checkpoint</p>
+      <ul class="check-list">
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Find the instruction-patching code in <code>src/loader/</code>.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Identify what <code>fs:[0]</code> and <code>fs:[0x28]</code> are used for in guest code.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Explain why the replacement instruction has to be the same length as the original.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Read <code>src/loader/redZonePatcher.h</code> and note the counters in <code>RedZonePatchResult</code> — they tell you how partial this transformation necessarily is.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Explain what the System V <b>red zone</b> is, and why Windows makes it dangerous.</label>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+</main>
+
+<script src="assets/topics.js?v=17" defer></script>
+<script src="assets/search-index.js?v=17" defer></script>
+<script src="assets/app.js?v=17" defer></script>
+<script src="assets/viz.js?v=17" defer></script>
+<script src="assets/atlas.js?v=17" defer></script>
+<script src="assets/lab.js?v=17" defer></script>
+<script src="assets/figs.js?v=17" defer></script>
+<script src="assets/figures.js?v=17" defer></script>
+<script src="assets/highlight.js?v=17" defer></script>
+<script src="assets/tutor.js?v=17" defer></script>
+</body>
+</html>
+
+

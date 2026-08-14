@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ELF, SELF and Sony's format — KytyPS5</title>
+<meta name="description" content="A PS5 module is an ELF that no standard loader will accept. Here is what is different and why.">
+<link rel="stylesheet" href="assets/viz.css?v=17">
+<link rel="stylesheet" href="assets/atlas.css?v=17">
+<link rel="stylesheet" href="assets/lab.css?v=17">
+<link rel="stylesheet" href="assets/tutor.css?v=17">
+<link rel="stylesheet" href="assets/app.css?v=17">
+<link rel="stylesheet" href="assets/highlight.css?v=17">
+</head>
+<body>
+
+<main class="topic" data-app-content>
+
+  <p class="topic-eyebrow">Loading a game · 05</p>
+  <h1 id="elf-self-and-sony-s-format">ELF, SELF and Sony's format</h1>
+  <p class="topic-deck">
+    A game module looks like an ELF and is rejected by every normal ELF loader. The type is <code>ET_SCE_*</code>, and the machinery a linker needs — symbols, strings, relocations — has been moved into a proprietary segment.
+  </p>
+
+  <section class="band band-read">
+    <div class="band-h"><span class="band-t">Read</span></div>
+    <div class="prose">
+<p class="deck">A game is a file. Something has to turn that file into a running program. On Linux that job belongs to <code>ld.so</code>; in KytyPS5 it belongs to <code>RuntimeLinker</code>. To read that code you need to know what a dynamic linker does.</p>
+
+  <h4 id="the-elf-layout">The ELF layout</h4>
+  <p>ELF — Executable and Linkable Format — is the Unix executable format, and the PS5 uses it. An ELF file has two overlapping views:</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>View</th><th>Described by</th><th>Used by</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Sections</strong> (<code>.text</code>, <code>.data</code>, <code>.rodata</code>…)</td><td>Section headers</td><td>The linker at build time. Often stripped from shipped binaries.</td></tr>
+        <tr><td><strong>Segments</strong> (<code>PT_LOAD</code>, <code>PT_DYNAMIC</code>, <code>PT_TLS</code>…)</td><td>Program headers</td><td>The <em>loader</em> at run time. This is the view Kyty cares about.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>A program header entry says: "take <code>p_filesz</code> bytes at file offset <code>p_offset</code>, place them at virtual address <code>p_vaddr</code>, zero-fill up to <code>p_memsz</code>, and apply these permissions." Loading is essentially a loop over those entries.</p>
+
+  <div class="filename">src/loader/elf.h:174 — the actual struct Kyty parses</div>
+<pre>struct Elf64_Phdr {
+    Elf64_Word  p_type;    <i>PT_LOAD, PT_DYNAMIC, PT_TLS, …</i>
+    Elf64_Word  p_flags;   <i>PF_R | PF_W | PF_X</i>
+    Elf64_Off   p_offset;  <i>where in the file</i>
+    Elf64_Addr  p_vaddr;   <i>where in memory</i>
+    Elf64_Addr  p_paddr;   <i>reserved</i>
+    Elf64_Xword p_filesz;  <i>bytes present in the file</i>
+    Elf64_Xword p_memsz;   <i>bytes needed in memory (remainder is zeroed)</i>
+    Elf64_Xword p_align;
+};</pre>
+
+  <h4 id="why-relocation-exists">Why relocation exists</h4>
+  <p>A shared library does not know where it will be loaded. It is compiled position-independently, and every absolute address inside it is left as a placeholder. The loader must go back and fix them. Each fix is a <strong>relocation</strong>: a record saying "at offset X, write value Y."</p>
+
+  <p>Four relocation types cover almost everything Kyty sees:</p>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Type</th><th>Meaning</th><th>Computation</th></tr></thead>
+      <tbody>
+        <tr><td><code>R_X86_64_RELATIVE</code></td><td>An internal pointer that just needs the load bias added.</td><td><code>*where = base + addend</code></td></tr>
+        <tr><td><code>R_X86_64_64</code></td><td>A 64-bit absolute reference to a symbol.</td><td><code>*where = symbol + addend</code></td></tr>
+        <tr><td><code>R_X86_64_GLOB_DAT</code></td><td>A Global Offset Table entry for a data symbol.</td><td><code>*where = symbol</code></td></tr>
+        <tr><td><code>R_X86_64_JUMP_SLOT</code></td><td>A Procedure Linkage Table entry for a function.</td><td><code>*where = symbol</code></td></tr>
+        <tr><td><code>R_X86_64_DTPMOD64</code></td><td>Thread-local storage: which module owns this variable.</td><td>module ID</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="primer">
+    <span class="lbl">Jargon · GOT and PLT</span>
+    <p>The <strong>Global Offset Table</strong> is an array of pointers. Instead of embedding an absolute address in code, the compiler emits "load the pointer from GOT slot 12, then use it." The loader fills the GOT, so the code itself never needs patching.</p>
+    <p>The <strong>Procedure Linkage Table</strong> is the same idea for calls. A call to an external function jumps to a small PLT stub, which jumps to whatever address the GOT holds.</p>
+    <p><strong>This is the hook KytyPS5 uses.</strong> When the loader writes the address of its own C++ function into a GOT slot, every subsequent guest call to that "console function" lands in the emulator instead. No patching of the game's code is needed.</p>
+  </div>
+
+  <h4 id="symbols-and-why-the-ps5-s-are-unreadable">Symbols, and why the PS5's are unreadable</h4>
+  <p>Normally a dynamic symbol has a name: <code>printf</code>, <code>malloc</code>. PS5 modules instead export <strong>NIDs</strong> — an 11-character encoding of a hash of the original name — qualified by the library and module they belong to:</p>
+
+<pre>lUwEK9UwLNo<b>#</b>libSceGnmDriver<b>#</b>libSceGnmDriver
+└─ symbol ─┘ └─── library ───┘ └──── module ────┘</pre>
+
+  <p>Kyty stores its HLE implementations under the same key, so resolution is a dictionary lookup. You will meet the exact mechanism in <a href="t-nids.html">topic 07</a> and <a href="t-hle.html">topic 12</a>.</p>
+
+  <h4 id="thread-local-storage-in-one-paragraph">Thread-local storage in one paragraph</h4>
+  <p>A variable declared <code>thread_local</code> needs a different copy per thread. The usual implementation gives each thread a block of memory and a pointer to it, reachable through a segment register — <code>fs</code> on x86-64 Linux and FreeBSD. Code that reads a thread-local reads <code>fs:[offset]</code>.</p>
+  <p>Windows uses <code>fs</code> for its own purposes, so guest code doing this reads the wrong memory and usually faults. <a href="t-patching.html">topic 08</a> is entirely about the fix.</p>
+
+  <div class="learn">
+    <div class="lh">Learn more · linking, PIC, GOT and PLT</div>
+    <ul>
+      <li><span class="kind">Article</span><div><a href="https://eli.thegreenplace.net/2011/11/03/position-independent-code-pic-in-shared-libraries/">Eli Bendersky — Position Independent Code in shared libraries</a><span class="d">The clearest explanation anywhere of why the GOT and PLT exist and how they work, built up from disassembly. If one link in this book is worth reading before continuing, it is this one — the GOT is the exact hook KytyPS5's entire HLE design hangs on.</span></div></li>
+      <li><span class="kind">Article</span><div><a href="https://eli.thegreenplace.net/2011/11/11/position-independent-code-pic-in-shared-libraries-on-x64">…and the x64 follow-up</a><span class="d">The same material for x86-64, which is the architecture that actually matters here — RIP-relative addressing changes the picture noticeably.</span></div></li>
+      <li><span class="kind spec">Spec</span><div><a href="https://refspecs.linuxfoundation.org/elf/gabi4+/contents.html">ELF specification (generic ABI)</a><span class="d">The section and segment structures of this topic, minus Sony's additions. Worth having open when reading <code>src/loader/elf.h</code>.</span></div></li>
+    </ul>
+  </div>
+
+<p class="deck">Sony's executable format is standard ELF64 wrapped in a container, with a set of custom type and tag values bolted on. Here is the complete set Kyty understands.</p>
+
+  <h4 id="the-self-container">The SELF container</h4>
+  <p><code>eboot.bin</code> starts with a small header describing compressed or encrypted segments, followed by the ELF proper:</p>
+
+  <div class="filename">src/loader/elf.h:139</div>
+<pre>struct SelfHeader {
+    uint8_t  ident[12];
+    uint16_t size1;
+    uint16_t size2;
+    uint64_t file_size;
+    uint16_t segments_num;
+    uint16_t unknown;
+    uint32_t pad;
+};
+
+struct SelfSegment {
+    uint64_t type;
+    uint64_t offset;
+    uint64_t compressed_size;
+    uint64_t decompressed_size;
+};</pre>
+
+  <p><code>Elf64::IsSelf()</code> tests for the container; <code>IsNextGen()</code> distinguishes PS5-era files from PS4-era ones. Retail files are encrypted, which is why the project cannot and does not distribute games — you supply files you already have the right to use.</p>
+
+  <h4 id="the-elf-header-values-that-are-not-standard">The ELF header values that are not standard</h4>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Field</th><th>Value</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>e_ident[EI_OSABI]</code></td><td><code>ELFOSABI_FREEBSD</code> = 9</td><td>Confirms the FreeBSD heritage.</td></tr>
+        <tr><td><code>e_machine</code></td><td><code>EM_X86_64</code> = 62</td><td>x86-64, as expected.</td></tr>
+        <tr><td><code>e_type</code></td><td><code>ET_DYNEXEC</code> = <code>0xfe10</code></td><td>Sony-specific: a main executable that is nevertheless position-independent.</td></tr>
+        <tr><td><code>e_type</code></td><td><code>ET_DYNAMIC</code> = <code>0xfe18</code></td><td>Sony-specific: a shared module.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4 id="custom-segment-types">Custom segment types</h4>
+  <div class="tw">
+    <table>
+      <thead><tr><th><code>p_type</code></th><th>Value</th><th>Contents</th></tr></thead>
+      <tbody>
+        <tr><td><code>PT_LOAD</code></td><td>1</td><td>Standard: map this into memory.</td></tr>
+        <tr><td><code>PT_DYNAMIC</code></td><td>2</td><td>Standard: the dynamic tag array.</td></tr>
+        <tr><td><code>PT_TLS</code></td><td>7</td><td>Standard: the thread-local storage template image.</td></tr>
+        <tr><td><code>PT_OS_DYNLIBDATA</code></td><td><code>0x61000000</code></td><td>Sony: a blob holding the symbol table, string table and relocation tables. The dynamic tags below index <em>into this blob</em>, not into the file.</td></tr>
+        <tr><td><code>PT_OS_PROCPARAM</code></td><td><code>0x61000001</code></td><td>Sony: the process-parameter block the runtime reads at start-up.</td></tr>
+        <tr><td><code>PT_OS_RELRO</code></td><td><code>0x61000010</code></td><td>Sony: data that becomes read-only after relocation. Kyty maps it like <code>PT_LOAD</code>.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4 id="custom-dynamic-tags">Custom dynamic tags</h4>
+  <p>Standard ELF has <code>DT_SYMTAB</code>, <code>DT_STRTAB</code>, <code>DT_RELA</code> and so on. Sony duplicated the whole set in the OS-specific range so they can refer into <code>PT_OS_DYNLIBDATA</code>:</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Tag</th><th>Value</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code>DT_OS_SYMTAB</code> / <code>SYMTABSZ</code></td><td><code>0x61000039</code> / <code>0x6100003f</code></td><td>Dynamic symbol table and its size.</td></tr>
+        <tr><td><code>DT_OS_STRTAB</code> / <code>STRSZ</code></td><td><code>0x61000035</code> / <code>0x61000037</code></td><td>String table holding NIDs and library names.</td></tr>
+        <tr><td><code>DT_OS_RELA</code> / <code>RELASZ</code> / <code>RELAENT</code></td><td><code>0x6100002f</code> / <code>31</code> / <code>33</code></td><td>General relocations.</td></tr>
+        <tr><td><code>DT_OS_JMPREL</code> / <code>PLTRELSZ</code></td><td><code>0x61000029</code> / <code>0x6100002d</code></td><td>PLT relocations — the function imports.</td></tr>
+        <tr><td><code>DT_OS_PLTGOT</code></td><td><code>0x61000027</code></td><td>Address of the Global Offset Table.</td></tr>
+        <tr><td><code>DT_OS_MODULE_INFO</code></td><td><code>0x6100000d</code></td><td>Name and version of a module this file <em>exports</em>.</td></tr>
+        <tr><td><code>DT_OS_NEEDED_MODULE</code></td><td><code>0x6100000f</code></td><td>Name and version of a module this file <em>imports</em>.</td></tr>
+        <tr><td><code>DT_OS_EXPORT_LIB</code> / <code>IMPORT_LIB</code></td><td><code>0x61000013</code> / <code>0x61000015</code></td><td>Library names and versions on each side.</td></tr>
+        <tr><td><code>DT_OS_FINGERPRINT</code></td><td><code>0x61000007</code></td><td>Build identifier.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>The module and library tables matter more than they look. A NID is only unique <em>within</em> a library, so resolution needs all three parts. <code>GetDynModules</code> and <code>GetDynLibs</code> unpack these into <code>DynamicInfo</code>:</p>
+
+  <div class="filename">src/loader/runtimeLinker.h:70 — abbreviated</div>
+<pre>struct DynamicInfo {
+    char*       str_table;      uint64_t str_table_size;
+    Elf64_Sym*  symbol_table;   uint64_t symbol_table_total_size;
+    Elf64_Rela* rela_table;     uint64_t rela_table_total_size;
+    Elf64_Rela* jmprela_table;  uint64_t jmprela_table_size;
+    uint64_t    init_vaddr, fini_vaddr;
+    uint64_t    init_array_vaddr, init_array_size;
+    uint64_t    pltgot_vaddr;
+
+    std::vector&lt;const char*&gt; needed;
+    std::vector&lt;ModuleId&gt;    <b>export_modules</b>, <b>import_modules</b>;
+    std::vector&lt;LibraryId&gt;   <b>export_libs</b>,    <b>import_libs</b>;
+};</pre>
+
+  <h4 id="the-encoded-identifiers">The encoded identifiers</h4>
+  <p>Module and library identifiers in a NID string are not names — they are small integers encoded in a base64-like alphabet. <code>EncodeId64</code> converts an index into the one- or two-character form, and resolution then looks that up in the file's own import tables to find the real name and version. This is why the same NID string can mean different things in two different modules.</p>
+  <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp:1001</span><span class="src">src/loader/runtimeLinker.cpp:2287</span></div>
+    </div>
+  </section>
+
+  <section class="band band-watch">
+    <div class="band-h"><span class="band-t">Watch</span></div>
+    <p class="band-why">
+      A module laid out segment by segment. Watch which parts a stock loader understands and which parts only Sony's loader would know what to do with.
+    </p>
+    <div data-viz="elfmap"></div>
+    <p class="band-why" style="margin-top:26px">
+      Peel the container apart layer by layer. Watch for the last one — that is where the imports went.
+    </p>
+    <div data-viz="selfunwrap"></div>
+  </section>
+  <section class="band band-try">
+    <div class="band-h"><span class="band-t">Try</span></div>
+
+    <div class="callout k">
+      <span class="lbl">Use one of your own</span>
+      <p>The <a href="playground.html#elf-inspector">module inspector in the Playground</a> parses a real module in your browser — drop in an <code>eboot.bin</code> or a <code>.sprx</code> from a game you have dumped and it will name the Sony segments and dynamic tags for you. Nothing is uploaded.</p>
+    </div>
+  </section>
+  <section class="band band-do">
+    <div class="band-h"><span class="band-t">Do</span></div>
+    <p class="band-why">
+      Do this one with a real file in front of you. It is far more convincing than a diagram.
+    </p>
+
+    <div class="check">
+      <p class="check-h">Checkpoint</p>
+      <ul class="check-list">
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Drop one of your own modules into the <a href="playground.html#elf-inspector">module inspector</a> and find its <code>e_type</code>.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Find the <code>PT_OS_DYNLIBDATA</code> segment and note how big it is relative to the rest.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Open <code>src/loader/elf.h</code> and find the <code>DT_OS_*</code> constants. Match three of them to tags in your own module.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Explain why the import table living in a proprietary segment means a stock <code>readelf</code> shows a module with no imports.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Compare the <code>filesz</code> and <code>memsz</code> of a <code>PT_LOAD</code> segment and explain the difference.</label>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+</main>
+
+<script src="assets/topics.js?v=17" defer></script>
+<script src="assets/search-index.js?v=17" defer></script>
+<script src="assets/app.js?v=17" defer></script>
+<script src="assets/viz.js?v=17" defer></script>
+<script src="assets/atlas.js?v=17" defer></script>
+<script src="assets/lab.js?v=17" defer></script>
+<script src="assets/figs.js?v=17" defer></script>
+<script src="assets/figures.js?v=17" defer></script>
+<script src="assets/highlight.js?v=17" defer></script>
+<script src="assets/tutor.js?v=17" defer></script>
+</body>
+</html>
+
+

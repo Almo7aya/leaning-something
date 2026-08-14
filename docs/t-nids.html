@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NIDs and the runtime linker — KytyPS5</title>
+<meta name="description" content="How an encoded id in a module's import table becomes the address of a C++ function in the emulator.">
+<link rel="stylesheet" href="assets/viz.css?v=17">
+<link rel="stylesheet" href="assets/atlas.css?v=17">
+<link rel="stylesheet" href="assets/lab.css?v=17">
+<link rel="stylesheet" href="assets/tutor.css?v=17">
+<link rel="stylesheet" href="assets/app.css?v=17">
+<link rel="stylesheet" href="assets/highlight.css?v=17">
+</head>
+<body>
+
+<main class="topic" data-app-content>
+
+  <p class="topic-eyebrow">Loading a game · 07</p>
+  <h1 id="nids-and-the-runtime-linker">NIDs and the runtime linker</h1>
+  <p class="topic-deck">
+    PS5 modules import by <b>NID</b> — a short encoded id, not a name. Resolving those against hand-written implementations, and patching the results into the module's own tables, is the job that makes everything else possible.
+  </p>
+
+  <section class="band band-read">
+    <div class="band-h"><span class="band-t">Read</span></div>
+    <div class="prose">
+<p class="deck">This is the join between guest and emulator. Understanding it makes the entire HLE design obvious.</p>
+
+  <h4 id="what-a-relocation-record-contains">What a relocation record contains</h4>
+  <div class="filename">src/loader/elf.h:228</div>
+<pre>struct Elf64_Rela {
+    Elf64_Word GetSymbol() const { return r_info &gt;&gt; 32u; }        <i>// index into symtab</i>
+    Elf64_Word GetType()   const { return r_info &amp; 0xffffffff; }  <i>// R_X86_64_*</i>
+
+    Elf64_Addr   r_offset;   <i>// where to write, relative to the module base</i>
+    Elf64_Xword  r_info;     <i>// symbol index + relocation type</i>
+    Elf64_Sxword r_addend;   <i>// constant to add</i>
+};</pre>
+
+  <p>Relocation is a loop over two tables — <code>rela_table</code> (data references) and <code>jmprela_table</code> (function calls through the PLT) — computing a value and storing it at <code>base_vaddr + r_offset</code>.</p>
+
+  <h4 id="resolution">Resolution</h4>
+  <p>For the types that reference a symbol, the loader takes the symbol's name from the string table and calls <code>Resolve</code>. The name is a NID triple:</p>
+
+  <div class="filename">src/loader/runtimeLinker.cpp:1654</div>
+<pre>void RuntimeLinker::Resolve(const std::string&amp; name, SymbolType type, Program* program,
+                            SymbolRecord* out_info, bool* bind_self) {
+    Common::LockGuard lock(m_mutex);
+    auto ids = Common::<b>Split</b>(name, '#');          <i>// "nid#library#module"</i>
+
+    if (ids.size() == 3) {
+        const LibraryId* l = <b>FindLibrary</b>(*program, ids.at(1));
+        const ModuleId*  m = <b>FindModule</b>(*program, ids.at(2));
+
+        auto resolve_by_nid = [this, type](const std::string&amp; nid, SymbolRecord* out) -&gt; bool {
+            <i>// 1. the HLE database — Kyty's own implementations</i>
+            if (m_symbols != nullptr) {
+                if (const auto* rec = m_symbols-&gt;FindByNid(nid, type); rec != nullptr) {
+                    *out = *rec; return true;
+                }
+            }
+            <i>// 2. every loaded guest module's export table</i>
+            for (auto* p: m_programs) {
+                if (p != nullptr &amp;&amp; p-&gt;export_symbols != nullptr) {
+                    if (const auto* rec = p-&gt;export_symbols-&gt;FindByNid(nid, type); rec != nullptr) {
+                        *out = *rec; return true;
+                    }
+                }
+            }
+            return false;
+        };
+        ...</pre>
+
+  <p><strong>The HLE database is searched first.</strong> That is the whole trick: if Kyty implements a function, the guest gets Kyty's address even when a real module also exports it.</p>
+
+  <h4 id="how-the-hle-database-is-populated">How the HLE database is populated</h4>
+  <p>Every implementation registers itself with two macros. <code>LIB_VERSION</code> declares the identity of the module being impersonated, and <code>LIB_FUNC</code> binds a NID to a C++ function pointer:</p>
+
+  <div class="filename">src/libs/libs.h:39</div>
+<pre>#define LIB_ADD(n, f, t)                                            \
+    {                                                               \
+        Loader::SymbolResolve sr {};                                \
+        sr.name                 = n;            <i>// the NID</i>          \
+        sr.library              = g_library;                        \
+        sr.library_version      = g_library_version;                \
+        sr.module               = g_module;                         \
+        sr.module_version_major = g_module_version_major;           \
+        sr.module_version_minor = g_module_version_minor;           \
+        sr.type                 = t;                                \
+        auto        func     = reinterpret_cast&lt;uint64_t&gt;(f);       \
+        const char* dbg_name = "" #f;           <i>// for logs</i>         \
+        s-&gt;Add(sr, func, dbg_name);                                 \
+    }
+
+#define LIB_FUNC(n, f)   LIB_ADD(n, f, Loader::SymbolType::Func)
+#define LIB_OBJECT(n, f) LIB_ADD(n, f, Loader::SymbolType::Object)</pre>
+
+  <p>In use — this is a real fragment of the graphics driver:</p>
+
+  <div class="filename">src/libs/libGraphicsDriver.cpp</div>
+<pre>LIB_VERSION("Graphics5", 1, "Graphics5", 1, 1);
+
+LIB_DEFINE(InitGraphicsDriver_1) {
+    LIB_FUNC("23LRUSvYu1M", Gen5::GraphicsInit);
+    LIB_FUNC("f3dg2CSgRKY", Gen5::GraphicsCreateShader);
+    LIB_FUNC("k3GhuSNmBLU", Gen5::GraphicsCbDispatch);
+    LIB_FUNC("wr23dPKyWc0", Gen5::GraphicsCbReleaseMem);
+    ...
+}</pre>
+
+  <h4 id="the-complete-path-end-to-end">The complete path, end to end</h4>
+
+  <figure data-viz="gotplt"></figure>
+
+  <p>The same five steps in words:</p>
+  <div class="stack">
+    <div class="layer k"><span class="nm">1 · Registration</span><span class="chip kyty">kyty</span><span class="ds"><code>Libs::InitAll()</code> runs every <code>LIB_DEFINE</code> block, inserting thousands of (NID, library, module, version) → function-pointer records into the shared <code>SymbolDatabase</code>. Nothing from the game has been loaded yet.</span></div>
+    <div class="arrow">↓</div>
+    <div class="layer g"><span class="nm">2 · The game's import</span><span class="chip guest">guest</span><span class="ds">The game's <code>jmprela</code> table contains a <code>R_X86_64_JUMP_SLOT</code> record naming <code>23LRUSvYu1M#Graphics5#Graphics5</code>, targeting a GOT slot.</span></div>
+    <div class="arrow">↓</div>
+    <div class="layer k"><span class="nm">3 · Resolution</span><span class="chip kyty">kyty</span><span class="ds"><code>Resolve()</code> splits the name, maps the library and module identifiers through the game's own tables, finds the record, and returns the address of <code>Gen5::GraphicsInit</code>.</span></div>
+    <div class="arrow">↓</div>
+    <div class="layer k"><span class="nm">4 · Patch the GOT</span><span class="chip kyty">kyty</span><span class="ds">The address is written into the GOT slot. The game's code is untouched.</span></div>
+    <div class="arrow">↓</div>
+    <div class="layer g"><span class="nm">5 · The call</span><span class="chip guest">guest</span><span class="ds">The game calls its PLT stub, which jumps through the GOT — straight into Kyty's C++ function, with arguments in System V registers, which is exactly what <code>KYTY_SYSV_ABI</code> prepared it for.</span></div>
+  </div>
+
+  <div class="callout k">
+    <span class="lbl">Two ways this silently fails</span>
+    <p>If a NID string has a single character wrong, or if the <code>LIB_VERSION</code> module/library version does not match what the game imports, resolution simply does not match — and the import falls through to the stub path of this topic. The function is never called and nothing announces it. When an implementation you wrote is never reached, check those two things first, then grep the log for the NID appearing as unresolved.</p>
+  </div>
+
+<p class="deck">Real games import thousands of functions Kyty has never implemented. The strategy for handling that is the difference between an emulator that boots nothing and one that boots most things.</p>
+
+  <h4 id="the-design-decision">The design decision</h4>
+  <p>Three options exist when a symbol will not resolve:</p>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Option</th><th>Result</th></tr></thead>
+      <tbody>
+        <tr><td>Abort at load time</td><td>Almost nothing boots. Games import far more than they call — an unused code path drags in an entire library.</td></tr>
+        <tr><td>Write null into the GOT</td><td>The game crashes on the first call with no context. The log says nothing useful.</td></tr>
+        <tr><td><strong>Write a generated stub</strong></td><td>Only code paths actually taken can break; the stub can retry resolution and log exactly which NID was missing. <strong>This is what Kyty does.</strong></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4 id="the-thunk-byte-by-byte">The thunk, byte by byte</h4>
+  <p>Kyty assembles 162 bytes per unresolved import. Reading it teaches you the System V ABI faster than any specification:</p>
+
+  <div class="filename">src/loader/runtimeLinker.cpp:147 — annotated</div>
+<pre>emit(0x50);              <b>push rax</b>    <i>// preserve AL: variadic SysV calls put the</i>
+                                      <i>//   vector-register count there</i>
+emit(0x57);              push rdi     <i>// arg 1</i>
+emit(0x56);              push rsi     <i>// arg 2</i>
+emit(0x52);              push rdx     <i>// arg 3</i>
+emit(0x51);              push rcx     <i>// arg 4</i>
+emit(0x41); emit(0x50);  push r8      <i>// arg 5</i>
+emit(0x41); emit(0x51);  push r9      <i>// arg 6</i>
+
+emit(0x48); emit(0x81); emit(0xec); emit32(0x80);    <b>sub rsp, 0x80</b>
+for (uint8_t reg = 0; reg &lt; 8; reg++)
+    save_xmm(reg, reg * 0x10u);                      <i>// movdqu [rsp+n], xmm0..7</i>
+
+emit(0x48); emit(0xbf); emit64(record_id);           <b>mov rdi, record_id</b>
+emit(0x48); emit(0xb8); emit64(target);              mov rax, ResolveImportStubWithId
+emit(0xff); emit(0xd0);                              <b>call rax</b>
+emit(0x49); emit(0x89); emit(0xc3);                  mov r11, rax    <i>// stash the answer</i>
+
+for (uint8_t reg = 0; reg &lt; 8; reg++)
+    load_xmm(reg, reg * 0x10u);                      <i>// restore xmm0..7</i>
+emit(0x48); emit(0x81); emit(0xc4); emit32(0x80);    add rsp, 0x80
+                         pop r9 / r8 / rcx / rdx / rsi / rdi / rax
+
+emit(0x4d); emit(0x85); emit(0xdb);                  <b>test r11, r11</b>
+emit(0x74); emit(0x03);                              jz +3
+emit(0x41); emit(0xff); emit(0xe3);                  <b>jmp r11</b>   <i>// tail-call the real function</i>
+emit(0x31); emit(0xc0);                              xor eax, eax
+emit(0xc3);                                          <b>ret</b>        <i>// give up: return 0</i></pre>
+
+  <p>Four things this achieves:</p>
+  <ol>
+    <li><strong>Every argument survives.</strong> All six integer registers and all eight vector registers are preserved, so if resolution succeeds the original call proceeds as though the thunk never existed.</li>
+    <li><strong>Resolution is retried lazily.</strong> By the time the call happens, more modules may be loaded and the symbol may now exist.</li>
+    <li><strong>Success is a tail call.</strong> <code>jmp r11</code> — not <code>call</code> — so the stack frame and return address are exactly what the caller set up.</li>
+    <li><strong>Failure returns zero.</strong> A great many console functions return an error code, and zero conventionally means success, so many games simply continue. That is a pragmatic gamble, and it is why a stubbed function can produce strange behaviour rather than a clean failure.</li>
+  </ol>
+
+  <h4 id="allocation-and-bookkeeping">Allocation and bookkeeping</h4>
+<pre>static std::vector&lt;StubbedImportRecord&gt; g_stubbed_imports;
+static std::vector&lt;uint64_t&gt;            g_unresolved_stub_thunk_pages;
+static constexpr uint64_t               UNRESOLVED_STUB_PAGE_SIZE = 4096;
+
+<i>// thunks are packed into 4 KB executable pages, 162 bytes each (25 per page)</i>
+if (g_unresolved_stub_thunk_pages.empty() ||
+    g_unresolved_stub_thunk_offset + thunk_size &gt; UNRESOLVED_STUB_PAGE_SIZE) {
+    auto page = Memory::AllocateRuntimeMemory(0, UNRESOLVED_STUB_PAGE_SIZE,
+                    Common::VirtualMemory::Mode::ExecuteReadWrite, "unresolved_import_thunk");
+    g_unresolved_stub_thunk_pages.push_back(page);
+    g_unresolved_stub_thunk_offset = 0;
+}
+...
+Common::VirtualMemory::<b>FlushInstructionCache</b>(code, thunk_size);</pre>
+
+  <p>The record ID baked into each thunk indexes <code>g_stubbed_imports</code>, which holds the NID, symbol type, binding and owning program — everything needed to log a useful message and to retry.</p>
+
+  <div class="callout k">
+    <span class="lbl">Practical consequence for you</span>
+    <p>When a game misbehaves rather than crashing, the first thing to check is the log for stubbed imports. A function returning 0 when the game expected a real value is a very common cause of "boots but the menu is empty" bugs — and fixing it is often a twenty-line <code>LIB_FUNC</code> addition.</p>
+  </div>
+
+  <h4 id="the-custom-plt">The custom PLT</h4>
+  <p>Alongside the thunks, Kyty builds its own PLT for cases where the guest's own table must be intercepted. <code>Jit::CallPlt</code> generates a table of 16-byte entries, each pushing its index and jumping to a shared handler:</p>
+
+  <div class="filename">src/loader/jit.h:10</div>
+<pre>struct JmpWithIndex {
+    <i>// 68 xx xx xx xx    push &lt;index&gt;</i>
+    <i>// E9 xx xx xx xx    jmp  &lt;handler&gt;</i>
+    uint8_t code[16] = {0x68,0,0,0,0, 0xE9,0,0,0,0, 0x90,0x90,0x90,0x90,0x90,0x90};
+};</pre>
+    </div>
+  </section>
+
+  <section class="band band-watch">
+    <div class="band-h"><span class="band-t">Watch</span></div>
+    <p class="band-why">
+      A relocation being applied: the linker resolves a NID, finds the implementation, and writes its address into the module's table.
+    </p>
+    <div data-viz="relocgot"></div>
+  </section>
+  <section class="band band-try">
+    <div class="band-h"><span class="band-t">Try</span></div>
+
+    <div class="callout k">
+      <span class="lbl">Decode the ids yourself</span>
+      <p>The trailing tokens in a symbol name are 16-bit module and library ids in a 64-symbol alphabet. The <a href="playground.html#id64">id encoder in the Playground</a> is that algorithm transcribed exactly from <code>runtimeLinker.cpp</code> — drag the slider and watch which branch a value takes.</p>
+    </div>
+  </section>
+  <section class="band band-do">
+    <div class="band-h"><span class="band-t">Do</span></div>
+    <p class="band-why">
+      This is the topic that leads directly to your first contribution, so it is worth doing properly.
+    </p>
+
+    <div class="check">
+      <p class="check-h">Checkpoint</p>
+      <ul class="check-list">
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Run a title and collect the unresolved-symbol lines, or drop the log into the <a href="playground.html#log-triage">triage tool</a>.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Pick one NID and search the tree for it: <code>rg "&lt;nid&gt;" src/</code>.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Open <code>src/libs/</code> and find a <code>LIB_DEFINE</code> block. Confirm it maps NID strings to C++ functions.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Explain why a NID cannot be decoded back into a function name.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Explain what a generated thunk is for, and what happens when a game calls an import that was never resolved.</label>
+        </li>
+      </ul>
+    </div>
+
+    <div class="callout k">
+      <span class="lbl">This is where you can start contributing</span>
+      <p>An unresolved NID is a completely self-contained piece of work: find what the function should do, write it, register it against the id, and a title gets further than it did before. Example 1 in the <a href="examples.html#ex-hle">Examples</a> walks the whole loop.</p>
+    </div>  </section>
+
+</main>
+
+<script src="assets/topics.js?v=17" defer></script>
+<script src="assets/search-index.js?v=17" defer></script>
+<script src="assets/app.js?v=17" defer></script>
+<script src="assets/viz.js?v=17" defer></script>
+<script src="assets/atlas.js?v=17" defer></script>
+<script src="assets/lab.js?v=17" defer></script>
+<script src="assets/figs.js?v=17" defer></script>
+<script src="assets/figures.js?v=17" defer></script>
+<script src="assets/highlight.js?v=17" defer></script>
+<script src="assets/tutor.js?v=17" defer></script>
+</body>
+</html>
+
+

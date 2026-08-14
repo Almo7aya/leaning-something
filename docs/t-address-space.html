@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The guest address space — KytyPS5</title>
+<meta name="description" content="Address bands, direct and flexible memory, and the host reservation underneath it all.">
+<link rel="stylesheet" href="assets/viz.css?v=17">
+<link rel="stylesheet" href="assets/atlas.css?v=17">
+<link rel="stylesheet" href="assets/lab.css?v=17">
+<link rel="stylesheet" href="assets/tutor.css?v=17">
+<link rel="stylesheet" href="assets/app.css?v=17">
+<link rel="stylesheet" href="assets/highlight.css?v=17">
+</head>
+<body>
+
+<main class="topic" data-app-content>
+
+  <p class="topic-eyebrow">Memory · 09</p>
+  <h1 id="the-guest-address-space">The guest address space</h1>
+  <p class="topic-deck">
+    The guest allocates from fixed bands and stores raw pointers assuming it got the addresses it asked for. The emulator therefore owns the whole address space up front and hands out pieces — a very different job from calling <code>malloc</code>.
+  </p>
+
+  <section class="band band-read">
+    <div class="band-h"><span class="band-t">Read</span></div>
+    <div class="prose">
+<p class="deck">141 KB of code implementing three different allocation models, page attributes, naming, and queryability — because games observe all of it.</p>
+
+  <h4 id="three-ways-a-game-gets-memory">Three ways a game gets memory</h4>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Kind</th><th>Guest API</th><th>Model</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Direct</strong></td>
+          <td><code>sceKernelAllocateDirectMemory</code><br><code>sceKernelMapDirectMemory</code><br><code>sceKernelReleaseDirectMemory</code></td>
+          <td>A reservation out of <em>physical</em> memory, identified by a physical offset. Mapping it to a virtual address is a separate step, and the same physical range may be mapped more than once. Games use this for anything the GPU touches.</td>
+        </tr>
+        <tr>
+          <td><strong>Flexible</strong></td>
+          <td><code>sceKernelMapFlexibleMemory</code><br><code>sceKernelAvailableFlexibleMemorySize</code></td>
+          <td>Ordinary paged memory from a fixed per-title budget, declared in <code>param.json</code> and applied before the memory subsystem initialises.</td>
+        </tr>
+        <tr>
+          <td><strong>Pooled</strong></td>
+          <td><code>sceKernelMemoryPoolReserve</code><br><code>…Commit</code> / <code>…Decommit</code> / <code>…Batch</code></td>
+          <td>Two-phase reserve-then-commit, closer to <code>VirtualAlloc</code>. The batch interface lets a game perform dozens of map operations in a single call.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4 id="what-the-guest-can-ask-about-memory">What the guest can ask about memory</h4>
+  <p><code>sceKernelVirtualQuery</code> is the one to notice, because it forces Kyty to keep real bookkeeping rather than just forwarding to the host allocator:</p>
+
+  <div class="filename">src/kernel/memory.h:22</div>
+<pre>struct VirtualQueryInfo {
+    uintptr_t start;
+    uintptr_t end;
+    uint64_t  offset;
+    int32_t   protection;
+    int32_t   memory_type;
+    uint32_t  is_flexible  : 1;
+    uint32_t  is_direct    : 1;
+    uint32_t  is_stack     : 1;
+    uint32_t  is_pooled    : 1;
+    uint32_t  is_committed : 1;
+    uint32_t  is_gpu_prt   : 1;
+    uint32_t  amm_usage    : 1;
+    uint32_t  reserved     : 1;
+    char      <b>name</b>[KERNEL_MAXIMUM_NAME_LENGTH];   <i>// the game's own label for the range</i>
+    uint8_t   gpu_mask_id;
+    uint8_t   reserved2;
+};
+static_assert(sizeof(VirtualQueryInfo) == 72);</pre>
+
+  <p>The <code>static_assert</code> is not decoration. This struct is written into guest memory, so its layout must match the console's byte for byte. Several structs in the kernel headers carry the same guard.</p>
+
+  <h4 id="the-internal-interface">The internal interface</h4>
+  <p>Four allocation entry points serve different purposes, and choosing the wrong one is a real bug class:</p>
+<pre>uint64_t <b>AllocateProgramMemory</b>(uint64_t search_addr, uint64_t size, Mode mode, const char* name);
+uint64_t <b>AllocateRuntimeMemory</b>(uint64_t search_addr, uint64_t size, Mode mode, const char* name,
+                               bool fixed = false);
+uint64_t <b>AllocateGuestStackMemory</b>(uint64_t search_addr, uint64_t size, Mode mode, const char* name);
+
+bool <b>ProtectGuestMemory</b>(uint64_t vaddr, uint64_t size, Mode mode, Mode* old_mode = nullptr);
+<i>// Transient PageManager watch state; does NOT change the mapping's semantic protection.</i>
+bool <b>ProtectGuestHostMemory</b>(uint64_t vaddr, uint64_t size, Mode mode);</pre>
+
+  <p>That last comment is the key distinction. <code>ProtectGuestMemory</code> changes what the guest believes the protection is, and a later <code>sceKernelVirtualQuery</code> will report it. <code>ProtectGuestHostMemory</code> changes only the host page bits so the tracker can catch a write — the guest must never see it.</p>
+
+  <h4 id="the-gpu-facing-hooks">The GPU-facing hooks</h4>
+<pre>void RegisterCallbacks(callback_func_t alloc_func, callback_func_t free_func);
+void InstallGpuResources(Graphics::GpuResourceManager* resources) noexcept;
+bool <b>HandleGpuFault</b>(Graphics::PageFaultAccess access, uint64_t fault_vaddr) noexcept;
+void InvalidateMemory(uint64_t vaddr, uint64_t size);
+bool TryWriteBacking(uint64_t vaddr, const void* data, uint64_t size);
+bool TryReadBacking(uint64_t vaddr, void* data, uint64_t size);</pre>
+
+  <p>The memory manager notifies the graphics layer whenever guest memory is mapped or unmapped, so caches can drop resources whose backing store has gone away — a common source of use-after-free bugs if it is missed.</p>
+
+  <h4 id="failure-injection">Failure injection</h4>
+  <p>Compiled behind a flag, the allocator exposes deliberate failure hooks so its error paths are actually exercised by tests rather than only in the field:</p>
+<pre>#if defined(KYTY_VIRTUAL_MEMORY_ALLOCATION_TESTS)
+void TestFailNextPhysicalMemoryUnmap();
+void TestFailPhysicalMemoryUnmapAfter(uint32_t successful_unmaps);
+void TestFailGuestBackingStoreUnmapAfter(uint32_t successful_unmaps);
+void TestFailNextFixedReserveRangeRegistration();
+bool TestPlaceholderRangeIsFree(uint64_t vaddr, uint64_t size);
+bool TestGuestAddressRangeIsOwned(uint64_t vaddr, uint64_t size);
+#endif</pre>
+  <div class="srcs"><span class="src">src/kernel/memory.h:180</span><span class="src">tests/VirtualMemoryAllocationTests.cpp</span></div>
+    </div>
+  </section>
+
+  <section class="band band-watch">
+    <div class="band-h"><span class="band-t">Watch</span></div>
+    <p class="band-why">
+      The bands laid out, with the host reservation underneath. The guest's view and the host's view of the same bytes, side by side.
+    </p>
+    <div data-viz="addrmap"></div>
+  </section>
+  <section class="band band-try">
+    <div class="band-h"><span class="band-t">Try</span></div>
+    <p class="band-why">
+      Allocate, free, repeat — until the space is fragmented enough that a large request fails even though the free total is plenty. That failure is exactly what the Windows placeholder-coalescing path exists to avoid.
+    </p>
+    <div data-viz="allocator"></div>
+    <p class="band-why" style="margin-top:26px">
+      And take a single address apart: which band it belongs to, which page it lands in, and what the offset within that page is.
+    </p>
+    <div data-viz="vaddr"></div>
+  </section>
+  <section class="band band-do">
+    <div class="band-h"><span class="band-t">Do</span></div>
+    <p class="band-why">
+      Get the real numbers from a real run rather than trusting the diagram.
+    </p>
+
+    <div class="check">
+      <p class="check-h">Checkpoint</p>
+      <ul class="check-list">
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Find where the emulator reserves the guest address space in <code>src/kernel/</code>.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Explain the difference between <b>direct</b> and <b>flexible</b> memory in one sentence each.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Run a title with logging on and find an allocation. Note its address and match it to a band.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Explain why the emulator cannot let the host pick addresses and fix up pointers afterwards.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Find the coalescing logic for fragmented placeholders and explain what breaks without it.</label>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+</main>
+
+<script src="assets/topics.js?v=17" defer></script>
+<script src="assets/search-index.js?v=17" defer></script>
+<script src="assets/app.js?v=17" defer></script>
+<script src="assets/viz.js?v=17" defer></script>
+<script src="assets/atlas.js?v=17" defer></script>
+<script src="assets/lab.js?v=17" defer></script>
+<script src="assets/figs.js?v=17" defer></script>
+<script src="assets/figures.js?v=17" defer></script>
+<script src="assets/highlight.js?v=17" defer></script>
+<script src="assets/tutor.js?v=17" defer></script>
+</body>
+</html>
+
+

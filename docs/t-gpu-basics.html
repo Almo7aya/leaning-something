@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How a GPU actually draws — KytyPS5</title>
+<meta name="description" content="The pipeline, and what Vulkan and SPIR-V are — the background the graphics topics assume.">
+<link rel="stylesheet" href="assets/viz.css?v=17">
+<link rel="stylesheet" href="assets/atlas.css?v=17">
+<link rel="stylesheet" href="assets/lab.css?v=17">
+<link rel="stylesheet" href="assets/tutor.css?v=17">
+<link rel="stylesheet" href="assets/app.css?v=17">
+<link rel="stylesheet" href="assets/highlight.css?v=17">
+</head>
+<body>
+
+<main class="topic" data-app-content>
+
+  <p class="topic-eyebrow">Graphics · 13</p>
+  <h1 id="how-a-gpu-actually-draws">How a GPU actually draws</h1>
+  <p class="topic-deck">
+    The next four topics translate one GPU's way of working into another's. That only makes sense if the pipeline itself is clear first: what a draw call actually sets in motion, and what Vulkan expects to be told.
+  </p>
+
+  <section class="band band-read">
+    <div class="band-h"><span class="band-t">Read</span></div>
+    <div class="prose">
+<p class="deck">Half of KytyPS5 is graphics, and the graphics code assumes you know how the hardware works — not how an API looks. This chapter covers the hardware model.</p>
+
+  <h4 id="the-pipeline">The pipeline</h4>
+  <p>To draw a triangle, a GPU runs a fixed sequence of stages. Some are programmable (you supply a shader), some are fixed-function (configured by registers):</p>
+
+  <div class="stack">
+    <div class="layer g"><span class="nm">Input assembly</span><span class="chip guest">fixed</span><span class="ds">Read the index buffer, group vertices into primitives (triangles, lines, points).</span></div>
+    <div class="arrow">↓</div>
+    <div class="layer k"><span class="nm">Vertex shader</span><span class="chip kyty">programmable</span><span class="ds">Runs once per vertex. Reads attributes, outputs a clip-space position plus arbitrary interpolated values.</span></div>
+    <div class="arrow">↓</div>
+    <div class="layer g"><span class="nm">Rasterisation</span><span class="chip guest">fixed</span><span class="ds">Convert each triangle into the set of pixels it covers. Interpolate the vertex outputs across that area.</span></div>
+    <div class="arrow">↓</div>
+    <div class="layer k"><span class="nm">Pixel (fragment) shader</span><span class="chip kyty">programmable</span><span class="ds">Runs once per covered pixel. Samples textures, computes lighting, outputs colour — and optionally depth.</span></div>
+    <div class="arrow">↓</div>
+    <div class="layer g"><span class="nm">Depth / stencil test, blending</span><span class="chip guest">fixed</span><span class="ds">Reject hidden pixels, combine the new colour with what is already in the render target.</span></div>
+  </div>
+
+  <p>Separately, <strong>compute shaders</strong> bypass all of this: they run a grid of threads doing arbitrary work, used for physics, culling, post-processing and — in Kyty — for detiling textures.</p>
+
+  <h4 id="how-shaders-actually-execute-waves-and-lanes">How shaders actually execute: waves and lanes</h4>
+  <p>This is the part that trips people up, and it is essential for <a href="t-shaders.html">topic 16</a>.</p>
+
+  <p>A GPU does not run one shader invocation at a time. It runs a <strong>wave</strong> — 32 or 64 invocations — in lockstep on one instruction stream. Each invocation is a <strong>lane</strong>. One instruction, executed simultaneously for all lanes on their own data.</p>
+
+  <p>So what happens at an <code>if</code>? The lanes cannot diverge; there is only one program counter. Instead the hardware keeps an <strong>execution mask</strong>: a 64-bit register where bit <em>n</em> enables lane <em>n</em>. Branching is implemented by masking:</p>
+
+<pre>          <i>// if (x &gt; 0) { A } else { B }</i>
+v_cmp_gt_f32  vcc, v0, 0      <i>compare in every lane → 64-bit result in vcc</i>
+s_and_saveexec_b64  s[0:1], vcc   <i>enable only lanes where the test passed</i>
+          <i>… code for A — inactive lanes execute it but discard results …</i>
+s_andn2_b64   exec, s[0:1], exec  <i>flip to the other lanes</i>
+          <i>… code for B …</i>
+s_mov_b64     exec, s[0:1]        <i>restore</i></pre>
+
+  <p>Both branches are executed; results are simply thrown away for disabled lanes. This is why GPU code is fast when threads agree and slow when they diverge — and, more importantly for us, <strong>why GPU control flow is data manipulation rather than program structure</strong>. Recovering structure from it is the hardest job the shader recompiler has.</p>
+
+  <figure data-viz="wave"></figure>
+
+  <div class="primer">
+    <span class="lbl">Jargon · scalar versus vector registers</span>
+    <p>RDNA 2 has two register files. <strong>VGPRs</strong> (vector registers) hold a different value per lane — a pixel's colour, a vertex's position. <strong>SGPRs</strong> (scalar registers) hold one value shared by the whole wave — a loop counter, a base address, a resource descriptor.</p>
+    <p>The distinction matters because resource descriptors always live in SGPRs. Working out what a shader's SGPRs contain is exactly what lets Kyty know which texture to bind.</p>
+  </div>
+
+  <h4 id="descriptors-how-a-shader-reaches-a-texture">Descriptors: how a shader reaches a texture</h4>
+  <p>In a PC API you call <code>BindTexture(slot, texture)</code>. On RDNA 2 there are no slots. A texture is described by a <strong>descriptor</strong> — a packed block of bits holding its address, format, size, tiling and swizzle — and the shader simply has that block in its registers, or loads it from memory itself.</p>
+
+  <p>AMD calls these "sharps":</p>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Name</th><th>Size</th><th>Describes</th></tr></thead>
+      <tbody>
+        <tr><td><strong>V#</strong> (buffer resource)</td><td>4 dwords / 128 bits</td><td>Base address, stride, record count, data format, component swizzle.</td></tr>
+        <tr><td><strong>T#</strong> (image resource)</td><td>8 dwords / 256 bits</td><td>Base address, format, width, height, depth, mip levels, tiling mode, array slices, DCC/HTile metadata address.</td></tr>
+        <tr><td><strong>S#</strong> (sampler)</td><td>4 dwords / 128 bits</td><td>Filter modes, clamp modes, anisotropy, LOD range and bias, border colour.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>You can decode real ones here. The bit layouts are taken directly from Kyty's <code>shaderBindings.h</code>:</p>
+
+  <div class="fig">
+    <div class="fig-head"><span>Sharp decoder — V# / T# / S#</span><span>edit any dword</span></div>
+    <div class="fig-body" id="sharpwrap">
+      <div class="presets" id="sharpkind" style="margin-bottom:var(--s4)">
+        <button type="button" data-kind="V" aria-selected="true" data-preset="0x00000000,0x40100000,0x00001000,0x00027FAC,0,0,0,0">V# buffer</button>
+        <button type="button" data-kind="T" aria-selected="false" data-preset="0x00001000,0x0A400000,0x01FC01FF,0x9002FAC0,0x00000000,0x00000090,0x00000000,0x00000000">T# image</button>
+        <button type="button" data-kind="S" aria-selected="false" data-preset="0x60000000,0x00FFF000,0x00500000,0x00000000,0,0,0,0">S# sampler</button>
+      </div>
+      <div class="dec-input">
+        <span id="shbox0"><label for="sh0">dw0</label> <input class="dw" id="sh0" value="0x00000000" spellcheck="false"></span>
+        <span id="shbox1"><label for="sh1">dw1</label> <input class="dw" id="sh1" value="0x40100000" spellcheck="false"></span>
+        <span id="shbox2"><label for="sh2">dw2</label> <input class="dw" id="sh2" value="0x00001000" spellcheck="false"></span>
+        <span id="shbox3"><label for="sh3">dw3</label> <input class="dw" id="sh3" value="0x00027FAC" spellcheck="false"></span>
+        <span id="shbox4"><label for="sh4">dw4</label> <input class="dw" id="sh4" value="0x00000000" spellcheck="false"></span>
+        <span id="shbox5"><label for="sh5">dw5</label> <input class="dw" id="sh5" value="0x00000000" spellcheck="false"></span>
+        <span id="shbox6"><label for="sh6">dw6</label> <input class="dw" id="sh6" value="0x00000000" spellcheck="false"></span>
+        <span id="shbox7"><label for="sh7">dw7</label> <input class="dw" id="sh7" value="0x00000000" spellcheck="false"></span>
+      </div>
+      <div class="dec-out" id="sharpout"></div>
+    </div>
+    <div class="fig-note"><p>Every accessor here corresponds to a real method — <code>ShaderBufferResource::Base48()</code>, <code>ShaderTextureResource::Width5()</code>, <code>ShaderSamplerResource::XyMagFilter()</code> and so on. <span class="src">src/graphics/shader/shaderBindings.h</span></p></div>
+  </div>
+
+  <h4 id="tiling-textures-are-not-stored-in-rows">Tiling: textures are not stored in rows</h4>
+  <p>A linear image stores pixel (x, y) at <code>base + y*pitch + x*bpp</code>. GPUs do not do this, because a shader sampling a texture reads a 2D neighbourhood, and a linear layout puts vertically adjacent pixels far apart in memory.</p>
+  <p>Instead pixels are interleaved into small blocks so that a 2D neighbourhood lands in one cache line. AMD has several schemes — 256 B, 4 KB, 64 KB, plus special layouts for render targets, depth buffers and partially-resident textures — each with its own swizzle function and alignment rules that vary with bytes-per-pixel and mip level.</p>
+  <p>Guest memory holds tiled data. Vulkan wants either linear data or its own opaque layout. Converting between them is <a href="t-vulkan.html">topic 17</a>.</p>
+
+  <div class="learn">
+    <div class="lh">Learn more · how GPUs really work</div>
+    <ul>
+      <li><span class="kind">Article</span><div><a href="https://fgiesen.wordpress.com/2011/07/09/a-trip-through-the-graphics-pipeline-2011-index/">Fabian Giesen — A trip through the Graphics Pipeline</a><span class="d">A thirteen-part series on what the hardware actually does between a draw call and a pixel. Slightly older than RDNA 2, but the concepts — command processors, wave scheduling, rasterisation, depth and colour compression, tiling — are exactly the ones this book keeps returning to. The single best background reading for Part V.</span></div></li>
+      <li><span class="kind vid">Video</span><div><a href="https://www.youtube.com/watch?v=h9Z4oGN89MU">Branch Education — How do Graphics Cards Work? Exploring GPU Architecture</a><span class="d">Highly detailed 3D animations of a real GPU die. The section on single-instruction-multiple-data execution and thread architecture is the clearest visual explanation of waves and lanes you will find.</span></div></li>
+      <li><span class="kind">Slides</span><div><a href="https://www.cs.cmu.edu/afs/cs/academic/class/15462-f12/www/lec_slides/462_gpus.pdf">Kayvon Fatahalian — How a GPU Works (CMU 15-462)</a><span class="d">Builds a GPU from first principles: start with a simple core, then add SIMD lanes, then multithreading, and watch a shader core emerge. Pairs with his <a href="https://graphics.stanford.edu/~kayvonf/papers/fatahalianCACM.pdf">"A Closer Look at GPUs"</a> paper.</span></div></li>
+      <li><span class="kind spec">Spec</span><div><a href="https://docs.amd.com/v/u/en-US/rdna2-shader-instruction-set-architecture">AMD RDNA 2 Instruction Set Architecture Reference Guide</a><span class="d">The 291-page manual for the exact shader ISA the recompiler consumes. The README names this as the primary reference for shader work — <a href="t-shaders.html">topic 16</a> is not really workable without it. Announced <a href="https://gpuopen.com/news/rdna2-isa-available/">here</a>; more architecture documentation at <a href="https://gpuopen.com/amd-gpu-architecture-programming-documentation/">GPUOpen</a>.</span></div></li>
+    </ul>
+  </div>
+
+<p class="deck">Kyty targets Vulkan 1.3. You do not need to be able to write a Vulkan renderer to read this book, but you need the vocabulary and one key idea: Vulkan is explicit about everything, which is both why it suits an emulator and why it makes some things awkward.</p>
+
+  <h4 id="the-objects-you-will-meet">The objects you will meet</h4>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Vulkan object</th><th>What it is</th><th>Where Kyty creates it</th></tr></thead>
+      <tbody>
+        <tr><td><code>VkInstance</code> / <code>VkDevice</code></td><td>The library connection and a logical GPU.</td><td><code>vulkanWindow.cpp</code>, stored in <code>VulkanInstance</code>.</td></tr>
+        <tr><td><code>VkCommandBuffer</code></td><td>A recorded list of GPU commands. Nothing executes until submitted.</td><td><code>CommandScheduler</code> keeps eight in rotation.</td></tr>
+        <tr><td><code>VkPipeline</code></td><td>A fully-baked configuration: both shaders plus every fixed-function setting — blend, depth, cull, viewport, attachment formats.</td><td><code>PipelineCache</code>, keyed on shader IDs and a packed state struct.</td></tr>
+        <tr><td><code>VkDescriptorSet</code></td><td>A bundle of resource bindings handed to a pipeline.</td><td><code>DescriptorCache</code>, recycled after the fence signals.</td></tr>
+        <tr><td><code>VkImage</code> / <code>VkBuffer</code></td><td>GPU memory with a format and usage.</td><td><code>TextureCache</code>, <code>BufferCache</code>.</td></tr>
+        <tr><td><code>VkFence</code> / timeline <code>VkSemaphore</code></td><td>CPU–GPU and GPU–GPU synchronisation. A timeline semaphore carries a monotonically increasing counter.</td><td><code>MasterSemaphore</code>.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="primer">
+    <span class="lbl">Why "explicit" matters here</span>
+    <p>In OpenGL the driver guessed what you meant, tracked state changes and re-compiled shaders behind your back. Vulkan removes all of that: you declare everything up front and manage synchronisation yourself.</p>
+    <p>For an emulator this is exactly right, because the guest has <em>already</em> declared everything — the PM4 register state is a complete pipeline description. Kyty's job is translation, not inference. The awkward part is the reverse: Vulkan bakes state into immutable pipeline objects, whereas the guest changes registers freely, so Kyty must detect which changes actually require a new pipeline. That is what the pipeline cache key is for.</p>
+  </div>
+
+  <h4 id="spir-v-and-why-it-is-stricter-than-machine-code">SPIR-V, and why it is stricter than machine code</h4>
+  <p>Vulkan does not accept GLSL or HLSL. It accepts <strong>SPIR-V</strong>: a binary intermediate language of 32-bit words. Every value has a declared type, every capability used must be requested, and — critically — <strong>control flow must be structured</strong>.</p>
+
+  <p>Structured means: every conditional branch declares in advance where its two paths reconverge (the <em>merge block</em>), and every loop declares both its merge block and its continue target. In SPIR-V assembly:</p>
+
+<pre>OpSelectionMerge %merge None      <i>"these branches rejoin at %merge"</i>
+OpBranchConditional %cond %then %else
+%then = OpLabel
+  ...
+  OpBranch %merge
+%else = OpLabel
+  ...
+  OpBranch %merge
+%merge = OpLabel</pre>
+
+  <p>Compare that with the RDNA 2 snippet in this topic, which had no merge point at all — just mask manipulation and fall-through. Reconstructing the declarations SPIR-V demands, from code that never had them, is the single hardest pass in the recompiler, and it is allowed to fail: there is a documented fallback for shaders whose control flow cannot be structured.</p>
+
+  <h4 id="a-worked-mapping">A worked mapping</h4>
+  <p>To make the shape of the translation concrete, here is one line of the same operation at four levels:</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Level</th><th>Representation</th></tr></thead>
+      <tbody>
+        <tr><td>Original shader source</td><td><code>float d = dot(a, b);</code></td></tr>
+        <tr><td>RDNA 2 machine code</td><td><code>v_mul_f32 v4, v0, v3</code> then <code>v_fma_f32 v4, v1, v2, v4</code> …</td></tr>
+        <tr><td>Kyty decoder output</td><td><code>Instruction{ family: VOP2, opcode: VMulF32, dst: v4, src0: v0, src1: v3 }</code></td></tr>
+        <tr><td>Kyty IR</td><td><code>Opcode::MulF32</code> with typed operands and a program counter</td></tr>
+        <tr><td>SPIR-V</td><td><code>%r = OpFMul %float %a %b</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Multiply is easy. The work is in the thousand cases that are not: packed 16-bit maths, saturating conversions, cross-lane shuffles, image sampling with a dozen modifier bits, buffer loads that need bounds checking SPIR-V does not provide for free.</p>
+
+  <div class="callout h">
+    <span class="lbl">Tools in the build</span>
+    <p>Kyty links <code>SPIRV-Tools</code>, so it can run <code>spirv-val</code> on everything it emits (<code>--shader-validation true</code>) and <code>spirv-opt</code> to optimise (<code>--shader-optimization-type</code>). Turning validation on is the fastest way to catch a malformed module before the GPU driver does something unpredictable with it.</p>
+  </div>
+
+  <div class="learn">
+    <div class="lh">Learn more · Vulkan and SPIR-V</div>
+    <ul>
+      <li><span class="kind">Tutorial</span><div><a href="https://vulkan-tutorial.com/">Vulkan Tutorial</a><span class="d">The standard first Vulkan tutorial: builds a triangle from nothing, covering instance, device, swapchain, pipeline and command buffers. You do not need to finish it to read this book, but working through the pipeline and command-buffer chapters makes <a href="t-vulkan.html">topic 17</a> far more legible.</span></div></li>
+      <li><span class="kind">Tutorial</span><div><a href="https://vkguide.dev/">Vulkan Guide (vkguide.dev)</a><span class="d">A more practical, engine-shaped take on the same material — closer to how a renderer is actually structured. Its <a href="https://vkguide.dev/docs/great_resources">Great Resources</a> page is a good onward index.</span></div></li>
+      <li><span class="kind">Hub</span><div><a href="https://vulkan.org/learn">Khronos — Learn Vulkan</a><span class="d">The official starting point, including the Khronos-maintained samples and tutorials.</span></div></li>
+      <li><span class="kind spec">Spec</span><div><a href="https://registry.khronos.org/SPIR-V/specs/unified1/SPIRV.html">SPIR-V Specification</a><span class="d">Read section 2.11, "Structured Control Flow", before <a href="t-shaders.html">topic 16</a>. It defines <code>OpSelectionMerge</code> and <code>OpLoopMerge</code> and the dominance rules that make the structurisation pass necessary — and that make it able to fail.</span></div></li>
+      <li><span class="kind">Paper</span><div><a href="https://registry.khronos.org/SPIR-V/papers/WhitePaper.html">An Introduction to SPIR-V</a><span class="d">A short white paper on what SPIR-V is and why it looks the way it does. Much gentler than the specification.</span></div></li>
+      <li><span class="kind code">Code</span><div><a href="https://github.com/KhronosGroup/SPIRV-Tools">SPIRV-Tools</a><span class="d">The validator and optimiser Kyty links against. <code>spirv-dis</code> from this repository is what you use to read a dumped module as text.</span></div></li>
+    </ul>
+  </div>
+    </div>
+  </section>
+
+  <section class="band band-watch">
+    <div class="band-h"><span class="band-t">Watch</span></div>
+    <p class="band-why">
+      The stages a draw passes through, and where the emulator has to intervene in each.
+    </p>
+    <div data-viz="pipeline"></div>
+  </section>
+  <section class="band band-do">
+    <div class="band-h"><span class="band-t">Do</span></div>
+    <p class="band-why">
+      Background topic — the checkpoint is about vocabulary, since everything after this leans on it.
+    </p>
+
+    <div class="check">
+      <p class="check-h">Checkpoint</p>
+      <ul class="check-list">
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Name the pipeline stages a draw call passes through, in order.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Explain what a <b>pipeline object</b> is in Vulkan and why creating one is expensive.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Explain what SPIR-V is, and why a GPU driver wants it rather than source.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Explain the difference between a render target and a texture, from the GPU's point of view.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Say what a descriptor is and why the GPU needs one to read a buffer.</label>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+</main>
+
+<script src="assets/topics.js?v=17" defer></script>
+<script src="assets/search-index.js?v=17" defer></script>
+<script src="assets/app.js?v=17" defer></script>
+<script src="assets/viz.js?v=17" defer></script>
+<script src="assets/atlas.js?v=17" defer></script>
+<script src="assets/lab.js?v=17" defer></script>
+<script src="assets/figs.js?v=17" defer></script>
+<script src="assets/figures.js?v=17" defer></script>
+<script src="assets/highlight.js?v=17" defer></script>
+<script src="assets/tutor.js?v=17" defer></script>
+</body>
+</html>
+
+

@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Playground — KytyPS5 Learning Platform</title>
+<meta name="description" content="Interactive tools that work on your own KytyPS5 artifacts: decode PM4 command buffers, inspect real PS5 modules, and triage your emulator logs.">
+<link rel="stylesheet" href="assets/app.css?v=17">
+<link rel="stylesheet" href="assets/tutor.css?v=17">
+<link rel="stylesheet" href="assets/playground.css?v=17">
+<style>
+  html { background: var(--p-bg); }
+  body { margin: 0; background: var(--p-bg); }
+</style>
+<link rel="stylesheet" href="assets/highlight.css?v=17">
+</head>
+<body>
+
+<main data-app-content class="pg-wrap">
+
+  <header class="pg-hero">
+    <p class="pg-eyebrow">Playground</p>
+    <h1 id="playground">Tools that run on your own data</h1>
+    <p class="pg-lede">
+      The <a href="lab.html">Lab</a> teaches concepts with synthetic inputs. This page is
+      the other half: <strong>drop in artifacts your build actually produced</strong> — a module
+      from a game you dumped, a command-buffer dump, your <code>_kyty.txt</code> — and read them
+      with the same constants the emulator uses. Every tool below cites the source file and line
+      its logic came from, and every one has a demo button so you can watch it work before you
+      supply anything.
+    </p>
+    <p class="pg-lede" style="font-size:15px;margin-top:14px;color:var(--p-ink-3)">
+      Nothing you load here leaves your browser. There is no upload, no server, no analytics —
+      the parsing all happens in this tab.
+    </p>
+  </header>
+
+  <!-- ------------------------------------------------------- -->
+  <section class="pg-tool">
+    <h2 id="pm4-decoder">PM4 command decoder <span class="pg-badge b-kyty">GPU</span></h2>
+    <p class="pg-sub">
+      The CPU never talks to the PS5 GPU directly — it fills a ring buffer with <em>PM4 packets</em>
+      and the command processor eats them. Every draw, every register write, every fence is one of
+      these. Paste dwords from a command-buffer dump, or encode a packet from scratch and watch
+      the bit layout fall out.
+    </p>
+    <div class="pg-body" id="pg-pm4"></div>
+  </section>
+
+  <!-- ------------------------------------------------------- -->
+  <section class="pg-tool">
+    <h2 id="elf-inspector">Module inspector <span class="pg-badge b-guest">Guest</span></h2>
+    <p class="pg-sub">
+      Sony modules are ELF files that a normal ELF reader refuses to load: the type is
+      <code>ET_SCE_*</code> and the import/export machinery lives in a proprietary
+      <code>PT_OS_DYNLIBDATA</code> segment instead of the standard place. Drop one of your own
+      modules in and see exactly what the runtime linker sees.
+    </p>
+    <div class="pg-body" id="pg-elf"></div>
+  </section>
+
+  <!-- ------------------------------------------------------- -->
+  <section class="pg-tool">
+    <h2 id="log-triage">Log triage <span class="pg-badge b-host">Host</span></h2>
+    <p class="pg-sub">
+      A failing run produces thousands of lines and maybe five that matter. This groups them by
+      what they mean for you — unresolved imports are work you could pick up, unknown packets point
+      at the GPU decoder, errors read best from the bottom. Point it at the log from a title that
+      does not boot and you have a to-do list.
+    </p>
+    <div class="pg-body" id="pg-log"></div>
+  </section>
+
+  <!-- ------------------------------------------------------- -->
+  <section class="pg-tool">
+    <h2 id="id64">Module &amp; library id encoder <span class="pg-badge b-guest">Guest</span></h2>
+    <p class="pg-sub">
+      Symbol names in a PS5 module look like <code>pt2fEBBpEJk#A#A</code>. Those trailing tokens
+      are 16-bit module and library ids squeezed into a 64-symbol alphabet. This is the emulator's
+      encoder, transcribed exactly — drag the slider and watch which branch the value takes.
+    </p>
+    <div class="pg-body" id="pg-id64"></div>
+  </section>
+
+  <!-- ------------------------------------------------------- -->
+  <section class="pg-tool" style="background:transparent;box-shadow:none;border-style:dashed">
+    <h2 id="generate">Don't have artifacts yet?</h2>
+    <p class="pg-sub" style="margin-bottom:12px">
+      Your build can produce everything these tools want. Run a title you know works, let it reach
+      a menu, then quit:
+    </p>
+    <pre class="tu-pre" style="font-size:12.5px"><code>.\_Build\windows-prod\kyty_emulator.exe --game "&lt;your title&gt;" `
+  --printf-direction File --printf-output-file _kyty.txt `
+  --command-buffer-dump true --shader-log-direction File</code></pre>
+    <p class="pg-sub" style="margin:12px 0 0">
+      That fills <code>_Shaders/</code> and the command-buffer dumps, and gives you a
+      <code>_kyty.txt</code> to drop into the triage tool above. It is also the prerequisite for
+      levels 4 and 5 of the <a href="path.html">learning path</a>.
+    </p>
+  </section>
+
+</main>
+
+<script src="assets/search-index.js?v=17" defer></script>
+<script src="assets/topics.js?v=17" defer></script><script src="assets/highlight.js?v=17" defer></script>
+<script src="assets/app.js?v=17" defer></script>
+<script src="assets/highlight.js?v=17" defer></script>
+<script src="assets/tutor.js?v=17" defer></script>
+<script src="assets/playground.js?v=17" defer></script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

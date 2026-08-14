@@ -1,0 +1,274 @@
+/* ============================================================
+   KytyPS5 Learning Platform — Examples
+   ============================================================ */
+
+html { background: var(--p-bg); }
+body { margin: 0; background: var(--p-bg); }
+
+.ex-wrap {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 44px 22px 110px;
+  font-family: var(--p-sans);
+  color: var(--p-ink);
+}
+
+/* ---------- table of contents ---------- */
+
+.ex-toc {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 4px;
+  margin: 0 0 52px;
+  padding: 10px;
+  background: var(--p-surface);
+  border: 1px solid var(--p-line);
+  border-radius: 12px;
+}
+.ex-toc a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  text-decoration: none;
+  color: var(--p-ink-2);
+  font-size: 13.5px;
+  transition: background 0.12s, color 0.12s;
+}
+.ex-toc a:hover { background: var(--p-surface-2); color: var(--p-ink); }
+.ex-toc-n {
+  font-family: var(--p-mono);
+  font-size: 11px;
+  color: var(--p-ink-3);
+  border: 1px solid var(--p-line);
+  border-radius: 5px;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+
+/* ---------- example block ---------- */
+
+.ex {
+  margin: 0 0 68px;
+  padding-bottom: 52px;
+  border-bottom: 1px solid var(--p-line);
+}
+.ex:last-of-type { border-bottom: 0; }
+
+.ex-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.ex-num {
+  font-family: var(--p-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--p-ink-3);
+  border: 1px solid var(--p-line);
+  border-radius: 9px;
+  padding: 8px 10px;
+  flex: none;
+  line-height: 1;
+}
+.ex-head h2 {
+  font-family: var(--p-mono);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0 0 6px;
+  line-height: 1.2;
+}
+.ex-meta {
+  font-family: var(--p-sans);
+  font-size: 12px;
+  color: var(--p-ink-3);
+  margin: 0;
+}
+.ex-meta code {
+  font-family: var(--p-mono);
+  font-size: 11px;
+  background: var(--p-surface-2);
+  border-radius: 3px;
+  padding: 1px 4px;
+}
+.ex-time { color: var(--p-ink-2); }
+.ex-diff {
+  font-family: var(--p-mono);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+}
+.ex-diff.d1 { color: var(--c-guest); }
+.ex-diff.d2 { color: var(--c-kyty); }
+.ex-diff.d3 { color: var(--c-host); }
+
+.ex-lede {
+  font-family: var(--p-serif);
+  font-size: 17px;
+  line-height: 1.66;
+  color: var(--p-ink-2);
+  margin: 0 0 30px;
+}
+.ex-lede strong { color: var(--p-ink); font-weight: 600; }
+
+/* ---------- steps ---------- */
+
+.ex-step {
+  margin: 0 0 26px;
+  padding-left: 34px;
+  position: relative;
+}
+.ex-step h3 {
+  font-family: var(--p-sans);
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.005em;
+  margin: 0 0 9px;
+  color: var(--p-ink);
+}
+.ex-s {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 23px;
+  height: 23px;
+  border-radius: 50%;
+  background: var(--p-surface-2);
+  border: 1px solid var(--p-line);
+  color: var(--p-ink-2);
+  font-family: var(--p-mono);
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.ex-step p {
+  font-family: var(--p-serif);
+  font-size: 16px;
+  line-height: 1.68;
+  color: var(--p-ink-2);
+  margin: 0 0 11px;
+}
+.ex-step p strong, .ex-step p b { color: var(--p-ink); font-weight: 600; }
+.ex-step a { color: var(--p-accent); text-underline-offset: 2px; }
+.ex-step code, .ex-end code, .ex-next code {
+  font-family: var(--p-mono);
+  font-size: 0.855em;
+  background: var(--p-surface-2);
+  border: 1px solid var(--p-line);
+  border-radius: 4px;
+  padding: 0.5px 4px;
+  color: var(--p-ink);
+  word-break: break-word;
+}
+
+.ex-list {
+  font-family: var(--p-serif);
+  font-size: 16px;
+  line-height: 1.66;
+  color: var(--p-ink-2);
+  margin: 0 0 12px;
+  padding-left: 1.3em;
+}
+.ex-list li { margin-bottom: 6px; }
+.ex-list strong { color: var(--p-ink); }
+
+/* ---------- code ---------- */
+
+.ex-pre {
+  font-family: var(--p-mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  background: var(--p-surface-2);
+  border: 1px solid var(--p-line);
+  border-radius: 9px;
+  padding: 13px 15px;
+  overflow-x: auto;
+  margin: 0 0 13px;
+  color: var(--p-ink);
+}
+.ex-pre code { background: none; border: 0; padding: 0; font-size: inherit; }
+.ex-pre b {
+  color: var(--c-kyty);
+  font-weight: 600;
+  background: color-mix(in srgb, var(--c-kyty) 13%, transparent);
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+/* ---------- callout ---------- */
+
+.ex-callout {
+  font-family: var(--p-serif);
+  font-size: 15.5px;
+  line-height: 1.64;
+  color: var(--p-ink-2);
+  background: color-mix(in srgb, var(--c-guest) 8%, transparent);
+  border-left: 2px solid var(--c-guest);
+  border-radius: 0 9px 9px 0;
+  padding: 13px 16px;
+  margin: 0 0 14px;
+}
+.ex-callout b { color: var(--p-ink); font-weight: 600; }
+.ex-callout.ex-c-warn {
+  background: color-mix(in srgb, var(--c-host) 8%, transparent);
+  border-left-color: var(--c-host);
+}
+
+/* ---------- next ---------- */
+
+.ex-next {
+  font-family: var(--p-serif);
+  font-size: 15.5px;
+  line-height: 1.62;
+  color: var(--p-ink-2);
+  background: var(--p-surface);
+  border: 1px solid var(--p-line);
+  border-radius: 10px;
+  padding: 14px 17px;
+  margin: 26px 0 0 34px;
+}
+.ex-next b { color: var(--p-ink); font-weight: 600; }
+.ex-next a { color: var(--p-accent); }
+
+/* ---------- closing ---------- */
+
+.ex-end {
+  background: var(--p-surface);
+  border: 1px solid var(--p-line);
+  border-radius: 12px;
+  padding: 22px 24px;
+}
+.ex-end h2 {
+  font-family: var(--p-mono);
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 10px;
+}
+.ex-end p {
+  font-family: var(--p-serif);
+  font-size: 16px;
+  line-height: 1.66;
+  color: var(--p-ink-2);
+  margin: 0 0 10px;
+}
+.ex-end p:last-child { margin-bottom: 0; }
+.ex-end b { color: var(--p-ink); }
+
+@media (max-width: 620px) {
+  .ex-wrap { padding: 32px 16px 80px; }
+  .ex-head h2 { font-size: 19px; }
+  .ex-step { padding-left: 0; }
+  .ex-s { position: static; margin-right: 8px; }
+  .ex-next { margin-left: 0; }
+}

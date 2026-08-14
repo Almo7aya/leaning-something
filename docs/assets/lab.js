@@ -24,6 +24,12 @@
   var reg = window.VIZ.register;
   var REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+  /* True only while a walkthrough is replaying earlier steps to reach the one
+     the reader asked for. Tools with animated transitions must apply their
+     state synchronously in that window, or a step's narration can describe a
+     result the animation has not delivered yet. */
+  var REPLAYING = false;
+
   /* ---------------- tiny DOM + number helpers ---------------- */
   function h(tag, cls, html) {
     var e = document.createElement(tag);
@@ -76,50 +82,105 @@
   function status(row) { var s = h("span", "lab-status"); row.appendChild(s); return s; }
 
   /**
-   * Self-running demo. Every tool gets one so it can be understood without
-   * typing anything first; the controls stay live throughout, and starting to
-   * poke at them mid-demo just means you take over.
-   * steps = [{ say: "narration", run: fn, ms: optional override }]
+   * Guided walkthrough. Every tool gets one so it can be understood without
+   * typing anything first. The reader drives it with Prev/Next rather than
+   * it playing on its own — nothing moves until they ask it to, and the
+   * controls stay live throughout, so poking at them mid-walkthrough just
+   * means they have taken over.
+   *
+   * steps = [{ say: "narration", run: fn }]
+   *
+   * Steps are CUMULATIVE: each run() assumes the ones before it already
+   * happened. So going back replays from the first step rather than trying
+   * to invert anything — every step-0 resets its tool, which makes the
+   * replay exact and cheap.
+   *
+   * `ms` is accepted and ignored; it was the old auto-advance delay.
    */
   function demoRunner(row, steps, ms) {
-    var btn = h("button", "lab-btn demo", "▶ Run demo");
+    var btn = h("button", "lab-btn demo", "▶ Walk through");
     btn.type = "button";
     row.appendChild(btn);
+
     var bar = h("div", "lab-demo");
     bar.hidden = true;
     row.parentNode.insertBefore(bar, row.nextSibling);
 
-    var i = 0, timer = null;
-    function stop() {
-      if (timer) { clearTimeout(timer); timer = null; }
-      btn.textContent = "▶ Run demo";
-      btn.classList.remove("on");
-      bar.hidden = true;
+    var nav = h("div", "lab-demo-nav");
+    var prev = h("button", "lab-demo-b", "‹ Prev");
+    var next = h("button", "lab-demo-b", "Next ›");
+    var count = h("span", "n");
+    var done = h("button", "lab-demo-x", "✕");
+    prev.type = next.type = done.type = "button";
+    done.title = "Close the walkthrough";
+    done.setAttribute("aria-label", "Close the walkthrough");
+    nav.appendChild(prev);
+    nav.appendChild(next);
+    nav.appendChild(count);
+    nav.appendChild(done);
+
+    var say = h("div", "lab-demo-say");
+    bar.appendChild(nav);
+    bar.appendChild(say);
+
+    var i = -1;
+
+    function runStep(k) {
+      try { if (steps[k].run) steps[k].run(); }
+      catch (err) { if (window.console) console.error("demo step " + k, err); }
     }
-    function tick() {
-      if (i >= steps.length) {
-        bar.innerHTML = '<span class="n">done</span>Now change anything above — it is all live.';
-        timer = setTimeout(stop, 3200);
-        return;
+
+    function goTo(n) {
+      n = Math.max(0, Math.min(steps.length - 1, n));
+
+      if (n === i + 1 && i >= 0) {
+        // moving forward one: the tool is already in the right state
+        runStep(n);
+      } else {
+        // jumping back or skipping: rebuild the state from the top, without
+        // animating the steps we are only passing through
+        REPLAYING = true;
+        try { for (var k = 0; k < n; k++) runStep(k); }
+        finally { REPLAYING = false; }
+        runStep(n);
       }
-      var s = steps[i++];
-      try { if (s.run) s.run(); } catch (err) { if (window.console) console.error("demo step", err); }
-      bar.innerHTML = '<span class="n">' + i + " / " + steps.length + "</span>" + s.say;
-      timer = setTimeout(tick, s.ms || ms || 2400);
+
+      i = n;
+      count.textContent = (n + 1) + " / " + steps.length;
+      say.innerHTML = steps[n].say +
+        (n === steps.length - 1
+          ? ' <span class="lab-demo-end">That is the whole walkthrough — everything above is still live, so change it.</span>'
+          : "");
+      prev.disabled = n === 0;
+      next.disabled = n === steps.length - 1;
     }
-    btn.addEventListener("click", function () {
-      if (timer) { stop(); return; }
-      i = 0; bar.hidden = false;
-      btn.textContent = "■ Stop"; btn.classList.add("on");
-      tick();
+
+    function open() {
+      bar.hidden = false;
+      btn.textContent = "▶ Restart";
+      btn.classList.add("on");
+      goTo(0);
+    }
+    function close() {
+      bar.hidden = true;
+      btn.textContent = "▶ Walk through";
+      btn.classList.remove("on");
+      i = -1;
+    }
+
+    btn.addEventListener("click", open);
+    prev.addEventListener("click", function () { goTo(i - 1); });
+    next.addEventListener("click", function () { goTo(i + 1); });
+    done.addEventListener("click", close);
+
+    // arrow keys once the walkthrough has focus
+    bar.addEventListener("keydown", function (e) {
+      if (e.key === "ArrowLeft") { e.preventDefault(); goTo(i - 1); }
+      else if (e.key === "ArrowRight") { e.preventDefault(); goTo(i + 1); }
+      else if (e.key === "Escape") { e.preventDefault(); close(); }
     });
-    // stop if the reader scrolls away
-    if ("IntersectionObserver" in window) {
-      new IntersectionObserver(function (e) {
-        e.forEach(function (en) { if (!en.isIntersecting && timer) stop(); });
-      }, { threshold: 0 }).observe(row.parentNode);
-    }
-    return { stop: stop };
+
+    return { stop: close, goTo: goTo };
   }
   /** Fire the events a control would fire if a person had touched it. */
   function setInput(el, v) { el.value = v; el.dispatchEvent(new Event("input", { bubbles: true })); }
@@ -617,7 +678,7 @@
       st.textContent = d + " CPU-dirty · " + g + " GPU-dirty · " + l + " protected";
     }
     function flash(side, idxs, then) {
-      if (REDUCED) { if (then) then(); render(); return; }
+      if (REDUCED || REPLAYING) { if (then) then(); render(); return; }
       idxs.forEach(function (i) { moving[side + i] = true; });
       render();
       setTimeout(function () {

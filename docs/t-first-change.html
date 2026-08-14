@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your first change — KytyPS5</title>
+<meta name="description" content="The complete loop: find something missing, implement it, register it, and prove it ran.">
+<link rel="stylesheet" href="assets/viz.css?v=17">
+<link rel="stylesheet" href="assets/atlas.css?v=17">
+<link rel="stylesheet" href="assets/lab.css?v=17">
+<link rel="stylesheet" href="assets/tutor.css?v=17">
+<link rel="stylesheet" href="assets/app.css?v=17">
+<link rel="stylesheet" href="assets/highlight.css?v=17">
+</head>
+<body>
+
+<main class="topic" data-app-content>
+
+  <p class="topic-eyebrow">Working on it · 19</p>
+  <h1 id="your-first-change">Your first change</h1>
+  <p class="topic-deck">
+    Everything so far has been preparation for this. Implementing one missing function is the smallest complete contribution to the project, and doing it once changes how the rest of the codebase reads.
+  </p>
+
+  <section class="band band-read">
+    <div class="band-h"><span class="band-t">Read</span></div>
+    <div class="prose">
+<p class="deck">This is the smallest change that produces a real compatibility improvement, and it is a good first contribution. Here is the complete loop.</p>
+
+  <h4 id="step-1-find-what-is-missing">Step 1 — find what is missing</h4>
+  <p>Run the game with logging to a file and search for stub messages:</p>
+<pre>kyty_emulator.exe --game "D:\Games\Example" ^
+  --printf-direction File --printf-output-file _kyty.txt</pre>
+  <p>The loader logs every import it could not resolve, with the NID and the owning module. A line naming a function the game then calls is your target.</p>
+
+  <h4 id="step-2-work-out-what-it-should-do">Step 2 — work out what it should do</h4>
+  <p>You have three sources, in decreasing order of reliability:</p>
+  <ol>
+    <li><strong>The call site.</strong> Break on the stub, look at the guest's registers and at the memory the pointer arguments point to. The argument layout tells you a lot.</li>
+    <li><strong>Published SDK header names.</strong> NIDs are hashes of names, and community NID databases map many of them back.</li>
+    <li><strong>Behaviour.</strong> Return a plausible value, see what the game does next, iterate. Crude but effective.</li>
+  </ol>
+
+  <h4 id="step-3-write-it">Step 3 — write it</h4>
+  <p>Add to the appropriate module file — or create one following the template in <a href="t-hle.html">topic 12</a>:</p>
+<pre>struct ExampleParam {
+    uint32_t size;
+    uint32_t flags;
+    void*    buffer;
+};
+
+static int <b>KYTY_SYSV_ABI</b> ExampleGetStatus(const ExampleParam* param, int* out_status) {
+    <b>PRINT_NAME</b>();
+
+    LOGF("\t param      = 0x%016" PRIx64 "\n"
+         "\t out_status = 0x%016" PRIx64 "\n",
+         (uint64_t)param, (uint64_t)out_status);
+
+    if (param == nullptr || out_status == nullptr) {
+        return EXAMPLE_ERROR_INVALID_PARAM;
+    }
+    LOGF("\t size = %" PRIu32 ", flags = 0x%08" PRIx32 "\n", param-&gt;size, param-&gt;flags);
+
+    *out_status = 0;          <i>// idle / ready — whatever the game expects to proceed</i>
+    return OK;
+}</pre>
+
+  <p>Then register it, next to the module's other entries:</p>
+<pre>LIB_DEFINE(InitExample_1) {
+    LIB_FUNC("aBcDeFgHiJk", Example::ExampleGetStatus);   <i>// &lt;- the NID from the log</i>
+}</pre>
+
+  <h4 id="step-4-verify-it-is-actually-reached">Step 4 — verify it is actually reached</h4>
+  <p>Rebuild, re-run, and confirm two things: the stub message for that NID is gone, and your <code>LOGF</code> output appears. If the stub message is gone but your logging never appears, the game resolved the import but never calls it — which is fine.</p>
+
+  <h4 id="when-it-does-not-bind">When it does not bind</h4>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr></thead>
+      <tbody>
+        <tr><td>NID still reported as stubbed</td><td>The NID string does not match exactly — one wrong character is enough — or the <code>LIB_VERSION</code> library/module name or version differs from what the game imports.</td><td>Compare against the log line, which prints the full <code>nid#library#module</code>.</td></tr>
+        <tr><td>Bound, but arguments are garbage</td><td>Missing <code>KYTY_SYSV_ABI</code>. The function is reading Microsoft-convention registers.</td><td>Add the attribute.</td></tr>
+        <tr><td>Bound and called, then the game crashes inside your function</td><td>Your struct layout does not match the console's. Guest pointers point at guest-laid-out data.</td><td>Dump the raw bytes at the pointer and rebuild the struct from them. Add a <code>static_assert</code> on the size once you are confident.</td></tr>
+        <tr><td>Everything works but the game still misbehaves</td><td>The return value or output parameter is wrong for what the game expects.</td><td>Try alternative plausible values; check <code>errno.h</code> for a more specific error code.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout k">
+    <span class="lbl">Contribution etiquette</span>
+    <p>The README asks that code contributions be focused, build on the platforms they touch, and include tests where practical. It also carries an explicit AI-use policy: assistance is allowed for research and development, but you must understand and test what you submit, disclose the scope of any AI involvement, and write the pull-request text yourself.</p>
+  </div>
+    </div>
+  </section>
+
+  <section class="band band-watch">
+    <div class="band-h"><span class="band-t">Watch</span></div>
+    <p class="band-why">
+      The five steps, in order. It is the same loop every time.
+    </p>
+    <div data-viz="contribloop"></div>
+  </section>
+  <section class="band band-try">
+    <div class="band-h"><span class="band-t">Try</span></div>
+
+    <div class="callout k">
+      <span class="lbl">Pick your target</span>
+      <p>Drop your own log into the <a href="playground.html#log-triage">triage tool</a> and take the top entry from "Unresolved imports". That is a real, self-contained piece of work, chosen by the actual behaviour of a game you own.</p>
+    </div>
+  </section>
+  <section class="band band-do">
+    <div class="band-h"><span class="band-t">Do</span></div>
+    <p class="band-why">
+      Work through the walkthrough above with a function from your own log rather than the example. The <a href="examples.html#ex-hle">Examples page</a> covers the same loop in a different order if you would rather see it laid out as steps.
+    </p>
+
+    <div class="check">
+      <p class="check-h">Checkpoint</p>
+      <ul class="check-list">
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Pick an unresolved NID from your own run.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Work out what the function should do and what it should return.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Write the implementation with <code>KYTY_SYSV_ABI</code> and a <code>PRINT_NAME()</code> trace.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Register it with <code>LIB_FUNC</code> against the NID.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Rebuild, re-run, and confirm the unresolved line is gone <em>and</em> your trace appears.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Do a second one. It will take a quarter as long.</label>
+        </li>
+      </ul>
+    </div>
+
+    <div class="callout k">
+      <span class="lbl">That's the whole course</span>
+      <p>From here the useful loop is: run a title, read the log, pick the thing blocking it, fix that. The Playground reads every artifact your build produces, and the tutor knows every topic here — ask it when something in the tree does not match what you expected.</p>
+    </div>  </section>
+
+</main>
+
+<script src="assets/topics.js?v=17" defer></script>
+<script src="assets/search-index.js?v=17" defer></script>
+<script src="assets/app.js?v=17" defer></script>
+<script src="assets/viz.js?v=17" defer></script>
+<script src="assets/atlas.js?v=17" defer></script>
+<script src="assets/lab.js?v=17" defer></script>
+<script src="assets/figs.js?v=17" defer></script>
+<script src="assets/figures.js?v=17" defer></script>
+<script src="assets/highlight.js?v=17" defer></script>
+<script src="assets/tutor.js?v=17" defer></script>
+</body>
+</html>
+
+

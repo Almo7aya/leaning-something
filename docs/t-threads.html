@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Threads and TLS — KytyPS5</title>
+<meta name="description" content="Guest threads are real host threads. Standing one up means crossing the ABI wall in the opposite direction.">
+<link rel="stylesheet" href="assets/viz.css?v=17">
+<link rel="stylesheet" href="assets/atlas.css?v=17">
+<link rel="stylesheet" href="assets/lab.css?v=17">
+<link rel="stylesheet" href="assets/tutor.css?v=17">
+<link rel="stylesheet" href="assets/app.css?v=17">
+<link rel="stylesheet" href="assets/highlight.css?v=17">
+</head>
+<body>
+
+<main class="topic" data-app-content>
+
+  <p class="topic-eyebrow">Execution · 11</p>
+  <h1 id="threads-and-tls">Threads and TLS</h1>
+  <p class="topic-deck">
+    There is no scheduler here. A guest thread is a host thread, and the host OS runs it. The work is in setting up the world that thread expects before its first instruction — thread-local storage, a stack, and a correct ABI transition.
+  </p>
+
+  <section class="band band-read">
+    <div class="band-h"><span class="band-t">Read</span></div>
+    <div class="prose">
+<p class="deck">Guest threads are real host threads — but with two pieces of state Kyty has to maintain itself, and a set of FreeBSD semantics that do not come free.</p>
+
+  <h4 id="what-pthread-cpp-implements">What <code>pthread.cpp</code> implements</h4>
+  <p>131 KB covering: threads with names, priorities and CPU affinity masks; mutexes in all four types with protocol attributes; condition variables; read-write locks; thread-specific keys with destructors; cancellation in both deferred and asynchronous modes; per-thread signal queues; and the timing calls (<code>KernelUsleep</code>, <code>KernelNanosleep</code>, clock queries).</p>
+
+  <p>Both the Sony-prefixed and POSIX-named entry points are registered, because games use both:</p>
+<pre>LIB_FUNC("7H0iTOciTLo", Posix::pthread_mutex_lock);
+LIB_FUNC("2Z+PpY6CaJg", Posix::pthread_mutex_unlock);
+LIB_FUNC("IafI2PxcPnQ", LibKernel::PthreadMutexTimedlock);
+LIB_FUNC("Op8TBGY5KHg", Posix::pthread_cond_wait);</pre>
+
+  <h4 id="guest-stacks">Guest stacks</h4>
+  <p>A guest thread cannot simply use the host thread's stack. Guest code computes addresses relative to its own stack, and those addresses may be handed to the GPU or stored in structures Kyty inspects — so they must lie inside the guest address bands:</p>
+<pre>void  PthreadInitSelfForMainThread();
+void* <b>PthreadCreateMainGuestStack</b>();
+bool  PthreadGetGuestStack(Pthread thread, uint64_t* stack_addr, uint64_t* stack_size);</pre>
+
+  <p>The guest stack is allocated with <code>AllocateGuestStackMemory</code>, and <code>RunEntry</code> switches to it before calling the entry point. The entry parameters are placed at the top of that stack, 16-byte aligned as the ABI requires:</p>
+<pre>auto* params = reinterpret_cast&lt;EntryParams*&gt;(
+    (reinterpret_cast&lt;uintptr_t&gt;(main_stack_top) - 0x100u) &amp; <b>~0x0fu</b>);
+params-&gt;argc    = 1;
+params-&gt;argv[0] = "KytyEmu";</pre>
+
+  <h4 id="per-thread-tls-blocks">Per-thread TLS blocks</h4>
+  <p>Each loaded module has a TLS <em>template</em> from its <code>PT_TLS</code> segment. Every thread needs its own copy of every module's template. Kyty allocates them lazily:</p>
+
+  <div class="filename">src/loader/runtimeLinker.h:49</div>
+<pre>struct ThreadLocalStorage {
+    struct Block {
+        uint8_t*                     ptr        = nullptr;
+        application_heap_free_func_t free_func  = nullptr;  <i>// the game's own free()</i>
+        bool                         vm_alloc   = false;
+        uint64_t                     alloc_size = 0;
+    };
+
+    uint64_t image_vaddr;    <i>// the template</i>
+    uint64_t init_size;      <i>// bytes to copy from it</i>
+    uint64_t image_size;     <i>// total per-thread size</i>
+    uint64_t tcb_offset;     <i>// where the control block sits within the block</i>
+    uint64_t handler_vaddr;  <i>// the generated stub from <a href="t-patching.html">topic 08</a></i>
+
+    std::vector&lt;uint8_t&gt;           init_image;
+    std::unordered_map&lt;int, Block&gt; <b>tlss</b>;      <i>// thread id → block</i>
+    Common::Mutex                  mutex;
+};</pre>
+
+  <p>Note <code>free_func</code>. If the game has installed its own heap through <code>SetApplicationHeapApi</code>, TLS blocks are allocated from <em>that</em> heap and must be released through it — freeing them with <code>delete[]</code> would corrupt the game's allocator. <code>FreeTlsBlock</code> handles all three cases (game heap, guest VM allocation, plain <code>new[]</code>).</p>
+
+  <p>Blocks are released per thread on exit via <code>DeleteTlss(thread_id)</code>, and per module on unload via <code>DeleteTls(program, thread_id)</code>.</p>
+
+  <h4 id="the-application-heap-bridge">The application heap bridge</h4>
+  <p>Games can install their own allocator, which the runtime is then expected to use:</p>
+<pre>void  SetApplicationHeapApi(void* const api[10]);
+void* ApplicationHeapMalloc(uint64_t size);
+void* ApplicationHeapMemalign(uint64_t alignment, uint64_t size);</pre>
+  <p>An array of ten function pointers, of which Kyty uses malloc, free and posix_memalign. This matters because memory Kyty allocates on the game's behalf may be freed by the game, and vice versa.</p>
+    </div>
+  </section>
+
+  <section class="band band-watch">
+    <div class="band-h"><span class="band-t">Watch</span></div>
+    <p class="band-why">
+      Which threads exist in a running emulator and what each is responsible for. Note that the GPU work does not happen on the guest's threads.
+    </p>
+    <div data-viz="threads"></div>
+  </section>
+  <section class="band band-try">
+    <div class="band-h"><span class="band-t">Try</span></div>
+    <p class="band-why">
+      Step through what each new thread actually receives, and where the zero-filled tail comes from.
+    </p>
+    <div data-viz="tlscopy"></div>
+  </section>
+  <section class="band band-do">
+    <div class="band-h"><span class="band-t">Do</span></div>
+    <p class="band-why">
+      The ABI wall from topic 03 shows up here in reverse — host code calling into guest code — which is the harder direction.
+    </p>
+
+    <div class="check">
+      <p class="check-h">Checkpoint</p>
+      <ul class="check-list">
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Find the <code>scePthreadCreate</code> implementation and follow it to the host thread creation call.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Find where per-thread TLS is allocated, and what it is initialised from.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Explain why <code>filesz</code> and <code>memsz</code> differ on a <code>PT_TLS</code> segment, and what has to happen to the difference.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Explain what goes wrong if the guest entry point is called without an ABI transition.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Set a breakpoint on the thread entry and look at the stack. Identify the boundary between host and guest frames.</label>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+</main>
+
+<script src="assets/topics.js?v=17" defer></script>
+<script src="assets/search-index.js?v=17" defer></script>
+<script src="assets/app.js?v=17" defer></script>
+<script src="assets/viz.js?v=17" defer></script>
+<script src="assets/atlas.js?v=17" defer></script>
+<script src="assets/lab.js?v=17" defer></script>
+<script src="assets/figs.js?v=17" defer></script>
+<script src="assets/figures.js?v=17" defer></script>
+<script src="assets/highlight.js?v=17" defer></script>
+<script src="assets/tutor.js?v=17" defer></script>
+</body>
+</html>
+
+

@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Debugging &amp; diagnostics — KytyPS5</title>
+<meta name="description" content="The flags, dumps and tests that turn a black box into something you can inspect.">
+<link rel="stylesheet" href="assets/viz.css?v=17">
+<link rel="stylesheet" href="assets/atlas.css?v=17">
+<link rel="stylesheet" href="assets/lab.css?v=17">
+<link rel="stylesheet" href="assets/tutor.css?v=17">
+<link rel="stylesheet" href="assets/app.css?v=17">
+<link rel="stylesheet" href="assets/highlight.css?v=17">
+</head>
+<body>
+
+<main class="topic" data-app-content>
+
+  <p class="topic-eyebrow">Working on it · 18</p>
+  <h1 id="debugging-diagnostics">Debugging & diagnostics</h1>
+  <p class="topic-deck">
+    Everything in this course is easier when you can see inside a running emulator. These are the switches that produce the artifacts — and the test suite that tells you whether a change broke something.
+  </p>
+
+  <section class="band band-read">
+    <div class="band-h"><span class="band-t">Read</span></div>
+    <div class="prose">
+<p class="deck">The emulator ships with substantial instrumentation. Learning it is the difference between guessing and knowing.</p>
+
+  <h4 id="every-flag-and-what-it-is-for">Every flag, and what it is for</h4>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Flag</th><th>Default</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td><code>--game &lt;dir|elf&gt;</code></td><td>—</td><td>A game directory (uses <code>/app0/eboot.bin</code>) or a single ELF.</td></tr>
+        <tr><td><code>--game-patch &lt;json&gt;</code></td><td>—</td><td>A validated patch plan applied to guest memory before the entry point.</td></tr>
+        <tr><td><code>--screen-width</code> / <code>--screen-height</code></td><td>1280 / 720</td><td>Window size.</td></tr>
+        <tr><td><code>--vblank-frequency &lt;n&gt;</code></td><td>60</td><td>Virtual vertical-blank rate. Changing it changes game speed for engines that pace off vblank.</td></tr>
+        <tr><td><code>--vulkan-validation</code></td><td>false</td><td>Vulkan validation layers.</td></tr>
+        <tr><td><code>--shader-validation</code></td><td>false</td><td>Runs every emitted module through <code>spirv-val</code> before the driver sees it.</td></tr>
+        <tr><td><code>--shader-optimization-type</code></td><td>None</td><td><code>None</code>, <code>Size</code> or <code>Performance</code> — passes to <code>spirv-opt</code>.</td></tr>
+        <tr><td><code>--shader-log-direction</code></td><td>Silent</td><td><code>Silent</code>, <code>Console</code> or <code>File</code>. Dumps decoded RDNA 2, the CFG and the IR per shader.</td></tr>
+        <tr><td><code>--shader-log-folder</code></td><td><code>_Shaders</code></td><td>Where those dumps land.</td></tr>
+        <tr><td><code>--command-buffer-dump</code></td><td>false</td><td>Decoded PM4 listing of every submitted buffer.</td></tr>
+        <tr><td><code>--command-buffer-dump-folder</code></td><td><code>_Buffers</code></td><td>Where those land.</td></tr>
+        <tr><td><code>--graphics-debug-dump</code></td><td>false</td><td>Additional graphics dumps, including textures into <code>_Textures</code>.</td></tr>
+        <tr><td><code>--printf-direction</code></td><td>Console</td><td><code>Silent</code>, <code>Console</code> or <code>File</code> — this is the main log.</td></tr>
+        <tr><td><code>--printf-output-file</code></td><td><code>_kyty.txt</code></td><td>Where the main log goes when directed to a file.</td></tr>
+        <tr><td><code>--profiler-direction</code></td><td>None</td><td><code>None</code> or <code>Network</code> — streams to a Tracy client.</td></tr>
+        <tr><td><code>--spirv-debug-printf</code></td><td>false</td><td>Enables <code>printf</code> from inside shaders.</td></tr>
+        <tr><td><code>--ngg-rectlist-draw</code></td><td>true</td><td>Draw rect-list auto draws through the NGG four-vertex path.</td></tr>
+        <tr><td><code>--readback-linear-images</code></td><td>false</td><td>Read back writable linear images on submit — a coherency workaround.</td></tr>
+        <tr><td><code>--rd</code></td><td>off</td><td>Loads the RenderDoc API for frame capture.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4 id="the-configuration-you-will-actually-use">The configuration you will actually use</h4>
+<pre><i># general debugging</i>
+kyty_emulator.exe --game "D:\Games\Example" ^
+  --printf-direction File --printf-output-file _kyty.txt ^
+  --vulkan-validation true --shader-validation true
+
+<i># graphics investigation</i>
+kyty_emulator.exe --game "D:\Games\Example" ^
+  --command-buffer-dump true --shader-log-direction File --graphics-debug-dump true</pre>
+
+  <h4 id="symptom-to-first-move">Symptom to first move</h4>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Symptom</th><th>Turn on</th><th>Look at</th></tr></thead>
+      <tbody>
+        <tr><td>Exits immediately</td><td>default</td><td>The last log lines — a failed subsystem, a missing <code>eboot.bin</code>, or an <code>EXIT_NOT_IMPLEMENTED</code> in the loader naming its condition.</td></tr>
+        <tr><td>Crashes before rendering</td><td>default</td><td>Search for <code>kyty_exception_handler</code>. Fault address <code>0x28</code> means an unpatched canary store; a small address usually means a null pointer downstream of a stubbed import.</td></tr>
+        <tr><td>Boots, a feature does nothing</td><td><code>PRINT_NAME_ENABLE(true)</code></td><td>The per-call trace for the suspect module, plus stubbed-NID lines in the log.</td></tr>
+        <tr><td>Black screen, no errors</td><td><code>--command-buffer-dump true</code></td><td>Whether <code>IT_DRAW_*</code> packets arrive at all. If not, the problem is upstream of graphics.</td></tr>
+        <tr><td>Geometry wrong or missing</td><td><code>--rd</code></td><td>The captured draw in RenderDoc: vertex buffers, pipeline, viewport, scissor.</td></tr>
+        <tr><td>Wrong colours, garbage pixels</td><td><code>--shader-log-direction File</code></td><td>The pixel shader's IR. Also check for <code>dispatcher fallback used</code>.</td></tr>
+        <tr><td>Textures flicker or go stale</td><td><code>--readback-linear-images true</code></td><td>A coherency bug. Start at <code>MemoryTracker</code>, not the texture cache.</td></tr>
+        <tr><td>Device lost / validation errors</td><td><code>--vulkan-validation true --shader-validation true</code></td><td>Validation output first; malformed SPIR-V second.</td></tr>
+        <tr><td>Very slow</td><td><code>--profiler-direction Network</code></td><td>Tracy. Distinguish shader compilation (cold cache) from per-draw cost.</td></tr>
+        <tr><td>Hangs with no CPU use</td><td>debugger, all threads</td><td>A <code>WAIT_REG_MEM</code> whose condition never becomes true, or a thread waiting on an event queue nothing signals.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4 id="reading-the-source-five-conventions">Reading the source: five conventions</h4>
+  <div class="tw">
+    <table>
+      <thead><tr><th>You will see</th><th>It means</th></tr></thead>
+      <tbody>
+        <tr><td><code>EXIT_NOT_IMPLEMENTED(cond)</code><br><strong>1,034 sites</strong></td><td>"If this is true, I did not handle this case." A marker of the frontier, not an impossibility claim. Grepping these maps what the emulator cannot yet do.</td></tr>
+        <tr><td><code>EXIT("…")</code><br><strong>484 sites</strong></td><td>An unrecoverable invariant violation — a bug, not a gap.</td></tr>
+        <tr><td><code>KYTY_SYSV_ABI</code></td><td>Guest code calls this directly. Never call it from emulator code without thinking about the convention.</td></tr>
+        <tr><td><code>PRINT_NAME()</code></td><td>Free per-call tracing, already wired up, off by default per thread.</td></tr>
+        <tr><td><code>Common::Singleton&lt;T&gt;::Instance()</code></td><td>How cross-cutting services are reached. There is no dependency injection in this codebase.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4 id="naming-that-maps-to-hardware">Naming that maps to hardware</h4>
+  <ul>
+    <li><code>HwCtx*</code> / <code>HwSh*</code> / <code>HwUc*</code> — handlers for context, shader and user-config register writes.</li>
+    <li><code>CpOp*</code> — a command-processor operation: the handler for one PM4 opcode.</li>
+    <li><code>IT_*</code> — PM4 opcodes. <code>R_*</code> — Sony sub-selectors carried in <code>IT_NOP</code> packets.</li>
+    <li><code>V#</code> / <code>T#</code> / <code>S#</code> — buffer, image and sampler descriptors; "sharp" in code.</li>
+    <li><code>Gen5</code> — the AGC graphics API. <code>Prospero</code> — the PS5 itself.</li>
+  </ul>
+
+  <div class="callout k">
+    <span class="lbl">The two questions to ask constantly</span>
+    <p>Reading any pointer: <strong>guest address or host address?</strong> Reading any function: <strong>which thread runs this — guest, GPU, or main/window?</strong> Most genuinely confusing emulator bugs are a confusion about one of those, and the code does not always spell out the answer.</p>
+  </div>
+
+  <div class="learn">
+    <div class="lh">Learn more · the tools</div>
+    <ul>
+      <li><span class="kind">Docs</span><div><a href="https://renderdoc.org/docs/getting_started/quick_start.html">RenderDoc — Quick Start</a><span class="d">Capture a frame with <code>--rd</code>, then use the Event Browser to step through it. For a wrong-geometry bug this shows you the vertex buffer contents, the bound pipeline and the viewport in one place. Full <a href="https://renderdoc.org/docs/index.html">documentation</a>.</span></div></li>
+      <li><span class="kind code">Code</span><div><a href="https://github.com/wolfpld/tracy">Tracy Profiler</a><span class="d">What <code>--profiler-direction Network</code> streams to. The <code>KYTY_PROFILER_FUNCTION()</code> macros scattered through the PM4 handlers and the recompiler feed its frame view.</span></div></li>
+      <li><span class="kind code">Code</span><div><a href="https://github.com/KhronosGroup/SPIRV-Tools">spirv-dis and spirv-val</a><span class="d"><code>spirv-dis</code> turns a dumped module into readable assembly; <code>spirv-val</code> is what <code>--shader-validation true</code> runs internally. Both are worth having on your PATH separately from the build.</span></div></li>
+      <li><span class="kind code">Code</span><div><a href="https://github.com/KytyPS5/KytyPS5">KytyPS5 — issues and pull requests</a><span class="d">Read recent issues before reporting one. The Game Emulation Bug Report template asks for the complete log file, which after this chapter you know how to produce.</span></div></li>
+    </ul>
+  </div>
+
+<p class="deck">28,872 lines across twelve standalone executables, concentrated in exactly the two places where failure is silent.</p>
+
+  <h4 id="the-targets">The targets</h4>
+<pre>cmake --build _Build/windows --target memory_tracker_tests
+.\_Build\windows\memory_tracker_tests.exe
+
+<i># all are EXCLUDE_FROM_ALL, so a normal build skips them</i>
+scalar_provenance_tests        resource_tracking_tests      page_manager_tests
+memory_tracker_tests           resource_mutex_tests         image_page_table_tests
+event_queue_lifetime_tests     shader_stage_runtime_tests   shader_vertex_metadata_tests</pre>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th class="num">Size</th><th>Test file</th><th>Covers</th></tr></thead>
+      <tbody>
+        <tr><td class="num">800 KB</td><td><code>ShaderRecompilerComputeTests.cpp</code></td><td>End-to-end compute-shader recompilation. The largest file in the repository.</td></tr>
+        <tr><td class="num">370 KB</td><td><code>shaderCfgTests.cpp</code></td><td>Control-flow graph construction and structurisation, including the irreducible cases.</td></tr>
+        <tr><td class="num">106 KB</td><td><code>VirtualMemoryAllocationTests.cpp</code></td><td>The guest allocator, including deliberately injected failures.</td></tr>
+        <tr><td class="num">91 KB</td><td><code>ResourceTrackingTests.cpp</code></td><td>Classification of buffers, images and samplers from IR.</td></tr>
+        <tr><td class="num">52 KB</td><td><code>ScalarProvenanceTests.cpp</code></td><td>The scalar dataflow analysis that makes descriptor recovery possible.</td></tr>
+        <tr><td class="num">19 KB</td><td><code>EventQueueLifetimeTests.cpp</code></td><td>Destroying a queue while threads block on it or events are being delivered.</td></tr>
+        <tr><td class="num">16 KB</td><td><code>MemoryTrackerTests.cpp</code></td><td>Dirty tracking, upload and download ranges, invariant enforcement.</td></tr>
+        <tr><td class="num">13 KB</td><td><code>PageManagerTests.cpp</code></td><td>Watch semantics in isolation.</td></tr>
+        <tr><td class="num">8 KB</td><td><code>ResourceMutexTests.cpp</code></td><td>The renderer's resource lock.</td></tr>
+        <tr><td class="num">7 KB</td><td><code>ImagePageTableTests.cpp</code></td><td>The multi-level page table mapping addresses to image IDs.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4 id="failure-injection">Failure injection</h4>
+  <p>The allocator compiles in deliberate failure hooks so its error paths are exercised rather than hoped about:</p>
+<pre>#if defined(KYTY_VIRTUAL_MEMORY_ALLOCATION_TESTS)
+void TestFailNextPhysicalMemoryUnmap();
+void TestFailPhysicalMemoryUnmapAfter(uint32_t successful_unmaps);
+void TestFailGuestBackingStoreUnmapAfter(uint32_t successful_unmaps);
+void TestFailNextFixedReserveRangeRegistration();
+bool TestPlaceholderRangeIsFree(uint64_t vaddr, uint64_t size);
+bool TestGuestAddressRangeIsOwned(uint64_t vaddr, uint64_t size);
+uint64_t TestGuestBackingSize();
+#endif</pre>
+  <p>The same pattern appears in the loader (<code>TestMainEntryUsesGuestStack</code>, <code>TestModuleRelocationUsesWritableHostMapping</code>) and in pthreads (<code>TestGuestStackOwnerLifecycle</code>).</p>
+
+  <h4 id="why-the-ratio-is-right">Why the ratio is right</h4>
+  <p>Notice what is <em>not</em> heavily tested: the HLE libraries. That is a correct allocation of effort. When an HLE function is wrong, the game misbehaves visibly and the log points at it. When the shader compiler or the memory tracker is wrong, nothing crashes and nothing logs — you get subtly wrong pixels, or corruption several frames after the cause. Tests are the only instrument that works there.</p>
+
+  <h4 id="formatting-and-static-analysis">Formatting and static analysis</h4>
+<pre>python -m pip install pre-commit
+python -m pre_commit install --install-hooks   <i># clang-format on staged .cpp/.h/.inc in src</i>
+
+cmake … -DKYTY_ENABLE_CLANG_TIDY=ON            <i># clang-tidy during builds</i></pre>
+    </div>
+  </section>
+
+  <section class="band band-watch">
+    <div class="band-h"><span class="band-t">Watch</span></div>
+    <p class="band-why">
+      Which switch produces which artifact — and why you want all three on at least once.
+    </p>
+    <div data-viz="diagflow"></div>
+  </section>
+  <section class="band band-try">
+    <div class="band-h"><span class="band-t">Try</span></div>
+
+    <div class="callout k">
+      <span class="lbl">Feed the output straight in</span>
+      <p>The <a href="playground.html">Playground</a> exists to read exactly what these flags produce — the log triage tool for <code>_kyty.txt</code>, the PM4 decoder for command-buffer dumps, the module inspector for the binaries themselves.</p>
+    </div>
+  </section>
+  <section class="band band-do">
+    <div class="band-h"><span class="band-t">Do</span></div>
+    <p class="band-why">
+      If you do one thing from this topic, do the first item — the later graphics topics assume those artifacts exist.
+    </p>
+
+    <div class="check">
+      <p class="check-h">Checkpoint</p>
+      <ul class="check-list">
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Run a title with <code>--printf-direction File</code>, <code>--command-buffer-dump true</code> and <code>--shader-log-direction File</code>, and confirm all three produce output.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Drop the resulting log into the <a href="playground.html#log-triage">triage tool</a> and identify the first real error.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Find the crash-log path and read what it records: faulting module, code bytes, registers, stack walk.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Build and run the test suite. Note how long it takes so you know the cost of checking a change.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Explain why Vulkan validation is off by default and how to turn it back on.</label>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+</main>
+
+<script src="assets/topics.js?v=17" defer></script>
+<script src="assets/search-index.js?v=17" defer></script>
+<script src="assets/app.js?v=17" defer></script>
+<script src="assets/viz.js?v=17" defer></script>
+<script src="assets/atlas.js?v=17" defer></script>
+<script src="assets/lab.js?v=17" defer></script>
+<script src="assets/figs.js?v=17" defer></script>
+<script src="assets/figures.js?v=17" defer></script>
+<script src="assets/highlight.js?v=17" defer></script>
+<script src="assets/tutor.js?v=17" defer></script>
+</body>
+</html>
+
+

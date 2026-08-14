@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page faults &amp; CPU/GPU coherency — KytyPS5</title>
+<meta name="description" content="Guest and host share memory both believe they own. Faults are how the emulator finds out who touched what.">
+<link rel="stylesheet" href="assets/viz.css?v=17">
+<link rel="stylesheet" href="assets/atlas.css?v=17">
+<link rel="stylesheet" href="assets/lab.css?v=17">
+<link rel="stylesheet" href="assets/tutor.css?v=17">
+<link rel="stylesheet" href="assets/app.css?v=17">
+<link rel="stylesheet" href="assets/highlight.css?v=17">
+</head>
+<body>
+
+<main class="topic" data-app-content>
+
+  <p class="topic-eyebrow">Memory · 10</p>
+  <h1 id="page-faults-cpu-gpu-coherency">Page faults & CPU/GPU coherency</h1>
+  <p class="topic-deck">
+    CPU and GPU share buffers, and neither announces a write. With no interpreter to instrument, the emulator takes away page permissions and lets the hardware report the access. Faults stop being errors here and become the notification channel.
+  </p>
+
+  <section class="band band-read">
+    <div class="band-h"><span class="band-t">Read</span></div>
+    <div class="prose">
+<p class="deck">The single hardest problem in the project, and the source of the bugs that are hardest to reproduce. A console has unified memory; a PC does not.</p>
+
+  <h4 id="the-problem-stated-plainly">The problem, stated plainly</h4>
+  <p>On a PS5, CPU and GPU share one pool of physical memory. A game writes vertex data with the CPU, then draws with it. No synchronisation is needed and none is expressed in the code, because the GPU reads exactly the same bytes.</p>
+  <p>On a PC, the GPU has its own memory. Kyty's Vulkan resources are <em>copies</em> of guest memory. So the emulator must answer two questions that the game never asks:</p>
+  <ul>
+    <li>Has the CPU changed this data since I last copied it to the GPU? (→ upload)</li>
+    <li>Has the GPU changed this data since the CPU last read it? (→ download)</li>
+  </ul>
+  <p>And it must answer them without any cooperation from the game.</p>
+
+  <figure data-viz="coherency"></figure>
+
+  <h4 id="two-cooperating-classes">Two cooperating classes</h4>
+  <div class="stack">
+    <div class="layer k"><span class="nm">PageManager</span><span class="chip kyty">kyty</span><span class="ds">Owns the actual host protection calls. <code>UpdatePageWatchers(track, vaddr, size, mode)</code> makes a guest range write-protected or read-write-protected. Also handles <code>OnGpuMap</code> / <code>OnGpuUnmap</code>, and hands out <code>BackingWrite</code> scopes for safe direct writes.</span></div>
+    <div class="arrow">↓ faults become dirty bits</div>
+    <div class="layer k"><span class="nm">MemoryTracker</span><span class="chip kyty">kyty</span><span class="ds">Divides the address space into fixed-size regions, each with per-page dirty bits tagged by source — <code>DirtySource::Cpu</code> or <code>DirtySource::Gpu</code>. Drives the upload and download loops.</span></div>
+  </div>
+
+  <div class="filename">src/graphics/host_gpu/pageManager.h</div>
+<pre>enum class PageFaultAccess { Read, Write, Execute, Unknown };
+enum class PageWatchMode   { Write, ReadWrite };
+
+class PageManager final {
+public:
+    class <b>BackingWrite</b> final {        <i>// RAII: unprotect, write, re-protect</i>
+        BackingWrite(PageManager&amp;, uint64_t vaddr, uint64_t size) noexcept;
+        ~BackingWrite();
+    };
+
+    void UpdatePageWatchers(bool track, uint64_t vaddr, uint64_t size,
+                            PageWatchMode mode = PageWatchMode::Write);
+    void OnGpuMap(uint64_t vaddr, uint64_t size);
+    void OnGpuUnmap(uint64_t vaddr, uint64_t size);
+    std::vector&lt;std::unique_ptr&lt;BackingWrite&gt;&gt; ReserveBackingWrites(std::span&lt;const RangeSet::Range&gt;);
+};</pre>
+
+  <h4 id="the-upload-path">The upload path</h4>
+  <p>Before a draw reads a texture, the renderer asks which sub-ranges the CPU dirtied:</p>
+
+  <div class="filename">src/graphics/host_gpu/memoryTracker.h:121</div>
+<pre>template &lt;typename RangeFunc, typename UploadFunc&gt;
+void ForEachUploadRange(uint64_t vaddr, uint64_t size, bool is_written,
+                        RangeFunc&amp;&amp; range_func, UploadFunc&amp;&amp; upload_func) {
+    static_assert(std::is_nothrow_invocable_v&lt;RangeFunc&amp;, uint64_t, uint64_t&gt;);
+    <b>CheckNotInUploadCallback</b>();
+    std::unique_lock access(m_access_mutex);
+
+    Iterate&lt;true&gt;(vaddr, size, [](RegionManager*, uint64_t, uint64_t) {});   <i>// create regions</i>
+    const auto* previous_upload_owner = std::exchange(<b>s_upload_owner</b>, this);
+
+    Iterate&lt;false&gt;(vaddr, size, [&amp;](RegionManager* manager, uint64_t offset, uint64_t bytes) {
+        manager-&gt;lock.lock();
+        manager-&gt;ForEachModifiedRange&lt;<b>DirtySource::Cpu</b>, true&gt;(
+            manager-&gt;GetCpuAddr() + offset, bytes, range_func);     <i>// report dirty sub-ranges</i>
+        if (!is_written) manager-&gt;lock.unlock();
+    });
+
+    <b>upload_func</b>();                                                  <i>// do the actual copy</i>
+
+    if (is_written) {
+        Iterate&lt;false&gt;(vaddr, size, [this](RegionManager* manager, uint64_t offset, uint64_t bytes) {
+            const auto changed = manager-&gt;ChangeState&lt;<b>DirtySource::Gpu</b>, true&gt;(
+                manager-&gt;GetCpuAddr() + offset, bytes);
+            manager-&gt;<b>ApplyGpuProtection</b>(changed, true, m_gpu_watch_mode);   <i>// re-arm the trap</i>
+            manager-&gt;lock.unlock();
+        });
+    }
+    s_upload_owner = previous_upload_owner;
+}</pre>
+
+  <p>Three things to notice:</p>
+  <ul>
+    <li><strong>Only dirty sub-ranges are copied.</strong> A 4K texture with one changed tile uploads one tile.</li>
+    <li><strong>Locks are held across the callback.</strong> The user's <code>range_func</code> runs with region locks held, which is why it is required to be <code>noexcept</code>.</li>
+    <li><strong>Protection is re-armed afterwards.</strong> Otherwise the next CPU write would go unnoticed.</li>
+  </ul>
+
+  <h4 id="the-download-path">The download path</h4>
+  <p>Symmetric, with an extra <code>preflight</code> pass so callers can size a staging buffer before any copying starts:</p>
+<pre>template &lt;bool clear, typename Preflight, typename Func&gt;
+void ForEachDownloadRange(uint64_t vaddr, uint64_t size, Preflight&amp;&amp; preflight, Func&amp;&amp; func) {
+    CheckNotInUploadCallback();
+    std::lock_guard access(m_access_mutex);
+
+    <i>// collect every region, then take all their locks before touching anything</i>
+    std::vector&lt;RegionManager*&gt; managers;
+    Iterate&lt;false&gt;(vaddr, size, [&amp;](RegionManager* m, uint64_t, uint64_t){ managers.push_back(m); });
+    std::vector&lt;std::unique_lock&lt;TrackingSpinLock&gt;&gt; locks;
+    for (auto* manager: managers) locks.emplace_back(manager-&gt;lock);
+
+    <i>// pass 1: measure</i>
+    Iterate&lt;false&gt;(vaddr, size, [&amp;](RegionManager* m, uint64_t off, uint64_t n) {
+        m-&gt;ForEachModifiedRange&lt;DirtySource::Gpu, false&gt;(m-&gt;GetCpuAddr() + off, n, preflight);
+    });
+    <i>// pass 2: copy</i>
+    Iterate&lt;false&gt;(vaddr, size, [&amp;](RegionManager* m, uint64_t off, uint64_t n) {
+        m-&gt;ForEachModifiedRange&lt;DirtySource::Gpu, false&gt;(m-&gt;GetCpuAddr() + off, n, func);
+    });
+    if constexpr (clear) { /* clear GPU-dirty bits and re-apply protection */ }
+}</pre>
+
+  <h4 id="the-invariants-enforced-by-hard-failure">The invariants, enforced by hard failure</h4>
+  <p>This code is unusually defensive, and the reason is worth internalising: a coherency bug produces corruption <em>many frames later</em>, with no traceable link to its cause. So Kyty converts each one into an immediate crash at the point of the mistake.</p>
+
+<pre>void <b>CheckNotInUploadCallback</b>() const noexcept {
+    if (s_upload_owner == this) {
+        EXIT("memory tracker re-entered from upload callback\n");
+    }
+}</pre>
+
+  <p>And in <code>InvalidateRegion</code>, the state update runs <em>twice</em> — once to decide whether a flush is needed, once to verify the flush actually released every GPU-owned page:</p>
+<pre>template &lt;typename Flush&gt;
+void InvalidateRegion(uint64_t vaddr, uint64_t size, Flush&amp;&amp; on_flush) {
+    ...
+    if (!update_cpu_state()) return;      <i>// nothing GPU-owned; done</i>
+    std::forward&lt;Flush&gt;(on_flush)();      <i>// flush GPU work</i>
+    if (<b>update_cpu_state()</b>) {
+        <b>EXIT("memory invalidation retained GPU-owned pages\n");</b>
+    }
+}</pre>
+
+  <h4 id="how-a-cpu-write-is-actually-caught-end-to-end">How a CPU write is actually caught, end to end</h4>
+  <ol>
+    <li>The renderer uploads a texture and calls <code>ApplyGpuProtection</code>, which write-protects those guest pages.</li>
+    <li>The game later writes to the texture. Ordinary code — <code>mov [rax], rbx</code>.</li>
+    <li>The CPU faults. The OS delivers it to <code>KytyExceptionHandler</code> (this topic).</li>
+    <li><code>Memory::HandleGpuFault</code> marks the page CPU-dirty, removes the protection, and returns <code>true</code>.</li>
+    <li>Execution resumes; the write completes. The game never knew.</li>
+    <li>The next draw that reads the texture calls <code>ForEachUploadRange</code>, which reports exactly that page as dirty and copies it.</li>
+  </ol>
+
+  <div class="callout k">
+    <span class="lbl">Where to start reading</span>
+    <p><code>tests/MemoryTrackerTests.cpp</code>, before the implementation. Each test name is a sentence stating an invariant, and together they specify the model far more clearly than the templates do. <code>tests/PageManagerTests.cpp</code> covers the watch semantics in isolation.</p>
+  </div>
+
+<p class="deck">Because guest code runs natively, Kyty cannot instrument it. The CPU's own fault mechanism becomes the emulator's primary hook — three of the handler's branches are load-bearing, not diagnostic.</p>
+
+  <h4 id="the-handler">The handler</h4>
+  <div class="filename">src/loader/runtimeLinker.cpp:763</div>
+<pre>static bool KytyExceptionHandler(const Common::HostException::ExceptionInfo&amp; exception_info) {
+    const auto* info = &amp;exception_info;
+
+    <b>// 1 — an instruction this CPU does not have</b>
+    if (info-&gt;type == ExceptionType::IllegalInstruction &amp;&amp;
+        Loader::X64InstructionEmulator::TryEmulate(info-&gt;native_context)) {
+        return true;
+    }
+
+    if (info-&gt;type == ExceptionType::AccessViolation) {
+        const auto access = /* map Read/Write/Execute */;
+
+        <b>// 2 — the GPU cares about this page</b>
+        if (Libs::LibKernel::Memory::<b>HandleGpuFault</b>(access, info-&gt;access_violation_vaddr)) {
+            return true;
+        }
+
+        <b>// 3 — reserved but not yet committed</b>
+        if (Libs::LibKernel::Memory::<b>KernelHandleReservedRangeAccessViolation</b>(
+                info-&gt;access_violation_vaddr)) {
+            return true;
+        }
+    }
+
+    <b>// 4 — a genuine crash: produce the most useful dump possible</b>
+    LOGF("kyty_exception_handler: %016" PRIx64 "\n", info-&gt;exception_address);
+    ...
+}</pre>
+
+  <p>Returning <code>true</code> means "handled, resume execution." The guest never learns anything happened.</p>
+
+  <h4 id="branch-1-emulating-missing-instructions">Branch 1 — emulating missing instructions</h4>
+  <p>The PS5's Zen 2 supports instructions your CPU might not, notably the SHA extensions. When one executes, the CPU raises an illegal-instruction fault, and <code>X64InstructionEmulator</code> decodes the bytes at the fault address, performs the operation in software against the saved register context, and advances the instruction pointer past it.</p>
+
+  <div class="filename">src/loader/x64InstructionEmulator.cpp — the SHA1 message schedule, in software</div>
+<pre>static void Sha1Msg1(XmmWords&amp; dest, const XmmWords&amp; src2) {
+    const uint32_t w0 = dest.w[3];  const uint32_t w1 = dest.w[2];
+    const uint32_t w2 = dest.w[1];  const uint32_t w3 = dest.w[0];
+    const uint32_t w4 = src2.w[3];  const uint32_t w5 = src2.w[2];
+    dest.w[3] = w2 ^ w0;   dest.w[2] = w3 ^ w1;
+    dest.w[1] = w4 ^ w2;   dest.w[0] = w5 ^ w3;
+}</pre>
+
+  <p>It is slow — a fault plus a software emulation per instruction — but these appear in checksum and hashing routines rather than in hot loops, and the alternative is not running at all.</p>
+
+  <h4 id="branch-2-the-gpu-fault-and-why-it-is-the-design">Branch 2 — the GPU fault, and why it is the design</h4>
+  <p>This is the most important branch in the emulator. Memory the GPU has cached as a Vulkan image or buffer is deliberately write-protected. When the game writes to it:</p>
+
+  <div class="stack">
+    <div class="layer g"><span class="nm">Guest writes to a texture it uploaded last frame</span><span class="chip guest">guest</span><span class="ds">An ordinary <code>mov [rax], rbx</code>. The game has no idea anything special is happening.</span></div>
+    <div class="arrow">↓ page is write-protected → CPU faults</div>
+    <div class="layer h"><span class="nm">OS delivers the exception</span><span class="chip host">host</span><span class="ds">A vectored exception handler on Windows; a <code>SIGSEGV</code> handler elsewhere.</span></div>
+    <div class="arrow">↓</div>
+    <div class="layer k"><span class="nm">HandleGpuFault marks the page CPU-dirty</span><span class="chip kyty">kyty</span><span class="ds">The memory tracker records that this range changed, un-protects it so the write can proceed, and returns <code>true</code>.</span></div>
+    <div class="arrow">↓ execution resumes; the write completes</div>
+    <div class="layer k"><span class="nm">Next draw re-uploads only those pages</span><span class="chip kyty">kyty</span><span class="ds">The renderer asks the tracker which sub-ranges are dirty and copies just those into the Vulkan image.</span></div>
+  </div>
+
+  <p>There is no other way to do this without a recompiler. On a unified-memory console no synchronisation is needed at all, so games contain no hints; the page fault <em>is</em> the notification.</p>
+
+  <h4 id="branch-4-the-crash-dump">Branch 4 — the crash dump</h4>
+  <p>When nothing handles the fault, the handler produces everything a bug report needs:</p>
+  <ul>
+    <li>The faulting module — via <code>GetModuleHandleEx</code> on Windows, <code>dladdr</code> elsewhere — which immediately tells you whether the crash is in the emulator or in guest code.</li>
+    <li>64 bytes of code around the fault address, dumped as hex, guarded by <code>VirtualQuery</code> so probing does not itself fault.</li>
+    <li>All sixteen general-purpose registers.</li>
+    <li>Sixteen stack words, if readable.</li>
+    <li>A guest stack walk. <code>StackwalkX86</code> follows the frame-pointer chain, accepting a frame only if the frame pointer is inside the stack range <em>and</em> the return address falls inside the module band from <a href="t-mapping.html">topic 06</a> — which is precisely what fixing the module layout buys.</li>
+  </ul>
+
+<pre>static void StackwalkX86(uint64_t rbp, void** stack, int* depth, uintptr_t stack_addr,
+                         size_t stack_size, uintptr_t code_addr, size_t code_size) {
+    auto* frame = reinterpret_cast&lt;FrameS*&gt;(rbp);
+    int d = *depth, i = 0;
+    for (; i &lt; d; i++) {
+        if (!((uintptr_t)frame &gt;= stack_addr &amp;&amp; (uintptr_t)frame &lt; stack_addr + stack_size)) break;
+        if (!(frame-&gt;ret_addr &gt;= code_addr &amp;&amp; frame-&gt;ret_addr &lt; code_addr + code_size)) break;
+        stack[i] = reinterpret_cast&lt;void*&gt;(frame-&gt;ret_addr);
+        frame = frame-&gt;next;
+    }
+    *depth = i;
+}</pre>
+
+  <div class="callout h">
+    <span class="lbl">Reading a crash</span>
+    <p>A fault address of <code>0x28</code> means an unpatched <code>fs:[0x28]</code> canary store. A small address generally means a null-pointer dereference in guest code, often downstream of a stubbed import that returned zero. An address in the <code>0x9…</code> band with a sensible stack walk is a genuine guest crash worth investigating.</p>
+  </div>
+    </div>
+  </section>
+
+  <section class="band band-watch">
+    <div class="band-h"><span class="band-t">Watch</span></div>
+    <p class="band-why">
+      And the fault itself, from the CPU raising it to the handler deciding what it meant. Note how much has to be decided in that handler.
+    </p>
+    <div data-viz="faultpath"></div>
+  </section>
+  <section class="band band-try">
+    <div class="band-h"><span class="band-t">Try</span></div>
+    <p class="band-why">
+      Drive writes from both sides and watch what has to be synchronised, and when. The interesting cases are the ones where nothing needs to move at all.
+    </p>
+    <div data-viz="memflow"></div>
+    <p class="band-why" style="margin-top:26px">
+      Then reintroduce the page-size mismatch. One guest page is four host pages, so "this page is dirty" is a coarser statement than it sounds.
+    </p>
+    <div data-viz="pagegrain"></div>
+  </section>
+  <section class="band band-do">
+    <div class="band-h"><span class="band-t">Do</span></div>
+    <p class="band-why">
+      This is the subsystem most likely to surprise you when reading the source, because the granularity in the code is deliberately coarser than the diagrams suggest.
+    </p>
+
+    <div class="check">
+      <p class="check-h">Checkpoint</p>
+      <ul class="check-list">
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Find <code>PageManager</code> / <code>MemoryTracker</code> and identify where protection is changed.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Find the structured-exception or signal handler that receives the fault.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Note the granularity at which page-watcher updates are batched, and explain the trade being made.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Explain why a crash in guest code corrupts the emulator's own process, and what that means for debugging.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Explain how an <code>IT_SURFACE_SYNC</code> packet relates to any of this.</label>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+</main>
+
+<script src="assets/topics.js?v=17" defer></script>
+<script src="assets/search-index.js?v=17" defer></script>
+<script src="assets/app.js?v=17" defer></script>
+<script src="assets/viz.js?v=17" defer></script>
+<script src="assets/atlas.js?v=17" defer></script>
+<script src="assets/lab.js?v=17" defer></script>
+<script src="assets/figs.js?v=17" defer></script>
+<script src="assets/figures.js?v=17" defer></script>
+<script src="assets/highlight.js?v=17" defer></script>
+<script src="assets/tutor.js?v=17" defer></script>
+</body>
+</html>
+
+

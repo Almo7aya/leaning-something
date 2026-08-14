@@ -1,0 +1,35 @@
+/* ============================================================
+   Syntax token colours.
+
+   Kept in its own file because two stylesheets are in play: the
+   topic pages use app.css, the original long-form documents use
+   their own embedded one. Both define --guest / --kyty / --host,
+   so the fallbacks below cover the few names that differ.
+
+   Six classes, no more. Identifiers stay default ink on purpose:
+   colouring every CamelCase name turns a listing into confetti
+   and buries the tokens that actually carry meaning.
+   ============================================================ */
+
+.tk-k { color: var(--guest); }                                   /* keyword       */
+.tk-t { color: var(--kyty); }                                    /* type/register */
+.tk-s { color: var(--host); }                                    /* string        */
+.tk-n { color: var(--host); }                                    /* number        */
+.tk-p { color: var(--kyty); font-weight: 600; }                  /* preprocessor  */
+.tk-a { color: var(--guest); }                                   /* shell flag    */
+.tk-c { color: var(--ink-3, var(--faint, #8a837a)); font-style: italic; }
+
+/* The author's own inline markup keeps its meaning and outranks tokens:
+   <b> is them pointing at something, <i> is a hand-marked comment. */
+pre i { color: var(--ink-3, var(--faint, #8a837a)); font-style: italic; }
+pre b { color: var(--kyty); }
+
+/* Light backgrounds need a little more weight to hold contrast at 14px mono. */
+:root[data-theme="light"] .tk-k,
+:root[data-theme="light"] .tk-t,
+:root[data-theme="light"] .tk-p { font-weight: 550; }
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .tk-k,
+  :root:not([data-theme="dark"]) .tk-t,
+  :root:not([data-theme="dark"]) .tk-p { font-weight: 550; }
+}

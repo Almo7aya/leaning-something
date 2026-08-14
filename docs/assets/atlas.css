@@ -215,3 +215,22 @@
   font-family: var(--mono); font-size: 11.5px; color: var(--faint); text-align: center;
 }
 .atl-swap .atl-sw.lit { border-style: solid; border-color: var(--host); background: color-mix(in srgb, var(--host) 14%, var(--surface)); color: var(--ink); }
+
+/* ---- modifiers used by figs.js (the later explainers) ---- */
+.atl-ln.dimmed { opacity: .38; }
+.atl-seg.hot {
+  border-color: var(--kyty);
+  background: color-mix(in srgb, var(--kyty) 14%, var(--surface));
+}
+.atl-buf.hot {
+  border-color: var(--guest);
+  background: color-mix(in srgb, var(--guest) 12%, var(--surface));
+}
+.atl-byte.g { background: color-mix(in srgb, var(--guest) 22%, var(--surface)); border-color: var(--guest); }
+.atl-byte.k { background: color-mix(in srgb, var(--kyty) 22%, var(--surface)); border-color: var(--kyty); }
+.atl-ln code {
+  font-family: var(--mono); font-size: .9em;
+  background: var(--surface-2); border: 1px solid var(--rule);
+  border-radius: 3px; padding: 0 4px;
+}
+.atl-ln b { color: var(--ink); }

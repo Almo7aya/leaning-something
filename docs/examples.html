@@ -1,0 +1,597 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Examples — KytyPS5 Learning Platform</title>
+<meta name="description" content="Complete worked examples: implement a missing HLE function, follow a draw call end to end, translate a shader instruction, trace a memory allocation.">
+<link rel="stylesheet" href="assets/app.css?v=17">
+<link rel="stylesheet" href="assets/tutor.css?v=17">
+<link rel="stylesheet" href="assets/playground.css?v=17">
+<link rel="stylesheet" href="assets/examples.css?v=17">
+<link rel="stylesheet" href="assets/highlight.css?v=17">
+</head>
+<body>
+
+<main data-app-content class="ex-wrap">
+
+  <header class="pg-hero">
+    <p class="pg-eyebrow">Examples</p>
+    <h1 id="examples">Worked all the way through</h1>
+    <p class="pg-lede">
+      Each example below follows <strong>one real thing</strong> from the guest's point of view to
+      the host's, with the actual code at every hop. They are ordered by how much of the emulator
+      you need to hold in your head — the first one you could finish tonight, the last one is a
+      weekend.
+    </p>
+  </header>
+
+  <nav class="ex-toc" aria-label="Examples">
+    <a href="#ex-hle"><span class="ex-toc-n">1</span> Implement a missing function</a>
+    <a href="#ex-thread"><span class="ex-toc-n">2</span> A guest thread is born</a>
+    <a href="#ex-mem"><span class="ex-toc-n">3</span> An allocation becomes host memory</a>
+    <a href="#ex-draw"><span class="ex-toc-n">4</span> One draw call, end to end</a>
+    <a href="#ex-shader"><span class="ex-toc-n">5</span> One shader instruction</a>
+    <a href="#ex-pm4"><span class="ex-toc-n">6</span> Teach it a new PM4 packet</a>
+  </nav>
+
+  <!-- ================================================================ -->
+  <article class="ex" id="ex-hle">
+    <div class="ex-head">
+      <span class="ex-num">01</span>
+      <div>
+        <h2 id="implement-a-missing-function">Implement a missing function</h2>
+        <p class="ex-meta"><span class="ex-time">~40 min</span> · <span class="ex-diff d1">Start here</span> · touches <code>src/libs/</code></p>
+      </div>
+    </div>
+
+    <p class="ex-lede">
+      This is the smallest complete loop in the whole project: a game asks for a function that
+      does not exist, you write it, the game gets further. Do this once and the rest of the
+      emulator stops looking like magic.
+    </p>
+
+    <div class="ex-step">
+      <h3 id="1-find-something-that-is-missing"><span class="ex-s">1</span> Find something that is missing</h3>
+      <p>Run a title with logging on and let it get as far as it can:</p>
+      <pre class="ex-pre"><code>.\_Build\windows-prod\kyty_emulator.exe --game "&lt;title&gt;" `
+  --printf-direction File --printf-output-file _kyty.txt</code></pre>
+      <p>
+        Then drop that file into the <a href="playground.html#log-triage">log triage tool</a>. The
+        "Unresolved imports" bucket is your work queue. Each entry looks roughly like:
+      </p>
+      <pre class="ex-pre"><code>runtimeLinker: unresolved symbol rPo6tV8D9bM#v#v (libSceSystemService)</code></pre>
+      <p>
+        <code>rPo6tV8D9bM</code> is the <strong>NID</strong> — an 11-character encoded id. The
+        guest does not import by name; it imports by this. That is the entire reason a symbol
+        database exists.
+      </p>
+    </div>
+
+    <div class="ex-step">
+      <h3 id="2-find-out-what-it-is-supposed-to-do"><span class="ex-s">2</span> Find out what it is supposed to do</h3>
+      <p>
+        A NID is a one-way hash, so you cannot decode it back into a name. You look it up. Search
+        the tree first — the odds are good that a neighbouring function in the same library is
+        already implemented and the file is waiting for you:
+      </p>
+      <pre class="ex-pre"><code>rg "rPo6tV8D9bM" src/
+rg "LIB_DEFINE" src/libs/libSystemService.cpp</code></pre>
+      <p>
+        If it is genuinely unknown, the community NID databases (shadPS4's
+        <code>aerolib</code>, the ps4libdoc project) map most of them to names, and the name tells
+        you the signature by convention: <code>sceSystemServiceGetStatus</code> takes a status
+        struct out-pointer and returns an <code>int</code> error code.
+      </p>
+    </div>
+
+    <div class="ex-step">
+      <h3 id="3-write-the-implementation"><span class="ex-s">3</span> Write the implementation</h3>
+      <p>
+        Open the library file — here <code>src/libs/libSystemService.cpp</code>. Every HLE function
+        follows the same three rules, and the first one is not optional:
+      </p>
+      <pre class="ex-pre"><code>static int <b>KYTY_SYSV_ABI</b> SystemServiceGetStatus(SystemServiceStatus* status) {
+	PRINT_NAME();                       // trace: shows up in your log
+
+	if (status == nullptr) {
+		return SYSTEM_SERVICE_ERROR_PARAMETER;
+	}
+
+	*status = SystemServiceStatus {};   // zero it — the guest reads every field
+	return OK;
+}</code></pre>
+      <div class="ex-callout">
+        <b><code>KYTY_SYSV_ABI</code> is load-bearing.</b> Guest code was compiled for the
+        System&nbsp;V AMD64 ABI: arguments in <code>rdi, rsi, rdx, rcx, r8, r9</code>, no shadow
+        space. Your host compiler on Windows defaults to the Microsoft x64 ABI:
+        <code>rcx, rdx, r8, r9</code> and 32&nbsp;bytes of shadow space. Omit the annotation and
+        the guest passes arguments into registers your function never reads — it will not crash
+        cleanly, it will read garbage. This one macro is why the codebase has a thunking layer at
+        all.
+      </div>
+    </div>
+
+    <div class="ex-step">
+      <h3 id="4-register-it-against-the-nid"><span class="ex-s">4</span> Register it against the NID</h3>
+      <p>
+        Implementing it is not enough — the runtime linker has to be able to find it. That
+        happens in the library's <code>LIB_DEFINE</code> block, which is the actual bridge between
+        the encoded id in the guest's import table and your C++ symbol:
+      </p>
+      <pre class="ex-pre"><code>LIB_DEFINE(InitSystemService_1) {
+	LIB_FUNC("Vo5V8KAwCmk", SystemService::SystemServiceHideSplashScreen);
+	LIB_FUNC("fZo48un7LK4", SystemService::SystemServiceParamGetInt);
+	<b>LIB_FUNC("rPo6tV8D9bM", SystemService::SystemServiceGetStatus);</b>
+	LIB_FUNC("656LMQSrg6U", SystemService::SystemServiceReceiveEvent);
+}</code></pre>
+      <p>
+        That is the whole mechanism. At startup every <code>LIB_DEFINE</code> block runs and
+        populates the symbol database; when the loader hits an unresolved import it looks up the
+        NID and patches the address into the guest's GOT.
+      </p>
+    </div>
+
+    <div class="ex-step">
+      <h3 id="5-verify"><span class="ex-s">5</span> Verify</h3>
+      <p>Rebuild, re-run, and check the log for two things:</p>
+      <ul class="ex-list">
+        <li>The <code>unresolved symbol rPo6tV8D9bM</code> line is <strong>gone</strong>.</li>
+        <li>Your <code>PRINT_NAME()</code> trace <strong>appears</strong> — proving the guest
+          actually called through, not just that the link succeeded.</li>
+      </ul>
+      <p>
+        If the symbol resolves but your trace never fires, the game is not reaching that code path
+        yet — which is fine, and usually means there is an earlier missing function to do first.
+      </p>
+    </div>
+
+    <div class="ex-next">
+      <b>Now you try.</b> Take the second entry in your unresolved list and repeat. The second one
+      takes fifteen minutes instead of forty. By the fifth you will be reading the log for
+      <em>which</em> missing function is blocking the others.
+    </div>
+  </article>
+
+  <!-- ================================================================ -->
+  <article class="ex" id="ex-thread">
+    <div class="ex-head">
+      <span class="ex-num">02</span>
+      <div>
+        <h2 id="a-guest-thread-is-born">A guest thread is born</h2>
+        <p class="ex-meta"><span class="ex-time">~1 hr, reading</span> · <span class="ex-diff d2">Core</span> · touches <code>src/libs/</code>, <code>src/loader/</code></p>
+      </div>
+    </div>
+
+    <p class="ex-lede">
+      The guest calls <code>scePthreadCreate</code>. There is no PS5 kernel here to service it —
+      so what actually happens? This one is worth tracing because it forces every hard part of HLE
+      into view at once: ABI, TLS, and the fact that guest code runs natively.
+    </p>
+
+    <div class="ex-step">
+      <h3 id="1-the-guest-asks"><span class="ex-s">1</span> The guest asks</h3>
+      <p>
+        Guest code calls <code>scePthreadCreate(&amp;tid, attr, entry, arg, name)</code>. That is
+        an ordinary <code>call</code> through the GOT, landing on the HLE implementation the
+        loader patched in — the same mechanism you used in example&nbsp;1.
+      </p>
+    </div>
+
+    <div class="ex-step">
+      <h3 id="2-the-host-creates-a-real-thread"><span class="ex-s">2</span> The host creates a real thread</h3>
+      <p>
+        KytyPS5 does not simulate scheduling. It creates a genuine host thread — the guest's
+        threads are OS threads, and the host scheduler runs them. That is why the emulator can
+        keep up at all.
+      </p>
+      <div class="ex-callout ex-c-warn">
+        <b>The direction of the ABI crossing flips here.</b> In example&nbsp;1 the guest called
+        <em>into</em> host code. Now host code (the thread startup routine) must call
+        <em>into</em> guest code — the entry point. The guest entry expects System&nbsp;V; the host
+        thread starts in the Microsoft ABI. This is exactly the case generated thunks exist for,
+        and getting it wrong produces a crash inside the guest's first instruction with a
+        plausible-looking but meaningless stack.
+      </div>
+    </div>
+
+    <div class="ex-step">
+      <h3 id="3-tls-has-to-exist-before-the-first-instruction"><span class="ex-s">3</span> TLS has to exist before the first instruction</h3>
+      <p>
+        Guest code reads thread-local storage through the <code>fs</code> segment — typically
+        <code>fs:[0]</code> for the TLS self-pointer and <code>fs:[0x28]</code> for the stack
+        canary. On Windows, <code>fs</code> does not mean that, and the guest binary cannot be
+        asked to change.
+      </p>
+      <p>
+        So the loader <em>rewrites those instructions</em> at load time, and the thread setup path
+        allocates a per-thread TLS block from the module's <code>PT_TLS</code> template before the
+        guest entry point runs. Drop a module into the
+        <a href="playground.html#elf-inspector">module inspector</a> and you can see that
+        <code>PT_TLS</code> segment with its <code>filesz</code> (the initialised template) smaller
+        than its <code>memsz</code> (the zero-filled remainder) — that gap is <code>.tbss</code>,
+        and it has to be zeroed per thread.
+      </p>
+    </div>
+
+    <div class="ex-step">
+      <h3 id="4-priorities-and-names"><span class="ex-s">4</span> Priorities and names</h3>
+      <p>
+        Guest pthread priorities are preserved and mapped onto host priorities rather than
+        flattened — a recent change on main, and one that matters for titles that rely on a
+        high-priority audio thread actually being high priority.
+      </p>
+    </div>
+
+    <div class="ex-next">
+      <b>Now you try.</b> Set a breakpoint on the <code>scePthreadCreate</code> implementation and
+      run a title. Look at the call stack. You are standing exactly on the ABI boundary: host
+      frames below you, guest frames above.
+    </div>
+  </article>
+
+  <!-- ================================================================ -->
+  <article class="ex" id="ex-mem">
+    <div class="ex-head">
+      <span class="ex-num">03</span>
+      <div>
+        <h2 id="an-allocation-becomes-host-memory">An allocation becomes host memory</h2>
+        <p class="ex-meta"><span class="ex-time">~1 hr</span> · <span class="ex-diff d2">Core</span> · touches <code>src/kernel/</code></p>
+      </div>
+    </div>
+
+    <p class="ex-lede">
+      The guest asks for direct memory at a specific address. The host has its own ideas about
+      where things live. Reconciling those two is most of what the memory subsystem does — and the
+      page-size mismatch underneath it is the single most consequential detail in the emulator.
+    </p>
+
+    <div class="ex-step">
+      <h3 id="1-the-guest-wants-a-specific-address"><span class="ex-s">1</span> The guest wants a specific address</h3>
+      <p>
+        PS5 titles allocate from fixed address bands and often <em>require</em> a particular base
+        — they store raw pointers in structures the GPU will later read. The emulator cannot
+        relocate them after the fact, so it reserves the guest's whole address space up front and
+        hands out pieces of it.
+      </p>
+    </div>
+
+    <div class="ex-step">
+      <h3 id="2-reserve-then-commit"><span class="ex-s">2</span> Reserve, then commit</h3>
+      <p>
+        On Windows that means placeholder reservations: reserve a large range, then split and
+        commit pieces on demand. Repeated map/unmap cycles fragment those placeholders, so the
+        allocator now coalesces adjacent free ones before reuse — without that, a large allocation
+        eventually fails even though the space is nominally free.
+      </p>
+      <p>
+        On Linux the constraint is different: the emulator reserves only ranges that are actually
+        available, because the kernel has its own opinions about the low address space.
+      </p>
+    </div>
+
+    <div class="ex-step">
+      <h3 id="3-the-page-size-problem"><span class="ex-s">3</span> The page-size problem</h3>
+      <div class="ex-callout">
+        <b>The guest thinks pages are 16&nbsp;KB. The host says 4&nbsp;KB.</b> Everything downstream
+        inherits this. When the guest protects one 16&nbsp;KB page, the host must protect four.
+        When the host takes a fault on one 4&nbsp;KB page, the emulator must decide whether the
+        guest considers the whole 16&nbsp;KB dirty. Alignment requirements the guest treats as
+        satisfied may not be, and vice versa.
+      </div>
+      <p>
+        The <a href="lab.html">Lab's memory tools</a> let you push values through this mapping
+        until it stops being abstract. It is worth ten minutes.
+      </p>
+    </div>
+
+    <div class="ex-step">
+      <h3 id="4-now-the-gpu-wants-to-read-it"><span class="ex-s">4</span> Now the GPU wants to read it</h3>
+      <p>
+        Guest memory is shared between CPU and GPU. When the CPU writes a buffer the GPU is about
+        to read, something has to notice. KytyPS5 does it with host page protections: mark the
+        range read-only, take the fault on the first CPU write, record the range as dirty, restore
+        write access.
+      </p>
+      <p>
+        Page-watcher updates are batched at <strong>4&nbsp;MiB granularity</strong> rather than
+        page-at-a-time — a deliberate trade of precision for far fewer protection changes. If you
+        read <code>MemoryTracker</code> expecting per-page bookkeeping, that is why it does not
+        look like that.
+      </p>
+    </div>
+
+    <div class="ex-next">
+      <b>Now you try.</b> Allocate in the guest, then find the corresponding host reservation in a
+      debugger's memory map. Seeing the same bytes at two addresses — one guest, one host — is the
+      moment the whole design clicks.
+    </div>
+  </article>
+
+  <!-- ================================================================ -->
+  <article class="ex" id="ex-draw">
+    <div class="ex-head">
+      <span class="ex-num">04</span>
+      <div>
+        <h2 id="one-draw-call-end-to-end">One draw call, end to end</h2>
+        <p class="ex-meta"><span class="ex-time">~2 hrs</span> · <span class="ex-diff d3">Deep</span> · touches <code>src/graphics/</code></p>
+      </div>
+    </div>
+
+    <p class="ex-lede">
+      From a guest function call to <code>vkCmdDraw</code>. This is the longest path in the
+      emulator and the most rewarding to trace, because every stage is observable.
+    </p>
+
+    <div class="ex-step">
+      <h3 id="1-the-guest-builds-a-command-buffer"><span class="ex-s">1</span> The guest builds a command buffer</h3>
+      <p>
+        The guest does not call the GPU. It writes <strong>PM4 packets</strong> into a ring
+        buffer and rings a doorbell. A draw is one packet among many; the packets before it set
+        registers that describe the pipeline state the draw will use.
+      </p>
+      <p>Here is the actual encoding, from <code>src/graphics/guest_gpu/pm4.h</code>:</p>
+      <pre class="ex-pre"><code>cmd = 0xC0000000
+    | (((len - 2) &amp; 0x3FFF) &lt;&lt; 16)   // dword count, including this header
+    | ((op   &amp; 0xFF)   &lt;&lt;  8)         // IT_DRAW_INDEX_AUTO = 0x2D
+    | ((r    &amp; 0x3F)   &lt;&lt;  2);</code></pre>
+      <p>
+        So a 3-dword non-indexed draw is <code>0xC0012D00</code>. Paste that into the
+        <a href="playground.html#pm4-decoder">PM4 decoder</a> and it will take it apart for you —
+        it uses these exact constants.
+      </p>
+    </div>
+
+    <div class="ex-step">
+      <h3 id="2-the-command-processor-reads-them-back"><span class="ex-s">2</span> The command processor reads them back</h3>
+      <p>
+        The emulator's command processor walks the buffer: read a header, decode the opcode,
+        consume <code>len</code> dwords, dispatch to a handler, repeat. Register-write packets
+        (<code>IT_SET_CONTEXT_REG</code>, <code>IT_SET_SH_REG</code>,
+        <code>IT_SET_UCONFIG_REG</code>) accumulate into a shadow copy of the hardware register
+        file. Nothing is drawn yet — the register writes are just state.
+      </p>
+    </div>
+
+    <div class="ex-step">
+      <h3 id="3-the-draw-packet-forces-a-decision"><span class="ex-s">3</span> The draw packet forces a decision</h3>
+      <p>
+        When <code>IT_DRAW_INDEX_AUTO</code> arrives, the accumulated register state has to become
+        a real Vulkan pipeline: shader modules, vertex layout, blend and depth state, render pass
+        compatibility. That is expensive, so it is cached — keyed on the register state that
+        actually affects the pipeline.
+      </p>
+      <div class="ex-callout">
+        <b>This is where most "why is it slow" answers live.</b> A pipeline cache miss means
+        compiling shaders mid-frame. A title that changes one register the cache key includes,
+        every draw, will stutter — and the fix is usually to narrow the key, not to compile faster.
+      </div>
+    </div>
+
+    <div class="ex-step">
+      <h3 id="4-resources-are-resolved"><span class="ex-s">4</span> Resources are resolved</h3>
+      <p>
+        The shader needs its resources. On this hardware they arrive as <em>sharps</em> — packed
+        descriptors: <code>V#</code> for buffers, <code>T#</code> for textures,
+        <code>S#</code> for samplers — reached through a shader resource table whose pointer was
+        written into user-data SGPRs by an <code>IT_SET_SH_REG</code> packet earlier.
+      </p>
+      <p>
+        Each one is translated to a Vulkan descriptor. Depth and cube descriptors are now
+        validated rather than trusted, and specialization mismatches are logged, which turns a
+        class of silent corruption into a message you can read.
+      </p>
+    </div>
+
+    <div class="ex-step">
+      <h3 id="5-submit-and-signal"><span class="ex-s">5</span> Submit, and signal</h3>
+      <p>
+        <code>vkCmdDraw</code> at last. Later the guest wants to know it finished, which arrives
+        as an <code>IT_RELEASE_MEM</code> packet — mapped onto a Vulkan timeline semaphore signal.
+        Before the CPU can read a render target, an <code>IT_SURFACE_SYNC</code> drives the
+        cache flush and writeback that makes the results visible.
+      </p>
+    </div>
+
+    <div class="ex-next">
+      <b>Now you try.</b> Run with <code>--command-buffer-dump true</code>, take the first few
+      hundred dwords of a real dump, and paste them into the
+      <a href="playground.html#pm4-decoder">decoder</a>. Find the first
+      <code>IT_DRAW_INDEX_AUTO</code>. Everything above it is the state that draw will use.
+    </div>
+  </article>
+
+  <!-- ================================================================ -->
+  <article class="ex" id="ex-shader">
+    <div class="ex-head">
+      <span class="ex-num">05</span>
+      <div>
+        <h2 id="one-shader-instruction">One shader instruction</h2>
+        <p class="ex-meta"><span class="ex-time">~2 hrs</span> · <span class="ex-diff d3">Deep</span> · touches <code>src/shader/</code></p>
+      </div>
+    </div>
+
+    <p class="ex-lede">
+      Games ship compiled RDNA&nbsp;2 shader binaries. Vulkan wants SPIR-V. Between them sits a
+      recompiler — and the interesting problem is not the arithmetic, it is the control flow.
+    </p>
+
+    <div class="ex-step">
+      <h3 id="1-arithmetic-is-the-easy-part"><span class="ex-s">1</span> Arithmetic is the easy part</h3>
+      <p>
+        A GPU instruction like <code>V_ADD_F32 v2, v0, v1</code> becomes an IR add, becomes a
+        SPIR-V <code>OpFAdd</code>. Mechanical. Most of the opcode table is like this, which is
+        why adding a missing one — <code>V_MIN_U32</code>, <code>V_SUB_NC_U32</code> and friends
+        were all added recently — is a genuinely approachable contribution.
+      </p>
+      <div class="ex-callout">
+        <b>An unhandled IR opcode is now a hard failure</b> rather than a silent skip. If a shader
+        that used to render incorrectly now fails outright, that is the change — and the loud
+        failure is far more useful than the wrong pixels were.
+      </div>
+    </div>
+
+    <div class="ex-step">
+      <h3 id="2-execution-is-not-scalar"><span class="ex-s">2</span> Execution is not scalar</h3>
+      <p>
+        Instructions run across a <strong>wave</strong> of lanes at once, with an
+        <code>EXEC</code> mask saying which lanes are live. A branch does not jump — it narrows
+        the mask, runs both sides, and merges. Registers come in two flavours: <code>SGPR</code>
+        for values uniform across the wave, <code>VGPR</code> for per-lane values. Get that
+        distinction wrong and the translated shader is subtly, unreproducibly incorrect.
+      </p>
+    </div>
+
+    <div class="ex-step">
+      <h3 id="3-the-hard-part-structured-control-flow"><span class="ex-s">3</span> The hard part: structured control flow</h3>
+      <p>
+        SPIR-V requires <em>structured</em> control flow — every branch has a declared merge
+        point, loops have headers and continue blocks. GCN-derived ISA has none of that. It is
+        arbitrary branches over a flat instruction stream, and the compiler that produced it was
+        free to generate any shape.
+      </p>
+      <p>So the recompiler has to recover structure that was thrown away:</p>
+      <ul class="ex-list">
+        <li>Build a control-flow graph from the branch targets.</li>
+        <li>Normalise loop structure into a form SPIR-V can express.</li>
+        <li>Handle loop control branches, and <strong>shared early exits</strong> — two paths
+          jumping to the same return, which used to defeat the analysis entirely.</li>
+      </ul>
+      <p>
+        When a graph is genuinely irreducible, there is a fallback: emit a dispatcher — a loop
+        around a switch on a state variable, where each case is one basic block. Always correct,
+        never fast. It exists so that no shader is untranslatable.
+      </p>
+    </div>
+
+    <div class="ex-step">
+      <h3 id="4-watch-it-happen"><span class="ex-s">4</span> Watch it happen</h3>
+      <pre class="ex-pre"><code>.\_Build\windows-prod\kyty_emulator.exe --game "&lt;title&gt;" `
+  --shader-log-direction File</code></pre>
+      <p>
+        That fills <code>_Shaders/</code> with the input ISA, the IR, and the emitted SPIR-V for
+        every shader the title uses. Pick a small one — a fullscreen blit or a UI shader — and
+        read all three side by side. A descriptor log is emitted too, which tells you which
+        resources the shader expected.
+      </p>
+    </div>
+
+    <div class="ex-next">
+      <b>Now you try.</b> Find a shader in your dump that hit the dispatcher fallback and work out
+      what shape its control flow had. That is a real open problem, not an exercise.
+    </div>
+  </article>
+
+  <!-- ================================================================ -->
+  <article class="ex" id="ex-pm4">
+    <div class="ex-head">
+      <span class="ex-num">06</span>
+      <div>
+        <h2 id="teach-it-a-new-pm4-packet">Teach it a new PM4 packet</h2>
+        <p class="ex-meta"><span class="ex-time">~half a day</span> · <span class="ex-diff d3">Deep</span> · touches <code>src/graphics/guest_gpu/</code></p>
+      </div>
+    </div>
+
+    <p class="ex-lede">
+      The counterpart to example 1, on the GPU side. Your log says the command processor hit a
+      packet it does not know. This is how you close that gap — and unlike a missing HLE function,
+      you have to work out the payload layout yourself.
+    </p>
+
+    <div class="ex-step">
+      <h3 id="1-catch-it"><span class="ex-s">1</span> Catch it</h3>
+      <pre class="ex-pre"><code>graphics: pm4 unknown packet 0x00000073 at dword 412</code></pre>
+      <p>
+        Take the opcode and the surrounding dwords from your command-buffer dump and run them
+        through the <a href="playground.html#pm4-decoder">decoder</a>. It will show you the
+        declared length even for an opcode it cannot name — and length is the first thing you
+        need, because getting it wrong desynchronises the parser for the rest of the buffer.
+      </p>
+    </div>
+
+    <div class="ex-step">
+      <h3 id="2-work-out-what-it-means"><span class="ex-s">2</span> Work out what it means</h3>
+      <p>
+        Correlate. Look at what the frame was doing, what the neighbouring packets set up, and
+        whether a corresponding AMD PM4 opcode is documented. The opcode space is largely shared
+        with public GCN/RDNA documentation, which is why so much of
+        <code>pm4.h</code> reads like an AMD header.
+      </p>
+    </div>
+
+    <div class="ex-step">
+      <h3 id="3-add-the-opcode-and-a-handler"><span class="ex-s">3</span> Add the opcode and a handler</h3>
+      <p>
+        Opcodes live in <code>pm4.h</code> as plain constants — the same table the playground
+        decoder was built from:
+      </p>
+      <pre class="ex-pre"><code>constexpr uint32_t IT_DRAW_INDEX_AUTO = 0x2D;
+constexpr uint32_t IT_SET_CONTEXT_REG = 0x69;
+<b>constexpr uint32_t IT_YOUR_PACKET     = 0x73;</b></code></pre>
+      <p>
+        Then dispatch it in the command processor and implement the handler. Start by consuming
+        the payload and logging it — a packet you skip <em>correctly</em> is already better than
+        one that derails the parser.
+      </p>
+      <div class="ex-callout">
+        <b>Correct length handling beats correct semantics, at first.</b> A packet you understand
+        but mis-length corrupts everything after it. A packet you do not understand but consume
+        cleanly costs you only that packet's effect.
+      </div>
+    </div>
+
+    <div class="ex-step">
+      <h3 id="4-verify-against-the-frame"><span class="ex-s">4</span> Verify against the frame</h3>
+      <p>
+        Re-run and confirm the unknown-packet message is gone and nothing downstream broke. If you
+        have a RenderDoc capture, compare the frame before and after — that is the only real proof
+        that your interpretation was right rather than merely quiet.
+      </p>
+    </div>
+
+    <div class="ex-next">
+      <b>Now you try.</b> Grep your own log for <code>unknown packet</code>. If you have run more
+      than one title, compare the sets — a packet that appears in several is worth more of your
+      time than one that appears once.
+    </div>
+  </article>
+
+  <section class="ex-end">
+    <h2 id="where-next">Where these lead</h2>
+    <p>
+      Examples 1 and 6 are the two contribution loops — one on each side of the emulator. Examples
+      2, 3, 4 and 5 are the understanding you need for the interesting cases of both. If you only
+      do one thing from this page, do example&nbsp;1 tonight; it is the shortest path from
+      "reading about an emulator" to "changing one".
+    </p>
+    <p>
+      Stuck on any step? Every heading here has an <b>Explain this</b> button, and the tutor can
+      see the section you are on.
+    </p>
+  </section>
+
+</main>
+
+<script src="assets/search-index.js?v=17" defer></script>
+<script src="assets/topics.js?v=17" defer></script><script src="assets/highlight.js?v=17" defer></script>
+<script src="assets/app.js?v=17" defer></script>
+<script src="assets/highlight.js?v=17" defer></script>
+<script src="assets/tutor.js?v=17" defer></script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

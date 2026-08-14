@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HLE libraries — KytyPS5</title>
+<meta name="description" content="The hand-written stand-ins for the console's system libraries — how one is structured and what is in them.">
+<link rel="stylesheet" href="assets/viz.css?v=17">
+<link rel="stylesheet" href="assets/atlas.css?v=17">
+<link rel="stylesheet" href="assets/lab.css?v=17">
+<link rel="stylesheet" href="assets/tutor.css?v=17">
+<link rel="stylesheet" href="assets/app.css?v=17">
+<link rel="stylesheet" href="assets/highlight.css?v=17">
+</head>
+<body>
+
+<main class="topic" data-app-content>
+
+  <p class="topic-eyebrow">Execution · 12</p>
+  <h1 id="hle-libraries">HLE libraries</h1>
+  <p class="topic-deck">
+    This is the bulk of the emulator by volume: reimplementations of the system libraries a game expects to call. Each is ordinary C++ with two unusual obligations — the right ABI annotation, and registration against the NID the guest imports by.
+  </p>
+
+  <section class="band band-read">
+    <div class="band-h"><span class="band-t">Read</span></div>
+    <div class="prose">
+<p class="deck">Every file in <code>src/libs/</code> has the same shape. Learn it once and all fifty-eight become readable.</p>
+
+  <h4 id="a-complete-module-start-to-finish">A complete module, start to finish</h4>
+  <p>This is <code>ContentExport</code> in full — the smallest real example in the tree:</p>
+
+  <div class="filename">src/libs/libs.cpp:111</div>
+<pre>namespace LibContentExport {
+
+<b>LIB_VERSION</b>("ContentExport", 1, "ContentExport", 1, 1);
+<i>//           library name  ver  module name    major minor</i>
+
+namespace ContentExport {
+
+constexpr int CONTENT_EXPORT_ERROR_INVALID_PARAM = -2137182186; <i>/* 0x809D3016 */</i>
+
+struct ContentExportInitParam2 {
+    void*   malloc_func;
+    void*   free_func;
+    void*   user_data;
+    size_t  buffer_size;
+    int64_t reserved0;
+    int64_t reserved1;
+};
+
+static bool g_initialized = false;
+
+static int <b>KYTY_SYSV_ABI</b> ContentExportInit2(const ContentExportInitParam2* init_param) {
+    <b>PRINT_NAME</b>();                                   <i>// per-thread call tracing</i>
+
+    LOGF("\t init_param  = 0x%016" PRIx64 "\n", (uint64_t)init_param);
+
+    if (init_param == nullptr) {
+        return CONTENT_EXPORT_ERROR_INVALID_PARAM;   <i>// validate like the real thing</i>
+    }
+
+    LOGF("\t malloc_func = 0x%016" PRIx64 "\n"
+         "\t free_func   = 0x%016" PRIx64 "\n"
+         "\t user_data   = 0x%016" PRIx64 "\n"
+         "\t buffer_size = %" PRIu64 "\n",
+         (uint64_t)init_param-&gt;malloc_func, (uint64_t)init_param-&gt;free_func,
+         (uint64_t)init_param-&gt;user_data,  (uint64_t)init_param-&gt;buffer_size);
+
+    g_initialized = true;
+    return OK;
+}
+
+} <i>// namespace ContentExport</i>
+
+<b>LIB_DEFINE</b>(InitContentExport_1) {
+    <b>LIB_FUNC</b>("0GnN4QCgIfs", ContentExport::ContentExportInit2);
+}
+
+} <i>// namespace LibContentExport</i></pre>
+
+  <h4 id="the-five-conventions">The five conventions</h4>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Element</th><th>Why it is there</th></tr></thead>
+      <tbody>
+        <tr><td><code>LIB_VERSION(lib, ver, mod, maj, min)</code></td><td>Declares which console module this file impersonates. Resolution matches on all five values, so a wrong version silently prevents binding.</td></tr>
+        <tr><td><code>KYTY_SYSV_ABI</code></td><td>The guest calls this directly, so it needs a System V prologue. Forgetting it produces arguments read from the wrong registers — usually garbage pointers.</td></tr>
+        <tr><td><code>PRINT_NAME()</code></td><td>Logs entry with a timestamp and thread ID when the module's thread-local flag is set. Free tracing, already wired up.</td></tr>
+        <tr><td>Argument logging</td><td>Almost every function logs its inputs. When reverse-engineering behaviour, the log <em>is</em> the documentation.</td></tr>
+        <tr><td><code>LIB_DEFINE</code> + <code>LIB_FUNC</code></td><td>Registration. Called once from <code>Libs::InitAll</code>, before any guest code runs.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4 id="how-print-name-works">How <code>PRINT_NAME</code> works</h4>
+  <div class="filename">src/libs/libs.h:59</div>
+<pre>#define PRINT_NAME_ENABLED g_print_name
+
+#define LIB_NAME(l, m)                                                   \
+    [[maybe_unused]] static <b>thread_local</b> bool PRINT_NAME_ENABLED = false; \
+    static constexpr char g_library[] = l;                               \
+    static constexpr char g_module[]  = m;
+
+#define PRINT_NAME()                                                     \
+    if (PRINT_NAME_ENABLED) {                                            \
+        if (Log::GetDirection() != Log::Direction::Silent) {              \
+            const auto t = Loader::Timer::GetTime().ToString("HH24:MI:SS.FFF"); \
+            LOGF_COLOR(Log::Color::Cyan, "[%d][%s] %s::%s::%s()\n",       \
+                       Common::Thread::GetThreadIdUnique(), t.c_str(),   \
+                       g_library, g_module, <b>__func__</b>);                   \
+        }                                                                \
+    }</pre>
+
+  <p>The flag is <code>thread_local</code> and per translation unit, so you can enable tracing for one module on one thread without drowning in output from everything else. Set <code>PRINT_NAME_ENABLE(true)</code> anywhere inside the module.</p>
+
+  <h4 id="the-pragmatic-pattern">The pragmatic pattern</h4>
+  <p>A great many functions here validate arguments, log them, set a flag and return <code>OK</code>. That is not laziness. For a large fraction of console APIs the observable contract really is "accept this configuration and do not fail" — the game calls <code>Init</code>, checks for a non-negative return, and moves on. The engineering work is in knowing <em>which</em> functions need real behaviour, and that knowledge comes from watching games fail.</p>
+
+  <div class="callout k">
+    <span class="lbl">Error codes are not arbitrary</span>
+    <p><code>src/libs/errno.h</code> is 46 KB of console error constants. Returning the <em>right</em> negative value matters: games branch on specific codes, and returning a generic failure where the game expected <code>ERROR_NOT_FOUND</code> can send it down a completely different path.</p>
+  </div>
+
+<p class="deck">What is implemented, how big each area is, and what is genuinely hard about it.</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Area</th><th>Files</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Graphics driver (AGC)</strong></td>
+          <td><code>agc.cpp</code> 141 KB<br><code>libGraphicsDriver.cpp</code> 14 KB<br><code>agcRegisterDefaults.inc</code> 215 KB</td>
+          <td>Hundreds of command-buffer builder functions, plus a generated table of the register values the real driver writes at context reset. Games only set registers they change, so the defaults must match the hardware exactly or state leaks between draws. Covered in <a href="t-pm4.html">topic 14</a>.</td>
+        </tr>
+        <tr>
+          <td><strong>Kernel surface</strong></td>
+          <td><code>libKernel.cpp</code> 113 KB</td>
+          <td>The parts of <code>libkernel</code> that did not earn a file in <code>src/kernel/</code>: time and clocks, process info, dynamic library queries, and a <code>Posix::</code> namespace aliasing the POSIX-named exports onto the same implementations.</td>
+        </tr>
+        <tr>
+          <td><strong>Networking</strong></td>
+          <td><code>libNet.cpp</code> 124 KB<br><code>network.cpp</code> 100 KB</td>
+          <td>Sockets, resolvers, SSL and HTTP shims, plus the NP (PlayStation Network) surface stubbed carefully enough that games run offline rather than hanging on a login that will never succeed.</td>
+        </tr>
+        <tr>
+          <td><strong>Audio output</strong></td>
+          <td><code>audio.cpp</code> 85 KB<br><code>libAudio.cpp</code> 35 KB<br><code>libAudio2.cpp</code> 31 KB</td>
+          <td>Port management, mixing and output on a dedicated thread. The guest submits fixed-size blocks and expects the call to block when buffers are full — that back-pressure is part of how games pace themselves.</td>
+        </tr>
+        <tr>
+          <td><strong>Audio decode (AJM)</strong></td>
+          <td><code>ajm.cpp</code> 51 KB</td>
+          <td>Models a fixed-function hardware block. The guest submits a <em>batch of jobs</em> describing input/output buffers and codec parameters; Kyty parses that job format and routes each to LibAtrac9 (ATRAC9) or FFmpeg (AAC, MP3).</td>
+        </tr>
+        <tr>
+          <td><strong>Video</strong></td>
+          <td><code>avPlayer.cpp</code> 56 KB<br><code>libVideoDec2.cpp</code> 23 KB<br><code>videoDec2Decoder.cpp</code> 14 KB</td>
+          <td>Full-motion-video playback and a general video-decode API, both on FFmpeg. The README credits shadPS4 as a reference for the AVPlayer implementation.</td>
+        </tr>
+        <tr>
+          <td><strong>Async memory (AMPR)</strong></td>
+          <td><code>libAmpr.cpp</code> 100 KB</td>
+          <td>The PS5's asynchronous mapping and paging engine. Like the GPU, it consumes a stream of command records rather than function calls, so Kyty parses the record formats and replays them against the memory manager.</td>
+        </tr>
+        <tr>
+          <td><strong>Fonts</strong></td>
+          <td><code>libFont.cpp</code> 75 KB<br><code>libFontFt.cpp</code></td>
+          <td>Glyph layout, metrics and rendering. Large because the API surface is large.</td>
+        </tr>
+        <tr>
+          <td><strong>System services</strong></td>
+          <td><code>libSaveData</code> 29 KB<br><code>libSystemService</code> 20 KB<br><code>libUserService</code> 7 KB<br><code>libPlayGo</code> 13 KB<br><code>libDialog</code> 17 KB<br><code>libShare</code> 7 KB</td>
+          <td>Save-data mounting, user profiles, chunk-based install progress (games query how much of themselves has "downloaded"), message and error dialogs, share features.</td>
+        </tr>
+        <tr>
+          <td><strong>Data formats</strong></td>
+          <td><code>libJson2</code> 27 KB<br><code>libPngDec</code> 12 KB<br><code>libRtc</code> 16 KB</td>
+          <td>JSON parsing, PNG decode via <code>stb</code>, real-time clock conversions.</td>
+        </tr>
+        <tr>
+          <td><strong>Input</strong></td>
+          <td><code>libPad.cpp</code> 12 KB<br><code>controller.cpp</code> 13 KB</td>
+          <td>DualSense state reporting, mapped from SDL2 events.</td>
+        </tr>
+        <tr>
+          <td><strong>Guest <code>printf</code></strong></td>
+          <td><code>guestPrintf.cpp</code> 25 KB</td>
+          <td>A from-scratch format-string interpreter. Necessary because the guest passes a System V variadic argument list, which cannot simply be forwarded to the host's <code>vprintf</code>.</td>
+        </tr>
+        <tr>
+          <td><strong>C runtime</strong></td>
+          <td><code>libC.cpp</code> 25 KB</td>
+          <td>The subset of libc the console exports as a module, including the C++ ABI hooks games call during static initialisation.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4 id="loading-order">Loading order</h4>
+  <p>Everything is registered from one function, before any guest code exists:</p>
+  <div class="filename">src/libs/libs.cpp:73</div>
+<pre>void InitAll(Loader::SymbolDatabase* s) {
+    LIB_LOAD(InitAudio_1);
+    LIB_LOAD(InitAmpr_1);
+    LIB_LOAD(InitAppContent_1);
+    LIB_LOAD(InitCoredump_1);
+    LIB_LOAD(LibContentDelete::InitContentDelete_1);
+    ...
+    LIB_LOAD(InitGraphicsDriver_1);
+    LIB_LOAD(InitLibKernel_1);
+    ...
+    LIB_LOAD(InitVideoOut_1);
+}</pre>
+  <p>Order does not matter here — they all write into the same database and no two register the same NID within the same library and version.</p>
+
+<h4 id="event-queues-are-kqueue">Event queues are <code>kqueue</code></h4>
+  <p>FreeBSD's <code>kqueue</code> is a unified event mechanism, and the PS5 exposes it almost unchanged. A game creates a queue, attaches sources, and blocks:</p>
+
+  <div class="filename">src/kernel/eventQueue.h</div>
+<pre>constexpr int16_t KERNEL_EVFILT_TIMER     = -7;
+constexpr int16_t KERNEL_EVFILT_READ      = -1;
+constexpr int16_t KERNEL_EVFILT_WRITE     = -2;
+constexpr int16_t KERNEL_EVFILT_USER      = -11;
+constexpr int16_t KERNEL_EVFILT_FILE      = -4;
+constexpr int16_t <b>KERNEL_EVFILT_GRAPHICS</b>  = -14;
+constexpr int16_t <b>KERNEL_EVFILT_VIDEO_OUT</b> = -13;
+constexpr int16_t KERNEL_EVFILT_HRTIMER   = -15;
+
+struct KernelEvent {
+    uintptr_t ident;    <i>// what happened to</i>
+    int16_t   filter;   <i>// what kind of thing</i>
+    uint16_t  flags;
+    uint32_t  fflags;
+    intptr_t  data;
+    void*     udata;    <i>// the game's opaque cookie</i>
+};</pre>
+
+  <p>The two graphics filters are the interesting ones. The video-out driver's flip and vertical-blank notifications, and the GPU's end-of-pipe interrupts, are delivered as events into these queues — which is how a game learns that a frame finished.</p>
+
+  <h4 id="why-lifetime-is-the-hard-part">Why lifetime is the hard part</h4>
+  <p>A queue can be destroyed while another thread is blocked in <code>KernelWaitEqueue</code>, or while the graphics thread is part-way through delivering an event into it. Kyty pins queues with a shared pointer for the duration of any operation:</p>
+<pre>using KernelEqueueRef = std::shared_ptr&lt;KernelEqueuePrivate&gt;;
+[[nodiscard]] KernelEqueueRef <b>KernelPinEqueue</b>(KernelEqueue eq);</pre>
+  <p>Each attached filter also carries a <code>std::shared_ptr&lt;void&gt; owner</code> and a <code>delete_event_func</code>, so a source can keep its own state alive exactly as long as the event exists. <code>tests/EventQueueLifetimeTests.cpp</code> is 19 KB devoted to this alone.</p>
+
+  <h4 id="the-file-system">The file system</h4>
+  <p>The guest sees a console-shaped tree synthesised from host directories:</p>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Guest path</th><th>Host backing</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code>/app0</code></td><td>the <code>--game</code> directory</td><td>The game's own files, read-only in practice.</td></tr>
+        <tr><td><code>/hostapp</code></td><td>the same directory</td><td>Alias some development builds use.</td></tr>
+        <tr><td><code>/download0</code></td><td><code>_DownloadData/&lt;TITLE_ID&gt;</code></td><td>Downloadable content and patches.</td></tr>
+        <tr><td><code>/temp0</code>, <code>/temp</code></td><td><code>_TempData/&lt;TITLE_ID&gt;</code></td><td>Scratch space.</td></tr>
+        <tr><td><code>/savedata…</code></td><td><code>_SaveData/</code></td><td>Mounted on demand by the save-data library.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="filename">src/emulator.cpp:61</div>
+<pre>static void MountSandboxDirs() {
+    std::string title_id;
+    if (!Loader::SystemContentParamSfoGetString("TITLE_ID", &amp;title_id) || title_id.empty()) {
+        title_id = "UNKNOWN";
+    }
+    MountOrCreateDir("_DownloadData/" + title_id, "/download0");
+    MountOrCreateDir("_TempData/"     + title_id, "/temp0");
+    MountOrCreateDir("_TempData/"     + title_id, "/temp");
+}</pre>
+
+  <p>Two details that cause real bugs:</p>
+  <ul>
+    <li><strong>Case sensitivity.</strong> The console's file system is case-insensitive; Linux's is not. A game asking for <code>Data/Textures.pak</code> when the file is <code>data/textures.pak</code> works on console and on Windows, and fails on Linux unless the lookup falls back to a case-folded directory scan.</li>
+    <li><strong>Path translation.</strong> Every guest path must be converted to a host path through the mount table. <code>GetRealFilename()</code> does this, and it is why the loader is handed <code>/app0/eboot.bin</code> rather than a host path.</li>
+  </ul>
+
+  <h4 id="the-remaining-primitives">The remaining primitives</h4>
+  <div class="tw">
+    <table>
+      <thead><tr><th>File</th><th>Provides</th></tr></thead>
+      <tbody>
+        <tr><td><code>kernel/semaphore.cpp</code></td><td>Counting semaphores with timeouts and cancellation.</td></tr>
+        <tr><td><code>kernel/eventFlag.cpp</code></td><td>Event flags — a bitmask on which threads wait for any or all bits. Common in console middleware.</td></tr>
+        <tr><td><code>libs/libUlt.cpp</code></td><td>ULT, Sony's user-level cooperative threading library — fibers with their own scheduler.</td></tr>
+        <tr><td><code>libs/libKernel.cpp</code></td><td>Everything else in <code>libkernel</code>: time, process info, dynamic library management, <code>Posix::</code> aliases.</td></tr>
+      </tbody>
+    </table>
+  </div>
+    </div>
+  </section>
+
+  <section class="band band-watch">
+    <div class="band-h"><span class="band-t">Watch</span></div>
+    <p class="band-why">
+      One system call, from the game's call instruction to your C++ and back. Every function in src/libs/ is reached exactly this way.
+    </p>
+    <div data-viz="hlemodule"></div>
+  </section>
+  <section class="band band-try">
+    <div class="band-h"><span class="band-t">Try</span></div>
+
+    <div class="callout k">
+      <span class="lbl">Find your own gaps</span>
+      <p>Drop a log from one of your titles into the <a href="playground.html#log-triage">triage tool</a>. The "Unimplemented calls" bucket is a list of functions that resolved but do nothing yet — each one is a candidate for a small, self-contained change.</p>
+    </div>
+  </section>
+  <section class="band band-do">
+    <div class="band-h"><span class="band-t">Do</span></div>
+    <p class="band-why">
+      Read one library end to end. They are more approachable than their size suggests, because the pattern repeats.
+    </p>
+
+    <div class="check">
+      <p class="check-h">Checkpoint</p>
+      <ul class="check-list">
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Open a file in <code>src/libs/</code> and identify the three parts: the implementations, the error codes, and the <code>LIB_DEFINE</code> registration block.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Count how many functions in that file are real implementations versus stubs that just return success.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Explain what <code>PRINT_NAME()</code> is for and how it helps you.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Find an event-queue function and explain what the guest is using it for.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Pick one unimplemented function from your own log and work out what it would have to return to be useful.</label>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+</main>
+
+<script src="assets/topics.js?v=17" defer></script>
+<script src="assets/search-index.js?v=17" defer></script>
+<script src="assets/app.js?v=17" defer></script>
+<script src="assets/viz.js?v=17" defer></script>
+<script src="assets/atlas.js?v=17" defer></script>
+<script src="assets/lab.js?v=17" defer></script>
+<script src="assets/figs.js?v=17" defer></script>
+<script src="assets/figures.js?v=17" defer></script>
+<script src="assets/highlight.js?v=17" defer></script>
+<script src="assets/tutor.js?v=17" defer></script>
+</body>
+</html>
+
+

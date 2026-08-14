@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PM4 &amp; the command processor — KytyPS5</title>
+<meta name="description" content="How a draw call travels from guest code into PM4 command packets, through a software command processor, and out to Vulkan.">
+<link rel="stylesheet" href="assets/viz.css?v=17">
+<link rel="stylesheet" href="assets/atlas.css?v=17">
+<link rel="stylesheet" href="assets/lab.css?v=17">
+<link rel="stylesheet" href="assets/tutor.css?v=17">
+<link rel="stylesheet" href="assets/app.css?v=17">
+<link rel="stylesheet" href="assets/highlight.css?v=17">
+</head>
+<body>
+
+<main class="topic" data-app-content>
+
+  <p class="topic-eyebrow">Graphics · 14</p>
+  <h1 id="pm4-the-command-processor">PM4 &amp; the command processor</h1>
+  <p class="topic-deck">
+    The CPU never talks to the GPU directly. It writes <em>packets</em> into a ring buffer and
+    rings a doorbell. Everything the graphics half of this emulator does begins by reading those
+    packets back.
+  </p>
+
+  <!-- ---------------------------------------------------------- -->
+  <section class="band band-read">
+    <div class="band-h"><span class="band-t">Read</span></div>
+    <div class="prose">
+<p class="deck">The game never calls a draw function Kyty can intercept. It writes packets into a buffer and hands the buffer to the kernel. Understanding that distinction is the key to the whole graphics stack.</p>
+
+  <h4 id="what-an-agc-call-actually-does">What an AGC call actually does</h4>
+  <p>On a PC, <code>vkCmdDraw</code> goes into a driver that eventually produces hardware commands. On the PS5 the game <em>is</em> the driver. AGC functions are thin builders that write dwords into memory the game owns:</p>
+
+<pre>uint32_t* KYTY_SYSV_ABI GraphicsCbDispatch(CommandBuffer* buf, uint32_t thread_group_x,
+                                            uint32_t thread_group_y, uint32_t thread_group_z, ...);
+uint32_t  KYTY_SYSV_ABI GraphicsCbDispatchGetSize();
+uint32_t* KYTY_SYSV_ABI GraphicsCbSetShRegistersDirect(CommandBuffer* buf, ...);
+uint32_t* KYTY_SYSV_ABI GraphicsCbReleaseMem(CommandBuffer* buf, uint8_t action, ...);</pre>
+
+  <p>Note the <code>…GetSize()</code> companions. A game asks how many dwords a command will occupy so it can lay out its buffer in advance, then calls the builder to fill them. This is why Kyty's reimplementations must produce <strong>byte-identical output</strong> to the real driver: the game may compute offsets into the buffer, patch values later, or jump over regions.</p>
+
+  <div class="callout g">
+    <span class="lbl">Patch functions prove the point</span>
+    <p>The AGC API includes functions such as <code>GraphicsSetCxRegIndirectPatchSetAddress</code>, <code>GraphicsJumpPatchSetTarget</code> and <code>GraphicsWriteDataPatchSetAddressOrOffset</code>. These exist so a game can build a command buffer once and rewrite specific fields each frame. A reimplementation that produced structurally different packets would break them.</p>
+  </div>
+
+  <h4 id="submission">Submission</h4>
+  <p>When the buffer is ready the game submits it, and that call reaches <code>Gpu::Submit</code>:</p>
+
+  <div class="filename">src/graphics/guest_gpu/graphicsRun.h:28</div>
+<pre>void Submit(uint32_t* draw_commands, uint32_t draw_size_dw,
+            uint32_t* constant_commands, uint32_t constant_size_dw,
+            bool trigger_agc_interrupt_on_done = false);
+
+void SubmitCompute(uint32_t queue, uint32_t* commands, uint32_t size_dw,
+                   bool trigger_agc_interrupt_on_done = false);</pre>
+
+  <p>Two buffers, not one — the draw stream and the constant stream, which correspond to the two engines described in <a href="t-pm4.html">topic 14</a>.</p>
+
+  <p>The first thing <code>Submit</code> does is <strong>copy</strong> the buffer:</p>
+<pre>struct OwnedCmdBuffer {
+    explicit OwnedCmdBuffer(const uint32_t* data, uint32_t count) {
+        if (count != 0) m_words.assign(data, data + count);
+    }
+private:
+    std::vector&lt;uint32_t&gt; m_words;
+};</pre>
+  <p>Because on real hardware the GPU reads that memory asynchronously and the game respects a fence before reusing it — but Kyty's command processor runs on its own thread with its own timing, and games in practice start overwriting the buffer sooner than a strict reading would allow. Copying removes an entire class of race.</p>
+
+  <h4 id="the-queue-model">The queue model</h4>
+  <div class="filename">src/graphics/guest_gpu/graphicsRun.cpp:79</div>
+<pre>class GpuState {
+public:
+    static constexpr uint32_t ComputePipeCount     = 7;
+    static constexpr uint32_t QueuesPerComputePipe = 8;
+    static constexpr uint32_t ComputeQueueCount    = ComputePipeCount * QueuesPerComputePipe; <i>// 56</i>
+    static constexpr uint32_t QueueCount           = 1 + ComputeQueueCount;                   <i>// 57</i>
+    ...
+private:
+    std::array&lt;std::deque&lt;Submission&gt;, QueueCount&gt; m_queues;
+    std::deque&lt;Common::UniqueFunction&lt;void&gt;&gt;       m_commands;
+    std::unique_ptr&lt;CommandProcessor&gt;                                m_gfx_cp;
+    std::array&lt;std::unique_ptr&lt;CommandProcessor&gt;, ComputeQueueCount&gt; m_compute_cp;
+    std::jthread m_thread;
+};</pre>
+
+  <p>One graphics queue plus seven compute pipes of eight queues each, mirroring the hardware. Each queue has its <em>own</em> <code>CommandProcessor</code> instance, because each carries independent register state. Games rely on this for asynchronous compute: work on different queues must progress independently.</p>
+
+  <h4 id="the-submission-record">The submission record</h4>
+<pre>struct Submission {
+    SubmissionType type     = SubmissionType::Graphics;
+    uint32_t       queue_id = 0;
+    OwnedCmdBuffer commands;
+    OwnedCmdBuffer constant_commands;
+    Pm4Execution   command_execution;      <i>// resumable cursor</i>
+    Pm4Execution   constant_execution;
+    bool           trigger_agc_interrupt_on_done = false;
+    bool           reset_processor  = false;
+    bool           started          = false;
+    bool           command_complete = false;
+    bool           blocked          = false;
+    uint64_t       flip_request_id  = 0;
+};</pre>
+
+  <p>The <code>blocked</code> flag and the embedded <code>Pm4Execution</code> cursors are what let a submission that hits a wait packet be suspended and resumed later, while other queues keep running.</p>
+
+  <h4 id="talking-to-the-gpu-thread">Talking to the GPU thread</h4>
+<pre>void SendCommand(Common::UniqueFunction&lt;void&gt;&amp;&amp; command);        <i>// fire and forget</i>
+void SendCommandSync(Common::UniqueFunction&lt;void&gt;&amp;&amp; command);    <i>// block until done</i>
+void SendCommandSyncWithProcessor(Common::UniqueFunction&lt;void, CommandProcessor&amp;&gt;&amp;&amp; command);</pre>
+
+  <p>All three are re-entrancy aware — if you are already on the GPU thread they run the callable inline rather than deadlocking:</p>
+<pre>void GpuState::SendCommand(Common::UniqueFunction&lt;void&gt;&amp;&amp; command) {
+    if (<b>IsGpuThread</b>()) { command(); return; }
+    Common::LockGuard lock(m_queue_mutex);
+    m_commands.push_back(std::move(command));
+    m_work_available.Signal();
+}</pre>
+<p class="deck">Kyty implements, in software, the front end of an AMD GPU: the unit that reads packets from memory and turns them into state changes and work.</p>
+
+  <h4 id="packet-format">Packet format</h4>
+  <p>The stream is a sequence of 32-bit dwords. Each packet begins with a header whose top two bits give the type. Everything Kyty handles is type 3:</p>
+
+  <div class="filename">src/graphics/guest_gpu/pm4.h:13</div>
+<pre>#define KYTY_PM4(len, op, r)                                        \
+    (0xC0000000u | (((static_cast&lt;uint16_t&gt;(len) - 2u) &amp; 0x3fffu) &lt;&lt; 16u) | \
+     (((op) &amp; 0xffu) &lt;&lt; 8u) | (((r) &amp; (Pm4::R_NUM - 1u)) &lt;&lt; 2u))
+
+#define KYTY_PM4_R(cmd_id)   (((cmd_id) &gt;&gt; 2u) &amp; (Pm4::R_NUM - 1u))
+#define KYTY_PM4_LEN(cmd_id) ((((cmd_id) &gt;&gt; 16u) &amp; 0x3fffu) + 2u)</pre>
+
+  <p>And the extraction, from the packet dumper:</p>
+  <div class="filename">src/graphics/guest_gpu/pm4.cpp:122</div>
+<pre>const auto packet_type = static_cast&lt;PacketType&gt;(cmd_id &gt;&gt; <b>30u</b>);
+const bool sh_gx       = (cmd_id &amp; 0x2u) == 0;
+const uint8_t op       = ((cmd_id &gt;&gt; <b>8u</b>) &amp; 0xffu);
+const auto    r        = KYTY_PM4_R(cmd_id);
+len                    = ((cmd_id &gt;&gt; <b>16u</b>) &amp; 0x3fffu) + 1;   <i>// body dwords</i></pre>
+
+  <div class="fig">
+    <div class="fig-head"><span>PM4 type-3 header decoder</span><span>edit the hex, or pick a preset</span></div>
+    <div class="fig-body">
+      <div class="dec-input">
+        <label for="pm4in">Header dword</label>
+        <input id="pm4in" class="dw" type="text" value="0xC0012D00" spellcheck="false" autocomplete="off" style="width:14ch">
+        <div class="presets" id="pm4presets"></div>
+      </div>
+      <div class="bits" id="pm4bits" aria-hidden="true"></div>
+      <div class="dec-out" id="pm4out"></div>
+    </div>
+    <div class="fig-note"><p>The colour bands map to the fields: <span style="color:var(--host)">type</span>, <span style="color:var(--kyty)">count</span>, <span style="color:var(--guest)">opcode</span>, then the Sony sub-selector. Note that the handlers assert on exact header values — <code>CpOpDrawIndexAuto</code> requires precisely <code>0xC0012D00</code> — so a malformed stream fails loudly rather than silently.</p></div>
+  </div>
+
+  <h4 id="dispatch-by-jump-table">Dispatch by jump table</h4>
+  <p>With around 50 opcodes and thousands of register offsets, a switch would be unmanageable. Kyty builds four function-pointer tables and indexes them directly:</p>
+
+  <div class="filename">src/graphics/guest_gpu/command_processor/pm4Dispatch.h:25</div>
+<pre>extern const std::array&lt;cp_op_parser_func_t, 256&gt;       <b>g_cp_op_func</b>;        <i>// by opcode</i>
+extern const std::array&lt;cp_op_parser_func_t, Pm4::R_NUM&gt; g_cp_op_custom_func; <i>// IT_NOP sub-ops</i>
+extern const std::array&lt;hw_ctx_parser_func_t, Pm4::CX_NUM&gt; <b>g_hw_ctx_func</b>;   <i>// context registers</i>
+extern const std::array&lt;hw_sh_parser_func_t,  Pm4::SH_NUM&gt; <b>g_hw_sh_func</b>;    <i>// shader registers</i>
+extern const std::array&lt;hw_uc_parser_func_t,  Pm4::UC_NUM&gt; <b>g_hw_uc_func</b>;    <i>// user-config registers</i>
+
+void GraphicsInitJmpTables();</pre>
+
+  <p>A handler receives the header, a pointer to the body and the remaining size, and returns how many dwords it consumed — which is how multi-register writes advance correctly:</p>
+
+  <div class="filename">…/pm4Handlers.cpp:2084 — a complete handler</div>
+<pre>KYTY_CP_OP_PARSER(<b>CpOpDrawIndexAuto</b>) {
+    KYTY_PROFILER_FUNCTION();
+
+    EXIT_NOT_IMPLEMENTED(cmd_id != <b>0xc0012d00</b>);       <i>// exact encoding expected</i>
+
+    uint32_t index_count = buffer[0];
+    uint32_t flags       = buffer[1];
+
+    EXIT_NOT_IMPLEMENTED((flags &amp; ~0x22u) != 0);      <i>// only two flag bits are handled</i>
+
+    cp.<b>DrawIndexAuto</b>(index_count, 0);
+
+    return 2;                                        <i>// consumed 2 body dwords</i>
+}</pre>
+
+  <p>That is the pattern for all 174 KB of <code>pm4Handlers.cpp</code>: assert on what is not understood, unpack the fields, call into <code>CommandProcessor</code>, report the size.</p>
+
+  <h4 id="mechanisms-a-real-command-processor-has">Mechanisms a real command processor has</h4>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Mechanism</th><th>What it is</th><th>Why it matters</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>DE / CE counters</strong></td>
+          <td>Two engines walk the stream. The <em>Constant Engine</em> runs ahead prefetching constant data; the <em>Drawing Engine</em> follows. <code>IT_INCREMENT_CE_COUNTER</code>, <code>IT_WAIT_ON_CE_COUNTER</code> and <code>IT_WAIT_ON_DE_COUNTER_DIFF</code> keep them in step.</td>
+          <td>Get this wrong and constants are stale by a frame or two — drifting, hard-to-localise corruption.</td>
+        </tr>
+        <tr>
+          <td><strong>Constant RAM</strong></td>
+          <td>A 48 KB scratch area — <code>uint32_t m_const_ram[0x3000]</code> — that the CE writes and the DE dumps into memory.</td>
+          <td>Heavily used for ring-buffered per-draw constants.</td>
+        </tr>
+        <tr>
+          <td><strong>End-of-pipe events</strong></td>
+          <td><code>IT_RELEASE_MEM</code> / <code>IT_EVENT_WRITE_EOP</code>: "when everything before this has completed, write this value there, and optionally raise an interrupt."</td>
+          <td>How the game learns a frame is done. Kyty maps these onto Vulkan timeline semaphores and its own event queues.</td>
+        </tr>
+        <tr>
+          <td><strong>Indirect buffers</strong></td>
+          <td><code>IT_INDIRECT_BUFFER</code> is a call: jump into another buffer, then return. <code>Pm4Execution</code> keeps a stack of cursors.</td>
+          <td>Engines split state into reusable chunks. Without this you see a fraction of the commands.</td>
+        </tr>
+        <tr>
+          <td><strong>Predication</strong></td>
+          <td><code>IT_SET_PREDICATION</code> makes subsequent packets conditional on a memory value.</td>
+          <td>Occlusion-culled draws must actually be skipped. <code>ShouldSkipPredicatedPackets()</code> gates them.</td>
+        </tr>
+        <tr>
+          <td><strong>Blocking waits</strong></td>
+          <td><code>IT_WAIT_REG_MEM</code> spins until memory matches a condition.</td>
+          <td>Kyty returns <code>Pm4ProcessResult::Blocked</code> and suspends the submission rather than busy-waiting, so a stalled graphics queue does not starve compute.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4 id="the-resumable-cursor">The resumable cursor</h4>
+  <div class="filename">…/command_processor/commandProcessor.h:18</div>
+<pre>class Pm4Execution {
+    struct BufferCursor {
+        uint32_t* next_packet         = nullptr;
+        uint32_t  remaining_dw        = 0;
+        uint32_t  total_dw            = 0;
+        uint32_t  deferred_advance_dw = 0;
+    };
+    std::vector&lt;BufferCursor&gt; m_buffer_stack;   <i>// indirect-buffer nesting</i>
+    bool m_suspended     = false;
+    bool m_made_progress = false;
+};
+
+enum class Pm4ProcessResult { Complete, Blocked };
+Pm4ProcessResult Process(Pm4Execution&amp; execution, uint32_t* buffer, uint32_t size_dw);</pre>
+
+  <p><code>m_made_progress</code> lets the scheduler detect a queue that is blocked and getting nowhere, so it can move on instead of spinning.</p>
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------------- -->
+  <section class="band band-watch">
+    <div class="band-h"><span class="band-t">Watch</span></div>
+    <p class="band-why">
+      A command buffer is a flat run of 32-bit words with no framing other than what each header
+      declares. Watch the processor walk it: read header, decode opcode, consume the declared
+      length, dispatch, repeat.
+    </p>
+    <div data-viz="pm4stream"></div>
+
+    <p class="band-why" style="margin-top:26px">
+      And the packets don't all arrive on one path. Graphics, compute and DMA work travel on
+      separate queues, which is where a lot of the ordering complexity comes from.
+    </p>
+    <div data-viz="queuebank"></div>
+  </section>
+
+  <!-- ---------------------------------------------------------- -->
+  <section class="band band-try">
+    <div class="band-h"><span class="band-t">Try</span></div>
+    <p class="band-why">
+      Build a packet by hand. Pick an opcode, set a length, and watch the 32-bit header assemble
+      bit by bit — then check it against the encoding in the Read section above.
+    </p>
+    <div data-viz="pm4build"></div>
+
+    <div class="callout k">
+      <span class="lbl">Then use it on real data</span>
+      <p>
+        Once the encoding makes sense, run an actual dump through it. Start the emulator with
+        <code>--command-buffer-dump true</code>, then paste the dwords into the
+        <a href="playground.html#pm4-decoder">PM4 decoder in the Playground</a> — it's built from
+        the same <code>pm4.h</code> constants and will name every packet in your own frame.
+      </p>
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------------- -->
+  <section class="band band-do">
+    <div class="band-h"><span class="band-t">Do</span></div>
+
+    <h4 id="worked-example-one-draw-call-end-to-end">Worked example: one draw call, end to end</h4>
+    <p class="band-why">
+      The shortest useful exercise here is to find a single draw in your own capture and account
+      for every packet that set it up.
+    </p>
+
+    <div class="prose">
+      <ol>
+        <li>Run a title with <code>--command-buffer-dump true</code> and take the first few
+          hundred dwords.</li>
+        <li>Paste them into the <a href="playground.html#pm4-decoder">decoder</a> and find the
+          first <code>IT_DRAW_INDEX_AUTO</code> (opcode <code>0x2D</code>).</li>
+        <li>Everything above it is state. Identify at least one
+          <code>IT_SET_CONTEXT_REG</code> and one <code>IT_SET_SH_REG</code> and work out what
+          each was configuring.</li>
+        <li>Find the <code>IT_RELEASE_MEM</code> that follows. That's the fence the CPU waits
+          on — in the emulator it becomes a Vulkan timeline semaphore signal.</li>
+      </ol>
+      <p>
+        If a packet comes back as <code>IT_UNKNOWN_…</code>, you've found real work — that's the
+        starting point for teaching the command processor a new packet.
+      </p>
+    </div>
+
+    <div class="check">
+      <p class="check-h">Checkpoint</p>
+      <ul class="check-list">
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Open <code>src/graphics/guest_gpu/pm4.h</code> and find the
+            <code>KYTY_PM4</code> macro. Confirm the header layout matches what the builder above
+            produced.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Work out by hand what <code>0xC0012D00</code> decodes to, then check it in the
+            decoder.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Read <code>pm4Dispatch.cpp</code> and find where an opcode becomes a handler
+            call.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Dump a real command buffer from one of your own titles and decode the first
+            draw.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Explain, in one sentence, why getting a packet's <em>length</em> wrong is worse
+            than not understanding what it does.</label>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+</main>
+
+<script src="assets/topics.js?v=17" defer></script>
+<script src="assets/search-index.js?v=17" defer></script>
+<script src="assets/highlight.js?v=17" defer></script>
+<script src="assets/app.js?v=17" defer></script>
+<script src="assets/viz.js?v=17" defer></script>
+<script src="assets/atlas.js?v=17" defer></script>
+<script src="assets/lab.js?v=17" defer></script>
+<script src="assets/figs.js?v=17" defer></script>
+<script src="assets/figures.js?v=17" defer></script>
+<script src="assets/highlight.js?v=17" defer></script>
+<script src="assets/tutor.js?v=17" defer></script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

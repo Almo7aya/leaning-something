@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>One full run — KytyPS5</title>
+<meta name="description" content="The whole emulator in one animation: from the process starting, through loading, linking, the ABI crossing, shader recompilation and binding, to a finished frame on screen.">
+<link rel="stylesheet" href="assets/viz.css?v=17">
+<link rel="stylesheet" href="assets/atlas.css?v=17">
+<link rel="stylesheet" href="assets/lab.css?v=17">
+<link rel="stylesheet" href="assets/tutor.css?v=17">
+<link rel="stylesheet" href="assets/app.css?v=17">
+<link rel="stylesheet" href="assets/highlight.css?v=17">
+<link rel="stylesheet" href="assets/lifetime.css?v=17">
+</head>
+<body>
+
+<main class="topic" data-app-content style="max-width:1240px">
+
+  <p class="topic-eyebrow">The whole thing · 21 steps</p>
+  <h1>One full run</h1>
+  <p class="topic-deck">
+    Every other page takes one piece of the emulator apart. This one puts them back together:
+    a single run, from the moment the process starts to a finished frame in the window.
+  </p>
+  <p class="band-why" style="max-width:78ch">
+    The four panels stay on screen the whole way through, so you can watch cause and effect
+    across them. <b>Guest memory</b> fills up on the left as things are mapped. The
+    <b>middle</b> shows the mechanism currently doing work. The <b>render target</b> on the right
+    stays black for two thirds of the run — because nothing can be drawn until the loading,
+    linking and translation are all finished. Step it with Prev/Next, or click any mark on the rail
+    to jump.
+  </p>
+
+  <div id="lifetime"></div>
+
+  <!-- ---------------------------------------------------------- -->
+  <section class="band band-read" style="margin-top:52px">
+    <div class="band-h"><span class="band-t">What to notice</span></div>
+    <div class="prose">
+      <h3 id="three-things-worth-watching">Three things worth watching</h3>
+
+      <h4 id="the-screen-stays-black-for-a-long-time">The screen stays black for a long time</h4>
+      <p>
+        Fifteen of the twenty-one steps happen before a single pixel exists. That ratio is the
+        honest shape of the project: loading, linking, patching and translating are the work, and
+        drawing is what happens once they have all succeeded. When a title shows you nothing but a
+        black window, it has usually failed somewhere in the first two thirds of this run.
+      </p>
+
+      <h4 id="memory-is-claimed-before-it-is-needed">Memory is claimed before it is needed</h4>
+      <p>
+        Step 2 reserves the guest's whole address range while there is still nothing to put in it.
+        That looks wasteful until step 13, when the game demands a specific address and gets it.
+        A game stores raw pointers and hands them to the GPU; there is no opportunity to relocate
+        anything afterwards, so the space has to be owned in advance.
+      </p>
+
+      <h4 id="every-boundary-crossing-costs-something">Every boundary crossing costs something</h4>
+      <p>
+        Watch the phase badge. <b>Load</b> and <b>Link</b> are one-time costs paid at startup.
+        <b>Draw</b> is paid every frame — and inside it, the pipeline compile at step 17 and the
+        page-fault upload at step 19 are the two that show up as stutter. Both are caching
+        problems, which is why so much of the recent work in the tree is about cache keys and
+        dirty-page granularity.
+      </p>
+
+      <div class="callout k">
+        <span class="lbl">Where to go from here</span>
+        <p>
+          Each step here has a topic that covers it properly:
+          <a href="t-elf-and-self.html">ELF and SELF</a> for steps 3–4,
+          <a href="t-nids.html">NIDs and the runtime linker</a> for 7–9,
+          <a href="t-calling-conventions.html">the ABI wall</a> for step 11,
+          <a href="t-pm4.html">PM4 and the command processor</a> for 14–15,
+          <a href="t-shaders.html">shaders</a> for 16, and
+          <a href="t-coherency.html">coherency</a> for 19.
+        </p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<script src="assets/topics.js?v=17" defer></script>
+<script src="assets/search-index.js?v=17" defer></script>
+<script src="assets/app.js?v=17" defer></script>
+<script src="assets/viz.js?v=17" defer></script>
+<script src="assets/atlas.js?v=17" defer></script>
+<script src="assets/lab.js?v=17" defer></script>
+<script src="assets/figures.js?v=17" defer></script>
+<script src="assets/highlight.js?v=17" defer></script>
+<script src="assets/lifetime.js?v=17" defer></script>
+<script src="assets/tutor.js?v=17" defer></script>
+</body>
+</html>
+
+
+

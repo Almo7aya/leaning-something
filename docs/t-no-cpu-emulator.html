@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Why there's no CPU emulator — KytyPS5</title>
+<meta name="description" content="Guest PS5 code runs natively on your CPU. There is no interpreter and no JIT. What that buys, and what it costs.">
+<link rel="stylesheet" href="assets/viz.css?v=17">
+<link rel="stylesheet" href="assets/atlas.css?v=17">
+<link rel="stylesheet" href="assets/lab.css?v=17">
+<link rel="stylesheet" href="assets/tutor.css?v=17">
+<link rel="stylesheet" href="assets/app.css?v=17">
+<link rel="stylesheet" href="assets/highlight.css?v=17">
+</head>
+<body>
+
+<main class="topic" data-app-content>
+
+  <p class="topic-eyebrow">Foundations · 02</p>
+  <h1 id="why-there-s-no-cpu-emulator">Why there's no CPU emulator</h1>
+  <p class="topic-deck">
+    Search the whole repository for an interpreter loop or a JIT compiler and you'll find
+    neither. This is the single idea that explains the shape of the entire project — get it
+    now and most of the rest follows.
+  </p>
+
+  <!-- ---------------------------------------------------------- -->
+  <section class="band band-read">
+    <div class="band-h"><span class="band-t">Read</span></div>
+    <div class="prose">
+<p class="deck">Search the entire KytyPS5 repository for an interpreter loop or a JIT compiler and you will find neither. This chapter explains why, and what replaces them.</p>
+
+  <h4 id="the-instruction-sets-are-the-same">The instruction sets are the same</h4>
+  <p>A PS5 game is x86-64 machine code. Your PC executes x86-64 machine code. There is nothing to translate. The emulator:</p>
+  <ol>
+    <li>Allocates memory at the address the executable wants,</li>
+    <li>Copies the code segments into it,</li>
+    <li>Marks those pages executable,</li>
+    <li>Sets up a stack and jumps to the entry point.</li>
+  </ol>
+  <p>From that instruction onwards the CPU is running the game directly, at full speed. The emulator is not "in the loop" at all — it only regains control when the game calls a function the emulator provides, or when the hardware raises a fault.</p>
+
+  <div class="callout k">
+    <span class="lbl">The mental model that matters</span>
+    <p>KytyPS5 is not a simulator that steps through the game. It is a <strong>host environment</strong> that the game runs inside. It is closer in spirit to Wine — which runs Windows programs on Linux — than to an emulator like Dolphin. Everything the emulator does is <em>reactive</em>: it responds to calls, to page faults, and to command buffers.</p>
+  </div>
+
+  <h4 id="what-that-buys-and-what-it-costs">What that buys, and what it costs</h4>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Consequence</th><th>Detail</th></tr></thead>
+      <tbody>
+        <tr><td><span class="chip host">good</span> Full CPU speed</td><td>No translation overhead. CPU-bound games can in principle exceed console performance on a fast PC.</td></tr>
+        <tr><td><span class="chip host">good</span> Vastly less code</td><td>A competent x86-64 JIT is tens of thousands of lines on its own. Kyty spends that budget on graphics instead.</td></tr>
+        <tr><td><span class="chip guest">hard</span> No instruction-level control</td><td>You cannot trap on a memory access by instrumenting code, because there is no code generation step. Kyty uses hardware page protection and the CPU's own fault mechanism instead — this is why the exception handler is load-bearing.</td></tr>
+        <tr><td><span class="chip guest">hard</span> Crashes are real crashes</td><td>A guest bug corrupts the emulator's own process. There is no sandbox. Hence the elaborate crash dump: faulting module, code bytes, all registers, stack walk.</td></tr>
+        <tr><td><span class="chip guest">hard</span> Host CPU features must match</td><td>If the guest uses an instruction your CPU lacks, it faults. Kyty catches that and emulates the instruction in software — see <a href="t-coherency.html">topic 10</a>.</td></tr>
+        <tr><td><span class="chip guest">hard</span> ABI and OS assumptions leak</td><td>Guest code assumes System V registers, a working <code>fs</code> segment, 16 KB pages, and a FreeBSD kernel. None of that is true on Windows. <a href="t-calling-conventions.html">topic 03</a>, <a href="t-patching.html">topic 08</a> and <a href="t-address-space.html">topic 09</a> are about closing those gaps.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4 id="the-path-a-frame-actually-takes">The path a frame actually takes</h4>
+  <p>Before any of the detail, here is the whole system in one animation. Every chapter from 25 onwards is an expansion of one of these eight boxes.</p>
+
+  <figure data-viz="pipeline"></figure>
+
+  <h4 id="where-the-difficulty-actually-went">Where the difficulty actually went</h4>
+  <p>Measured in lines of C++ in <code>src/</code>:</p>
+
+  <div class="fig">
+    <div class="fig-head"><span>Where the code is</span><span>123,380 lines · 323 files</span></div>
+    <div class="fig-body">
+      <div class="chart" style="display:grid;gap:6px">
+        <div style="display:grid;grid-template-columns:minmax(120px,220px) minmax(0,1fr) 7ch;gap:12px;align-items:center"><div style="font-family:var(--mono);font-size:11.5px">libs — HLE system libraries</div><div style="height:16px;background:var(--surface-3);border-radius:0 3px 3px 0"><div style="height:100%;width:100%;background:var(--guest);border-radius:0 3px 3px 0"></div></div><div style="font-family:var(--mono);font-size:11.5px;text-align:right;color:var(--muted)">38,055</div></div>
+        <div style="display:grid;grid-template-columns:minmax(120px,220px) minmax(0,1fr) 7ch;gap:12px;align-items:center"><div style="font-family:var(--mono);font-size:11.5px">graphics/shader — recompiler</div><div style="height:16px;background:var(--surface-3);border-radius:0 3px 3px 0"><div style="height:100%;width:69.6%;background:var(--guest);border-radius:0 3px 3px 0"></div></div><div style="font-family:var(--mono);font-size:11.5px;text-align:right;color:var(--muted)">26,486</div></div>
+        <div style="display:grid;grid-template-columns:minmax(120px,220px) minmax(0,1fr) 7ch;gap:12px;align-items:center"><div style="font-family:var(--mono);font-size:11.5px">graphics/host_gpu — Vulkan</div><div style="height:16px;background:var(--surface-3);border-radius:0 3px 3px 0"><div style="height:100%;width:48.8%;background:var(--guest);border-radius:0 3px 3px 0"></div></div><div style="font-family:var(--mono);font-size:11.5px;text-align:right;color:var(--muted)">18,572</div></div>
+        <div style="display:grid;grid-template-columns:minmax(120px,220px) minmax(0,1fr) 7ch;gap:12px;align-items:center"><div style="font-family:var(--mono);font-size:11.5px">kernel — threads, memory, files</div><div style="height:16px;background:var(--surface-3);border-radius:0 3px 3px 0"><div style="height:100%;width:29.4%;background:var(--guest);border-radius:0 3px 3px 0"></div></div><div style="font-family:var(--mono);font-size:11.5px;text-align:right;color:var(--muted)">11,197</div></div>
+        <div style="display:grid;grid-template-columns:minmax(120px,220px) minmax(0,1fr) 7ch;gap:12px;align-items:center"><div style="font-family:var(--mono);font-size:11.5px">graphics/guest_gpu — PM4</div><div style="height:16px;background:var(--surface-3);border-radius:0 3px 3px 0"><div style="height:100%;width:26.4%;background:var(--guest);border-radius:0 3px 3px 0"></div></div><div style="font-family:var(--mono);font-size:11.5px;text-align:right;color:var(--muted)">10,051</div></div>
+        <div style="display:grid;grid-template-columns:minmax(120px,220px) minmax(0,1fr) 7ch;gap:12px;align-items:center"><div style="font-family:var(--mono);font-size:11.5px">common — platform layer</div><div style="height:16px;background:var(--surface-3);border-radius:0 3px 3px 0"><div style="height:100%;width:16.9%;background:var(--guest);border-radius:0 3px 3px 0"></div></div><div style="font-family:var(--mono);font-size:11.5px;text-align:right;color:var(--muted)">6,430</div></div>
+        <div style="display:grid;grid-template-columns:minmax(120px,220px) minmax(0,1fr) 7ch;gap:12px;align-items:center"><div style="font-family:var(--mono);font-size:11.5px">loader — ELF, linking</div><div style="height:16px;background:var(--surface-3);border-radius:0 3px 3px 0"><div style="height:100%;width:12.9%;background:var(--guest);border-radius:0 3px 3px 0"></div></div><div style="font-family:var(--mono);font-size:11.5px;text-align:right;color:var(--muted)">4,896</div></div>
+        <div style="display:grid;grid-template-columns:minmax(120px,220px) minmax(0,1fr) 7ch;gap:12px;align-items:center"><div style="font-family:var(--mono);font-size:11.5px">graphics/presentation</div><div style="height:16px;background:var(--surface-3);border-radius:0 3px 3px 0"><div style="height:100%;width:12%;background:var(--guest);border-radius:0 3px 3px 0"></div></div><div style="font-family:var(--mono);font-size:11.5px;text-align:right;color:var(--muted)">4,550</div></div>
+        <div style="display:grid;grid-template-columns:minmax(120px,220px) minmax(0,1fr) 7ch;gap:12px;align-items:center"><div style="font-family:var(--mono);font-size:11.5px">launcher — Qt front end</div><div style="height:16px;background:var(--surface-3);border-radius:0 3px 3px 0"><div style="height:100%;width:7.8%;background:var(--guest);border-radius:0 3px 3px 0"></div></div><div style="font-family:var(--mono);font-size:11.5px;text-align:right;color:var(--muted)">2,960</div></div>
+      </div>
+    </div>
+    <div class="fig-note"><p>Graphics — shader, host_gpu, guest_gpu and presentation together — is about 60,000 lines, roughly half the emulator. The shader recompiler alone is larger than the loader, the kernel and the platform layer combined.</p></div>
+  </div>
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------------- -->
+  <section class="band band-watch">
+    <div class="band-h"><span class="band-t">Watch</span></div>
+    <p class="band-why">
+      An interpreter grinds through a fetch–decode–execute loop for every single instruction.
+      KytyPS5 does none of that. Step this to see the difference in where the time goes.
+    </p>
+    <div data-viz="nativeexec"></div>
+  </section>
+
+  <!-- ---------------------------------------------------------- -->
+  <section class="band band-try">
+    <div class="band-h"><span class="band-t">Try</span></div>
+    <p class="band-why">
+      Now drive it yourself. Run instructions through both models and watch the cost diverge —
+      then note what the native path gives up: there is no hook, no instrumentation point, no
+      place to inspect. That absence is what the rest of the emulator has to work around.
+    </p>
+    <div data-viz="cpustep"></div>
+  </section>
+
+  <!-- ---------------------------------------------------------- -->
+  <section class="band band-do">
+    <div class="band-h"><span class="band-t">Do</span></div>
+    <p class="band-why">
+      Prove it to yourself in the source. Each of these takes a couple of minutes; tick them off
+      and this topic is marked complete.
+    </p>
+
+    <div class="check">
+      <p class="check-h">Checkpoint</p>
+      <ul class="check-list">
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Search the repo for a JIT or interpreter — <code>rg -i "jit|interpreter|dispatch_loop" src/</code>
+            — and confirm nothing comes back that translates guest instructions.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Find where guest code is jumped into for the first time. Start at
+            <code>src/loader/</code> and follow the entry point.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Open <code>src/loader/runtimeLinker.cpp</code> and find the exception handler.
+            Ask yourself why an emulator that "just runs the code" needs one at all.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Say out loud, in one sentence, what the emulator is actually emulating —
+            if the answer isn't "the operating system and the GPU", read the Read section again.</label>
+        </li>
+      </ul>
+    </div>
+
+    <div class="callout k">
+      <span class="lbl">Where this goes next</span>
+      <p>
+        Because guest code runs natively, it arrives carrying assumptions the host doesn't
+        satisfy: System&nbsp;V registers, a working <code>fs</code> segment, 16&nbsp;KB pages, a
+        FreeBSD kernel. The next three topics are each about closing one of those gaps.
+      </p>
+    </div>
+  </section>
+
+</main>
+
+<script src="assets/topics.js?v=17" defer></script>
+<script src="assets/search-index.js?v=17" defer></script>
+<script src="assets/highlight.js?v=17" defer></script>
+<script src="assets/app.js?v=17" defer></script>
+<script src="assets/viz.js?v=17" defer></script>
+<script src="assets/atlas.js?v=17" defer></script>
+<script src="assets/lab.js?v=17" defer></script>
+<script src="assets/figs.js?v=17" defer></script>
+<script src="assets/figures.js?v=17" defer></script>
+<script src="assets/highlight.js?v=17" defer></script>
+<script src="assets/tutor.js?v=17" defer></script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

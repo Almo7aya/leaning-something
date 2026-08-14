@@ -68,6 +68,37 @@
 .lab-demo code { font-family: var(--mono); font-size: .87em; }
 .lab-demo[hidden] { display: none; }
 
+/* ---- walkthrough controls ---- */
+.lab-demo-nav {
+  display: flex; align-items: center; gap: 6px;
+  margin-bottom: var(--s3, 12px);
+}
+.lab-demo-b {
+  font-family: var(--mono); font-size: 11.5px;
+  padding: 4px 11px;
+  border: 1px solid color-mix(in srgb, var(--guest) 45%, transparent);
+  border-radius: 6px;
+  background: var(--surface); color: var(--guest);
+  cursor: pointer; font-weight: 600; line-height: 1.4;
+}
+.lab-demo-b:hover:not(:disabled) { background: color-mix(in srgb, var(--guest) 14%, transparent); }
+.lab-demo-b:disabled { opacity: .35; cursor: not-allowed; }
+.lab-demo-nav .n { margin: 0 0 0 4px; }
+.lab-demo-x {
+  margin-left: auto;
+  font-size: 12px; line-height: 1;
+  width: 24px; height: 24px;
+  border: 1px solid transparent; border-radius: 6px;
+  background: transparent; color: var(--muted); cursor: pointer;
+}
+.lab-demo-x:hover { color: var(--ink); border-color: var(--rule-2); }
+.lab-demo-say { font-family: var(--serif); font-size: 15px; line-height: 1.55; }
+.lab-demo-end {
+  display: block; margin-top: 8px;
+  font-family: var(--sans, system-ui); font-size: 12.5px;
+  color: var(--muted);
+}
+
 /* ---- generic split layout ---- */
 .lab-2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s5,24px); }
 .lab-2.wide-l { grid-template-columns: 1.4fr 1fr; }

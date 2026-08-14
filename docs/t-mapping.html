@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mapping a program into memory — KytyPS5</title>
+<meta name="description" content="Reserving the guest address space and laying segments into it at the addresses they demand.">
+<link rel="stylesheet" href="assets/viz.css?v=17">
+<link rel="stylesheet" href="assets/atlas.css?v=17">
+<link rel="stylesheet" href="assets/lab.css?v=17">
+<link rel="stylesheet" href="assets/tutor.css?v=17">
+<link rel="stylesheet" href="assets/app.css?v=17">
+<link rel="stylesheet" href="assets/highlight.css?v=17">
+</head>
+<body>
+
+<main class="topic" data-app-content>
+
+  <p class="topic-eyebrow">Loading a game · 06</p>
+  <h1 id="mapping-a-program-into-memory">Mapping a program into memory</h1>
+  <p class="topic-deck">
+    The module wants to live at particular addresses and will store raw pointers assuming it got them. So the emulator reserves the guest's whole address space up front and carves it up, rather than letting the host decide where things land.
+  </p>
+
+  <section class="band band-read">
+    <div class="band-h"><span class="band-t">Read</span></div>
+    <div class="prose">
+<p class="deck">One function does the whole job. It is worth reading line by line because almost every design decision in the loader is visible in it.</p>
+
+  <h4 id="deciding-how-much-space-to-reserve">Deciding how much space to reserve</h4>
+  <p>The mapped size is the highest address any loadable segment reaches, rounded up to a guest page, plus room for the generated TLS handler:</p>
+
+  <div class="filename">src/loader/runtimeLinker.cpp:2127</div>
+<pre>static uint64_t CalcBaseSize(const Elf64_Ehdr* ehdr, const Elf64_Phdr* phdr) {
+    uint64_t base_size = 0;
+    for (Elf64_Half i = 0; i &lt; ehdr-&gt;e_phnum; i++) {
+        if (phdr[i].p_memsz != 0 &amp;&amp;
+            (phdr[i].p_type == PT_LOAD || phdr[i].p_type == PT_OS_RELRO)) {
+            uint64_t last_addr = phdr[i].p_vaddr + GetAlignedSize(phdr + i);
+            if (last_addr &gt; base_size) base_size = last_addr;
+        }
+    }
+    return base_size;
+}</pre>
+
+<pre>program-&gt;base_size         = CalcBaseSize(ehdr, phdr);
+program-&gt;base_size_aligned = AlignUp(program-&gt;base_size, <b>0x4000</b>);   <i>// 16 KB guest page</i>
+
+uint64_t tls_handler_size  = is_shared ? 0 : Jit::SafeCall::GetSize();
+program-&gt;mapped_size       = program-&gt;base_size_aligned + tls_handler_size;
+
+program-&gt;base_vaddr = Libs::LibKernel::Memory::<b>AllocateProgramMemory</b>(
+    g_desired_base_addr, program-&gt;mapped_size,
+    Common::VirtualMemory::Mode::ExecuteReadWrite,
+    Common::PathToString(program-&gt;file_name.filename()).c_str());
+
+g_desired_base_addr += CODE_BASE_INCR * (1 + program-&gt;mapped_size / CODE_BASE_INCR);</pre>
+
+  <p>Note that the region is initially mapped <strong>ExecuteReadWrite</strong>. Correct protection is applied per segment afterwards — the loader needs write access to copy data in and to patch instructions, before locking things down.</p>
+
+  <h4 id="the-layout-constants">The layout constants</h4>
+  <div class="filename">src/loader/runtimeLinker.cpp:337</div>
+<pre>constexpr uint64_t SYSTEM_RESERVED  = 0x800000000u;
+constexpr uint64_t CODE_BASE_INCR   = 0x010000000u;   <i>// 256 MB between modules</i>
+constexpr uint64_t CODE_BASE_OFFSET = 0x100000000u;
+
+static uint64_t g_desired_base_addr = SYSTEM_RESERVED + CODE_BASE_OFFSET;   <i>// 0x900000000</i></pre>
+
+  <p>So the main executable lands at <code>0x900000000</code>, the next module at <code>0x910000000</code>, and so on. Fixed and predictable — which is what lets the crash handler walk a guest stack by range-checking return addresses.</p>
+
+  <div class="fig">
+    <div class="fig-head"><span>File on disk → guest memory</span><span>what LoadProgramToMemory does</span></div>
+    <div class="fig-body">
+      <svg class="svgfig" viewBox="0 0 720 330" role="img" aria-label="Diagram showing ELF file segments being mapped into guest memory at a base address">
+        <defs>
+          <marker id="ah" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+            <polygon points="0 0, 9 3.5, 0 7" class="arrhead"/>
+          </marker>
+        </defs>
+
+        <text x="10" y="18" class="ttl">eboot.bin (SELF → ELF64)</text>
+        <text x="430" y="18" class="ttl">guest memory</text>
+        <text x="430" y="34" class="lbl">base_vaddr = 0x900000000</text>
+
+        <rect x="10" y="30" width="180" height="26" class="box"/>
+        <text x="20" y="47" class="lbl">ELF header + phdrs</text>
+
+        <rect x="10" y="62" width="180" height="46" class="box g"/>
+        <text x="20" y="80" class="lbl">PT_LOAD  R-X</text>
+        <text x="20" y="96" class="lbl">.text</text>
+
+        <rect x="10" y="114" width="180" height="38" class="box g"/>
+        <text x="20" y="132" class="lbl">PT_LOAD  R--</text>
+        <text x="20" y="146" class="lbl">.rodata</text>
+
+        <rect x="10" y="158" width="180" height="38" class="box g"/>
+        <text x="20" y="176" class="lbl">PT_LOAD  RW-</text>
+        <text x="20" y="190" class="lbl">.data  (filesz &lt; memsz)</text>
+
+        <rect x="10" y="202" width="180" height="26" class="box k"/>
+        <text x="20" y="219" class="lbl">PT_TLS  (template)</text>
+
+        <rect x="10" y="234" width="180" height="26" class="box k"/>
+        <text x="20" y="251" class="lbl">PT_OS_DYNLIBDATA</text>
+
+        <rect x="10" y="266" width="180" height="26" class="box k"/>
+        <text x="20" y="283" class="lbl">PT_OS_PROCPARAM</text>
+
+        <path d="M195 85 C 300 85, 330 75, 425 75" class="arr" marker-end="url(#ah)"/>
+        <path d="M195 133 C 300 133, 330 128, 425 128" class="arr" marker-end="url(#ah)"/>
+        <path d="M195 177 C 300 177, 330 178, 425 178" class="arr" marker-end="url(#ah)"/>
+        <path d="M195 215 C 300 215, 330 250, 425 252" class="arr" marker-end="url(#ah)" stroke-dasharray="4 3"/>
+        <path d="M195 279 C 300 279, 330 300, 425 302" class="arr" marker-end="url(#ah)" stroke-dasharray="4 3"/>
+
+        <rect x="430" y="42" width="230" height="60" class="box g"/>
+        <text x="440" y="60" class="lbl">+0x00000000  ExecuteRead</text>
+        <text x="440" y="76" class="ttl">code</text>
+        <text x="440" y="93" class="lbl">← PatchProgram runs here</text>
+
+        <rect x="430" y="108" width="230" height="42" class="box g"/>
+        <text x="440" y="126" class="lbl">+0x…        Read</text>
+        <text x="440" y="142" class="ttl">read-only data</text>
+
+        <rect x="430" y="156" width="230" height="56" class="box g"/>
+        <text x="440" y="174" class="lbl">+0x…        ReadWrite</text>
+        <text x="440" y="190" class="ttl">data</text>
+        <text x="440" y="206" class="lbl">tail zero-filled to memsz</text>
+
+        <rect x="430" y="232" width="230" height="34" class="box k"/>
+        <text x="440" y="253" class="lbl">per-thread TLS copies (lazy)</text>
+
+        <rect x="430" y="286" width="230" height="26" class="box k"/>
+        <text x="440" y="303" class="lbl">proc_param_vaddr</text>
+
+        <rect x="666" y="42" width="44" height="170" class="box"/>
+        <text x="688" y="132" class="lbl" text-anchor="middle" transform="rotate(90 688 132)">mapped_size</text>
+      </svg>
+    </div>
+    <div class="fig-note"><p>Solid arrows are direct copies: file bytes land at <code>p_vaddr + base_vaddr</code>. Dashed arrows are recorded rather than copied — the TLS segment is a <em>template</em> each thread copies from later, and the process-parameter block is just an address the runtime reads. The <code>.data</code> segment shows the <code>filesz &lt; memsz</code> case: the difference is zero-filled, which is how <code>.bss</code> arrives.</p></div>
+  </div>
+
+  <h4 id="the-segment-loop">The segment loop</h4>
+<pre>for (Elf64_Half i = 0; i &lt; ehdr-&gt;e_phnum; i++) {
+    if (phdr[i].p_memsz != 0 &amp;&amp;
+        (phdr[i].p_type == PT_LOAD || phdr[i].p_type == PT_OS_RELRO)) {
+
+        uint64_t segment_addr        = phdr[i].p_vaddr + program-&gt;base_vaddr;
+        uint64_t segment_file_size   = phdr[i].p_filesz;
+        uint64_t segment_memory_size = GetAlignedSize(phdr + i);
+        auto     mode                = GetMode(phdr[i].p_flags);
+
+        program-&gt;elf-&gt;<b>LoadSegment</b>(segment_addr, phdr[i].p_offset, segment_file_size);
+
+        bool skip_protect = (phdr[i].p_type == PT_LOAD &amp;&amp; is_next_gen &amp;&amp;
+                             mode == Common::VirtualMemory::Mode::NoAccess);
+
+        if (Common::VirtualMemory::IsExecute(mode)) {
+            <b>PatchProgram</b>(program, segment_addr, segment_memory_size);   <i>// <a href="t-patching.html">topic 08</a></i>
+        }
+
+        if (!skip_protect) {
+            Memory::<b>SetProgramMemoryProtection</b>(segment_addr, segment_memory_size, mode);
+            if (Common::VirtualMemory::IsExecute(mode)) {
+                Common::VirtualMemory::<b>FlushInstructionCache</b>(segment_addr, segment_memory_size);
+            }
+        }
+    }
+
+    if (phdr[i].p_type == <b>PT_TLS</b>) {
+        program-&gt;tls.image_vaddr = phdr[i].p_vaddr + program-&gt;base_vaddr;
+        program-&gt;tls.init_size   = std::min(phdr[i].p_filesz, GetAlignedSize(phdr + i));
+        program-&gt;tls.image_size  = GetAlignedSize(phdr + i);
+        program-&gt;tls.tcb_offset  = program-&gt;tls.image_size;
+    }
+
+    if (phdr[i].p_type == <b>PT_OS_PROCPARAM</b>) {
+        program-&gt;proc_param_vaddr = phdr[i].p_vaddr + program-&gt;base_vaddr;
+    }
+}</pre>
+
+  <p>Three details worth extracting:</p>
+  <ul>
+    <li><strong>Patch before protect.</strong> The rewriting in <a href="t-patching.html">topic 08</a> needs write access, and the instruction cache flush must happen after the bytes change. Reversing the order would either fault or execute stale instructions.</li>
+    <li><strong><code>skip_protect</code></strong> exists because some PS5 executables declare <code>PT_LOAD</code> segments with no access flags at all. Applying <code>NoAccess</code> literally would make them unreadable; the loader leaves them mapped instead.</li>
+    <li><strong>The TLS image is a template.</strong> <code>PT_TLS</code> describes the initial contents; each thread gets its own copy, allocated lazily by <code>TlsGetAddr</code>.</li>
+  </ul>
+
+  <h4 id="loading-order-across-modules">Loading order across modules</h4>
+  <p><code>PreloadAdjacentPrograms()</code> scans the directory beside the executable for <code>.prx</code> / <code>.sprx</code> modules and loads them before relocation begins. This ordering is mandatory: a symbol may be exported by a module that is loaded after the one importing it, so all modules must exist before any relocation is resolved.</p>
+  <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp:1979</span><span class="src">src/loader/runtimeLinker.cpp:1464</span></div>
+    </div>
+  </section>
+
+  <section class="band band-watch">
+    <div class="band-h"><span class="band-t">Watch</span></div>
+    <p class="band-why">
+      The guest address space, band by band, with the host reservation underneath it. Note that the layout is not a convenience — the guest depends on these addresses.
+    </p>
+    <div data-viz="addrmap"></div>
+  </section>
+  <section class="band band-try">
+    <div class="band-h"><span class="band-t">Try</span></div>
+    <p class="band-why">
+      Allocate and free until you fragment the space, then try for a large block. This is the failure the placeholder-coalescing logic exists to prevent.
+    </p>
+    <div data-viz="allocator"></div>
+  </section>
+  <section class="band band-do">
+    <div class="band-h"><span class="band-t">Do</span></div>
+    <p class="band-why">
+      Trace a real load. The log will tell you exactly where each segment went.
+    </p>
+
+    <div class="check">
+      <p class="check-h">Checkpoint</p>
+      <ul class="check-list">
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Run a title with <code>--printf-direction File</code> and find the lines where segments are mapped. Note the addresses.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Match those addresses to the bands in the animation above.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Explain why the emulator cannot simply let the host choose addresses and relocate afterwards.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Find where the loader marks a segment executable, and explain why that has to be a separate step.</label>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+</main>
+
+<script src="assets/topics.js?v=17" defer></script>
+<script src="assets/search-index.js?v=17" defer></script>
+<script src="assets/app.js?v=17" defer></script>
+<script src="assets/viz.js?v=17" defer></script>
+<script src="assets/atlas.js?v=17" defer></script>
+<script src="assets/lab.js?v=17" defer></script>
+<script src="assets/figs.js?v=17" defer></script>
+<script src="assets/figures.js?v=17" defer></script>
+<script src="assets/highlight.js?v=17" defer></script>
+<script src="assets/tutor.js?v=17" defer></script>
+</body>
+</html>
+
+

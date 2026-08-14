@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What an emulator is — KytyPS5</title>
+<meta name="description" content="High-level vs low-level emulation, and what the PlayStation 5 actually is as a machine.">
+<link rel="stylesheet" href="assets/viz.css?v=17">
+<link rel="stylesheet" href="assets/atlas.css?v=17">
+<link rel="stylesheet" href="assets/lab.css?v=17">
+<link rel="stylesheet" href="assets/tutor.css?v=17">
+<link rel="stylesheet" href="assets/app.css?v=17">
+<link rel="stylesheet" href="assets/highlight.css?v=17">
+</head>
+<body>
+
+<main class="topic" data-app-content>
+
+  <p class="topic-eyebrow">Foundations · 01</p>
+  <h1 id="what-an-emulator-is">What an emulator is</h1>
+  <p class="topic-deck">
+    Before any of the detail: what problem is an emulator solving, what are the two ways to solve it, and which one is KytyPS5? Answer that and the rest of the project stops looking arbitrary.
+  </p>
+
+  <section class="band band-read">
+    <div class="band-h"><span class="band-t">Read</span></div>
+    <div class="prose">
+<p class="deck">An emulator makes one computer behave like another, so that software built for the second runs on the first. That is the whole idea. Everything else is engineering trade-offs about <em>where</em> you cut.</p>
+
+  <h4 id="the-simplest-possible-emulator">The simplest possible emulator</h4>
+  <p>Imagine a toy machine with four registers and a handful of instructions. An emulator for it is a loop:</p>
+
+<pre>uint8_t  memory[65536];
+uint32_t reg[4];
+uint16_t pc = 0;
+
+for (;;) {
+    uint8_t opcode = memory[pc++];
+    switch (opcode) {
+        case 0x01: {                       <i>// LOAD reg, imm32</i>
+            uint8_t r = memory[pc++];
+            reg[r] = *(uint32_t*)&amp;memory[pc];
+            pc += 4;
+            break;
+        }
+        case 0x02: {                       <i>// ADD dst, src</i>
+            uint8_t d = memory[pc++], s = memory[pc++];
+            reg[d] += reg[s];
+            break;
+        }
+        case 0xFF: return;                 <i>// HALT</i>
+    }
+}</pre>
+
+  <p>That is a real emulator. It is called an <strong>interpreter</strong>: fetch an instruction, decode it, do what it says, repeat. Every emulator you have heard of started as some version of this loop.</p>
+
+  <p>The problem is speed. That C code takes maybe 10–50 host instructions to execute one guest instruction. A 3.5 GHz guest CPU would need a 100 GHz host. So real emulators for modern systems do something cleverer.</p>
+
+  <h4 id="the-four-strategies-from-slowest-to-fastest">The four strategies, from slowest to fastest</h4>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Strategy</th><th>How it works</th><th>Cost</th><th>Used by</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Interpretation</strong></td>
+          <td>Decode and execute one guest instruction at a time, every time.</td>
+          <td>10–100× slower than native. Perfectly accurate, trivially debuggable.</td>
+          <td>Reference implementations; fallback paths; old 8-bit systems where 100× slower is still fast enough.</td>
+        </tr>
+        <tr>
+          <td><strong>Dynamic recompilation (JIT)</strong></td>
+          <td>Translate a block of guest instructions into host instructions once, cache the result, then jump into the cached block whenever that address is reached again.</td>
+          <td>2–10× slower. Complex: self-modifying code, precise exceptions and flags all become hard.</td>
+          <td>Nearly every serious console emulator where guest and host CPUs differ — PS2, Switch, GameCube.</td>
+        </tr>
+        <tr>
+          <td><strong>Native execution</strong></td>
+          <td>Guest and host share an instruction set, so guest code is simply mapped into memory and jumped to.</td>
+          <td>1× — no CPU cost at all. Only possible when the architectures match.</td>
+          <td><strong>KytyPS5</strong>, and every other PS4/PS5 emulator.</td>
+        </tr>
+        <tr>
+          <td><strong>High-level emulation (HLE)</strong></td>
+          <td>Not a CPU strategy but a <em>library</em> strategy: instead of running the console's operating system, reimplement what its functions do in native code.</td>
+          <td>Can be faster than the real console. Accuracy depends entirely on how well each function was reverse-engineered.</td>
+          <td>KytyPS5 for all system services and the entire GPU.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="primer">
+    <span class="lbl">Jargon · LLE versus HLE</span>
+    <p><strong>Low-level emulation (LLE)</strong> simulates the hardware and runs the console's own firmware and libraries on top. Maximum accuracy, terrible speed, and it requires copyrighted system files that users must dump from a console they own.</p>
+    <p><strong>High-level emulation (HLE)</strong> replaces those libraries with reimplementations. Much faster, legally cleaner — no console files needed — but every function you have not implemented is a crash waiting to happen, and subtle behavioural differences produce bugs that look like nothing else.</p>
+    <p>KytyPS5 is HLE throughout. Its README states that "no external low-level emulation modules are currently required," which is a deliberate design goal, not an accident.</p>
+  </div>
+
+  <h4 id="what-an-emulator-must-actually-reproduce">What an emulator must actually reproduce</h4>
+  <p>A CPU is only one of the things a program depends on. To run an unmodified console game you must reproduce all of:</p>
+
+  <ol>
+    <li><strong>The instruction set</strong> — so the code executes at all.</li>
+    <li><strong>The calling convention</strong> — so a function's arguments arrive where it expects them.</li>
+    <li><strong>The memory layout</strong> — so pointers, allocations and alignment assumptions hold.</li>
+    <li><strong>The operating system's services</strong> — threads, files, memory, timers, networking, audio, input.</li>
+    <li><strong>The GPU</strong> — including its command format, its register set, its memory layouts and its shader instruction set.</li>
+    <li><strong>The timing model</strong> — vertical blank, frame pacing, audio clocks. Games are full of code that assumes 60 Hz.</li>
+  </ol>
+
+  <p>Notice that only the first of those is about "emulating a CPU." For the PS5, the first item is free — and the remaining five are the entire project.</p>
+
+  <div class="learn">
+    <div class="lh">Learn more · emulation fundamentals</div>
+    <ul>
+      <li><span class="kind">Guide</span><div><a href="https://emudev.org/getting_started">emudev.org — Getting Started</a><span class="d">The community's entry point. Points at per-system references and the <a href="https://www.reddit.com/r/EmuDev/">r/EmuDev</a> subreddit, which is where most emulator authors actually ask questions.</span></div></li>
+      <li><span class="kind">Article</span><div><a href="https://www.retroreversing.com/how-emulators-work">How Do Emulators Work? A Deep Dive into Emulator Design</a><span class="d">Walks the interpreter → dynamic recompiler → HLE spectrum in more depth than this chapter had room for.</span></div></li>
+      <li><span class="kind vid">Video</span><div><a href="https://www.youtube.com/watch?v=AvQigD1p-7E">How does an emulator work? Building an Atari ST emulator from scratch</a><span class="d">A whole emulator built on screen for a simple machine. The best way to make the fetch–decode–execute loop concrete before tackling anything modern.</span></div></li>
+      <li><span class="kind code">Code</span><div><a href="https://github.com/marethyu/awesome-emu-resources">awesome-emu-resources</a><span class="d">A curated index of emulator development material, organised by system and by topic.</span></div></li>
+    </ul>
+  </div>
+
+<p class="deck">You cannot emulate what you do not understand. Here is the PlayStation 5, described in the terms that matter to an emulator author rather than to a shopper.</p>
+
+  <h4 id="the-hardware">The hardware</h4>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Component</th><th>What it is</th><th>Emulation consequence</th></tr></thead>
+      <tbody>
+        <tr><td><strong>CPU</strong></td><td>8-core AMD Zen 2, x86-64, 16 hardware threads, ~3.5 GHz.</td><td>Same instruction set as any modern PC. This is the single most important fact in this book.</td></tr>
+        <tr><td><strong>GPU</strong></td><td>AMD RDNA 2, 36 compute units, custom. Programmed through a command-packet interface, not a driver API.</td><td>Must be modelled in software: packet parser, register file, and a shader compiler from RDNA 2 to SPIR-V.</td></tr>
+        <tr><td><strong>Memory</strong></td><td>16 GB GDDR6, <em>unified</em> — CPU and GPU address the same physical memory.</td><td>The hardest problem in the project. A PC has separate GPU memory, so every shared resource becomes a copy that can go stale.</td></tr>
+        <tr><td><strong>Page size</strong></td><td>16 KB, not the 4 KB PCs use.</td><td>Guest allocations, alignment and protection all work in 16 KB units; the host works in 4 KB. Every protection change touches four host pages.</td></tr>
+        <tr><td><strong>Storage</strong></td><td>Custom NVMe with hardware decompression.</td><td>Emulated as ordinary file I/O. Games that assume streaming speeds may behave oddly but rarely break.</td></tr>
+        <tr><td><strong>Audio</strong></td><td>"Tempest" 3D audio engine plus a fixed-function decode block (AJM).</td><td>AJM takes batched decode jobs, so Kyty parses the job format and routes to FFmpeg / LibAtrac9.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4 id="the-software-stack">The software stack</h4>
+  <p>The PS5's operating system is a descendant of FreeBSD. That heritage shows everywhere in the API surface:</p>
+
+  <div class="stack">
+    <div class="layer g"><span class="nm">Game / engine</span><span class="chip guest">guest</span><span class="ds">Unreal, Unity, or an in-house engine, compiled to x86-64 with Sony's Clang-based toolchain.</span></div>
+    <div class="arrow">↓ calls</div>
+    <div class="layer g"><span class="nm">System modules (.prx / .sprx)</span><span class="chip guest">guest</span><span class="ds"><code>libkernel</code>, <code>libSceGnmDriver</code> (graphics), <code>libSceAudioOut</code>, <code>libSceNet</code>, <code>libSceSaveData</code>… Dozens of shared libraries, each exporting hashed symbols.</span></div>
+    <div class="arrow">↓ syscalls</div>
+    <div class="layer g"><span class="nm">Kernel (FreeBSD-derived)</span><span class="chip guest">guest</span><span class="ds">Processes, threads (pthreads), <code>kqueue</code>-style event queues, mmap-style memory, a Unix-like file system.</span></div>
+    <div class="arrow">↓ writes packets to</div>
+    <div class="layer g"><span class="nm">GPU command processor</span><span class="chip guest">guest</span><span class="ds">Reads PM4 packets straight out of memory. There is no "driver" between the game and the hardware in the PC sense.</span></div>
+  </div>
+
+  <p>KytyPS5 replaces the middle two layers wholesale with native C++, and models the fourth in software. The top layer — the game — runs untouched.</p>
+
+  <div class="callout g">
+    <span class="lbl">Naming you will meet</span>
+    <p><strong>Prospero</strong> is Sony's internal codename for the PS5, and it is the namespace name used throughout Kyty's graphics code (<code>Libs::Graphics::Prospero</code>). <strong>AGC</strong> is the PS5's low-level graphics API, referred to as <strong>Gen5</strong> in the source. <strong>GNM</strong> was its PS4 predecessor, and some symbol names still carry that lineage.</p>
+  </div>
+
+  <h4 id="what-a-game-file-actually-is">What a game file actually is</h4>
+  <p>A PS5 title directory contains, at minimum:</p>
+<pre>MyGame/
+├─ eboot.bin              <b>the main executable — a SELF (Signed ELF)</b>
+├─ sce_sys/
+│   ├─ param.json         <b>title ID, version, memory budget, capabilities</b>
+│   ├─ icon0.png
+│   └─ …
+├─ *.prx / *.sprx         optional extra modules shipped with the game
+└─ (game data files)</pre>
+  <p>Kyty reads <code>param.json</code> for the title ID and the flexible-memory budget, mounts the directory as <code>/app0</code>, then loads <code>eboot.bin</code>.</p>
+  <div class="srcs"><span class="src">src/emulator.cpp:192</span><span class="src">src/loader/systemContent.cpp</span></div>
+
+  <div class="learn">
+    <div class="lh">Learn more · console internals</div>
+    <ul>
+      <li><span class="kind">Article</span><div><a href="https://www.copetti.org/writings/consoles/">Architecture of Consoles — Rodrigo Copetti</a><span class="d">Deep, readable hardware analyses of essentially every console. Read the PlayStation entries to see how the design lineage arrives at the PS5. Widely recommended as the first thing to read before emulating any system.</span></div></li>
+      <li><span class="kind vid">Video</span><div><a href="https://media.ccc.de/v/33c3-7946-console_hacking_2016">Console Hacking 2016 — "PS4: PC Master Race" (33C3)</a><span class="d">Hector Martin and fail0verflow on PS4 hardware and how they reverse-engineered it far enough to run Linux with 3D acceleration. The closest thing to a primary source on how this hardware actually differs from a PC. Also on <a href="https://www.youtube.com/watch?v=QMiubC6LdTA">YouTube</a>, with <a href="https://fail0verflow.com/media/33c3-slides/">slides</a>.</span></div></li>
+      <li><span class="kind">Article</span><div><a href="https://fail0verflow.com/blog/">fail0verflow blog</a><span class="d">Write-ups behind the talks, including the liner notes for each Console Hacking presentation.</span></div></li>
+    </ul>
+  </div>
+    </div>
+  </section>
+
+  <section class="band band-watch">
+    <div class="band-h"><span class="band-t">Watch</span></div>
+    <p class="band-why">
+      The whole machine in one picture. Every later topic is one of these boxes opened up — come back to this animation whenever you lose your bearings.
+    </p>
+    <div data-viz="pipeline"></div>
+    <p class="band-why" style="margin-top:26px">
+      Two ways to build an emulator, side by side. Step it and watch what each approach commits you to writing.
+    </p>
+    <div data-viz="hlelle"></div>
+  </section>
+  <section class="band band-do">
+    <div class="band-h"><span class="band-t">Do</span></div>
+    <p class="band-why">
+      You do not need the emulator running for this one. It is about getting the vocabulary straight, because everything after it assumes these words mean something specific.
+    </p>
+
+    <div class="check">
+      <p class="check-h">Checkpoint</p>
+      <ul class="check-list">
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Say what <b>HLE</b> and <b>LLE</b> mean, and which one KytyPS5 is — in one sentence each.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Name the two big things the emulator has to fake. (Hint: it is not the CPU.)</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Clone the repo if you haven't, and run <code>ls src/</code>. Match each top-level directory to a box in the animation above.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Find the largest directory in <code>src/</code> by line count. Ask yourself why <em>that</em> one is the biggest.</label>
+        </li>
+      </ul>
+    </div>
+
+    <div class="callout k">
+      <span class="lbl">Where this goes next</span>
+      <p>The single most consequential design decision follows immediately: there is no CPU emulator at all. That is the next topic, and it explains the shape of everything else.</p>
+    </div>  </section>
+
+</main>
+
+<script src="assets/topics.js?v=17" defer></script>
+<script src="assets/search-index.js?v=17" defer></script>
+<script src="assets/app.js?v=17" defer></script>
+<script src="assets/viz.js?v=17" defer></script>
+<script src="assets/atlas.js?v=17" defer></script>
+<script src="assets/lab.js?v=17" defer></script>
+<script src="assets/figs.js?v=17" defer></script>
+<script src="assets/figures.js?v=17" defer></script>
+<script src="assets/highlight.js?v=17" defer></script>
+<script src="assets/tutor.js?v=17" defer></script>
+</body>
+</html>
+
+

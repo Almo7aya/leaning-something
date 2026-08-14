@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Registers, sharps &amp; resources — KytyPS5</title>
+<meta name="description" content="Accumulated register writes become pipeline state; packed descriptors become Vulkan resources.">
+<link rel="stylesheet" href="assets/viz.css?v=17">
+<link rel="stylesheet" href="assets/atlas.css?v=17">
+<link rel="stylesheet" href="assets/lab.css?v=17">
+<link rel="stylesheet" href="assets/tutor.css?v=17">
+<link rel="stylesheet" href="assets/app.css?v=17">
+<link rel="stylesheet" href="assets/highlight.css?v=17">
+</head>
+<body>
+
+<main class="topic" data-app-content>
+
+  <p class="topic-eyebrow">Graphics · 15</p>
+  <h1 id="registers-sharps-resources">Registers, sharps & resources</h1>
+  <p class="topic-deck">
+    Register-write packets do not draw anything — they accumulate into a shadow copy of the hardware register file. When a draw finally arrives, all of that has to become concrete Vulkan state, and the shader's resources have to be found through a chain of packed descriptors.
+  </p>
+
+  <section class="band band-read">
+    <div class="band-h"><span class="band-t">Read</span></div>
+    <div class="prose">
+<p class="deck">A draw packet carries almost no information. Everything that matters — targets, blend modes, shaders, viewports — arrived earlier as register writes. Modelling that register file is a substantial part of the guest GPU code.</p>
+
+  <h4 id="three-register-spaces">Three register spaces</h4>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Space</th><th>Packet</th><th>Holds</th><th>Kyty type</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Context</strong> (CX)</td><td><code>IT_SET_CONTEXT_REG</code></td><td>Per-draw pipeline state: render targets, depth/stencil, blend, viewports, scissors, rasteriser modes.</td><td><code>HW::Context</code></td></tr>
+        <tr><td><strong>Shader</strong> (SH)</td><td><code>IT_SET_SH_REG</code></td><td>Shader addresses, resource counts, and the user-data registers of this topic.</td><td><code>HW::Shader</code></td></tr>
+        <tr><td><strong>User config</strong> (UC)</td><td><code>IT_SET_UCONFIG_REG</code></td><td>Global settings: primitive type, index type, object IDs, gradient factors.</td><td><code>HW::UserConfig</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Each <code>CommandProcessor</code> owns one of each, so queues never contaminate one another:</p>
+<pre>HW::Context&amp;    GetCtx()   { return m_ctx; }
+HW::UserConfig&amp; GetUcfg()  { return m_ucfg; }
+HW::Shader&amp;     GetShCtx() { return m_sh_ctx; }</pre>
+
+  <h4 id="registers-become-typed-structures">Registers become typed structures</h4>
+  <p>Kyty does not store raw dwords. Each handler unpacks bit fields into a named struct, which is what makes the renderer readable:</p>
+
+  <div class="filename">src/graphics/guest_gpu/hardwareContext.h</div>
+<pre>struct ColorInfo {
+    bool     fmask_compression_enable        = false;
+    bool     fmask_data_compression_disable  = false;
+    bool     cmask_fast_clear_enable         = false;
+    bool     <b>dcc_compression_enable</b>          = false;
+    bool     blend_clamp                     = false;
+    bool     blend_bypass                    = false;
+    uint32_t <b>format</b>                          = 0;
+    uint32_t <b>channel_type</b>                    = 0;
+    uint32_t <b>channel_order</b>                   = 0;
+};
+
+struct RenderTarget {
+    ColorBase       base;          <i>// 64-bit GPU address</i>
+    ColorPitch      pitch;
+    ColorSlice      slice;
+    ColorView       view;          <i>// array slices, mip level</i>
+    ColorInfo       info;
+    ColorAttrib     attrib;        <i>// tile mode, samples, fragments</i>
+    ColorAttrib2    attrib2;       <i>// width, height, mip count</i>
+    ColorAttrib3    attrib3;       <i>// depth, dimension, pipe alignment</i>
+    ColorDccControl dcc;
+    ColorCmask      cmask;         <i>// fast-clear metadata</i>
+    ColorFmask      fmask;         <i>// MSAA fragment mask</i>
+    ColorClearWord0 clear_word0;
+    ColorDccAddr    dcc_addr;
+    ...
+};</pre>
+
+  <p>Extraction uses a macro that names the field explicitly:</p>
+<pre>#define KYTY_PM4_GET(u, r, f) (((u) &gt;&gt; Pm4::r##_##f##_SHIFT) &amp; Pm4::r##_##f##_MASK)
+
+r.polymode_front_ptype = KYTY_PM4_GET(buffer[0], PA_SU_SC_MODE_CNTL, POLYMODE_FRONT_PTYPE);</pre>
+  <p>The shift and mask constants come from <code>pm4.h</code>, which is 62 KB of them.</p>
+
+  <h4 id="why-agcregisterdefaults-inc-is-215-kb">Why <code>agcRegisterDefaults.inc</code> is 215 KB</h4>
+  <p>The largest file in the repository is a table of default register values. It exists because of how the real driver works: at context reset it writes a complete default state, and games then only set what they change. If Kyty's defaults differ anywhere, state leaks between draws in ways that are almost impossible to attribute — a blend mode set by one draw silently applying to the next.</p>
+  <p>Games can also ask for these defaults directly, which is why <code>GraphicsGetRegisterDefaults2</code> is an exported function.</p>
+
+  <h4 id="enumerations-from-the-guest-s-world">Enumerations from the guest's world</h4>
+  <p>The register values are console enums, and <code>gpu_defs.h</code> declares them all in a <code>Prospero</code> namespace:</p>
+<pre>enum class PrimitiveType : uint32_t {
+    kNone = 0, kPointList = 1, kLineList = 2, kLineStrip = 3,
+    kTriList = 4, kTriFan = 5, kTriStrip = 6, <b>kRectList = 7</b>, kPatch = 9,
+    kLineListAdjacency = 10, ..., kQuadListLegacy = 19, kPolygon = 21,
+};
+
+enum class TileMode : uint32_t {
+    kLinear = 0x00, kStandard256B = 0x01, kStandard4KB = 0x05, kStandard64KB = 0x09,
+    kPrt = 0x11, kDepth = 0x18, kRenderTarget = 0x1b,
+};
+
+enum class BlendFactor : uint32_t { kZero = 0, kOne = 1, kSrcColor = 2, ... };
+enum class BufferFormat : uint32_t { kInvalid = 0, k8UNorm = 1, ..., kBc7Srgb = 182 };</pre>
+
+  <p><code>kRectList</code> is worth noting: a three-vertex primitive describing an axis-aligned rectangle, used constantly for full-screen passes. Vulkan has no equivalent, so Kyty either expands it or routes it through an NGG path — which is exactly what the <code>--ngg-rectlist-draw</code> flag selects.</p>
+
+  <h4 id="colour-component-remapping">Colour component remapping</h4>
+  <p>A neat piece of design worth calling out. The shader exports RGBA, but the render target's channel order may differ. Rather than recompiling for every permutation, Kyty carries a one-byte mapping:</p>
+<pre>struct ColorComponentMapping {
+    uint8_t packed = 0xe4u;   <i>// RGBA identity: 0, 1, 2, 3 packed 2 bits each</i>
+
+    constexpr uint32_t Map(uint32_t component) const {
+        return component &lt; 4u ? (packed &gt;&gt; (component * 2u)) &amp; 0x3u : component;
+    }
+    constexpr bool IsIdentity() const { return packed == 0xe4u; }
+};
+
+inline constexpr ColorComponentMapping ColorMappingAbgr {0x1bu};   <i>// 3, 2, 1, 0</i>
+inline constexpr ColorComponentMapping ColorMappingBgra {0xc6u};   <i>// 2, 1, 0, 3</i></pre>
+  <p>One byte, cheap to carry inside shader and pipeline cache keys — which is exactly where it needs to live.</p>
+
+<p class="deck">How a shader finds its textures. There is no analogue in any PC graphics API, and it is the reason the shader recompiler needs a dataflow analysis.</p>
+
+  <h4 id="user-data-the-only-channel-into-a-shader">User data: the only channel into a shader</h4>
+  <p>A shader stage receives up to 64 dwords in its first scalar registers, written by <code>IT_SET_SH_REG</code> packets. That is the entire parameter-passing mechanism. Inside those dwords a game may place, in any arrangement it chooses:</p>
+  <ul>
+    <li>An <strong>inline descriptor</strong> — a V#, T# or S# sitting directly in registers.</li>
+    <li>A <strong>pointer to a table</strong> in memory containing descriptors, which the shader loads with <code>s_load_dwordx4</code>. Tables may point at further tables, to arbitrary depth. This is the <strong>shader resource table</strong>, or SRT.</li>
+    <li>Plain constants — a vertex offset, a flag, an index.</li>
+  </ul>
+
+  <p>The AGC layer names the well-known slots:</p>
+  <div class="filename">src/graphics/shader/shaderBindings.h:11</div>
+<pre>enum class AgcDirectResourceType : uint32_t {
+    GdsCounterRange          = 0,
+    <b>ShaderResourceTable</b>      = 1,
+    SubPtrFetchShader        = 2,
+    PtrSoBufferTable         = 3,
+    PtrInternalGlobalTable   = 4,
+    PtrExtendedUserData      = 5,
+    GsFlags                  = 6,
+    GdsMemoryRange           = 7,
+    <b>PtrVertexBufferTable</b>     = 8,
+    StereoXOffset            = 9,
+    PtrVertexAttribDescTable = 10,
+};</pre>
+
+  <h4 id="the-three-descriptor-types">The three descriptor types</h4>
+  <p>You decoded these interactively in <a href="t-gpu-basics.html">topic 13</a>. Here are the actual accessors, which double as documentation of the bit layout:</p>
+
+  <div class="filename">src/graphics/shader/shaderBindings.h:33 — V#, buffer resource</div>
+<pre>struct ShaderBufferResource {
+    uint32_t fields[4] = {0};
+
+    uint64_t <b>Base48</b>() const {
+        return (fields[0] | (static_cast&lt;uint64_t&gt;(fields[1]) &lt;&lt; 32u)) &amp; 0xFFFFFFFFFFFFu;
+    }
+    uint16_t Stride()         const { return (fields[1] &gt;&gt; 16u) &amp; 0x3FFFu; }
+    bool     SwizzleEnabled() const { return ((fields[1] &gt;&gt; 31u) &amp; 0x1u) == 1; }
+    uint32_t NumRecords()     const { return fields[2]; }
+    uint8_t  DstSelX()        const { return (fields[3] &gt;&gt; 0u) &amp; 0x7u; }
+    uint8_t  Format()         const { return (fields[3] &gt;&gt; 12u) &amp; 0x7Fu; }
+    uint8_t  IndexStride()    const { return (fields[3] &gt;&gt; 21u) &amp; 0x3u; }
+    uint8_t  Type()           const { return (fields[3] &gt;&gt; 30u) &amp; 0x3u; }
+};</pre>
+
+  <div class="filename">…:69 — T#, image resource (8 dwords)</div>
+<pre>struct ShaderTextureResource {
+    uint32_t fields[8] = {0};
+
+    uint64_t <b>Base40</b>() const {
+        return ((fields[0] | ((uint64_t)fields[1] &lt;&lt; 32u)) &amp; 0xFFFFFFFFFFu) <b>&lt;&lt; 8u</b>;  <i>// 256-byte aligned</i>
+    }
+    uint16_t Format()    const { return (fields[1] &gt;&gt; 20u) &amp; 0x1FFu; }
+    uint16_t Width5()    const { return ((fields[1] &gt;&gt; 30u) &amp; 0x3u) | (((fields[2] &gt;&gt; 0u) &amp; 0xFFFu) &lt;&lt; 2u); }
+    uint16_t Height5()   const { return (fields[2] &gt;&gt; 14u) &amp; 0x3FFFu; }
+    uint8_t  BaseLevel() const { return (fields[3] &gt;&gt; 12u) &amp; 0xFu; }
+    uint8_t  LastLevel() const { return (fields[3] &gt;&gt; 16u) &amp; 0xFu; }
+    uint8_t  <b>TileMode</b>()  const { return (fields[3] &gt;&gt; 20u) &amp; 0x1Fu; }
+    uint8_t  Type()      const { return (fields[3] &gt;&gt; 28u) &amp; 0xFu; }
+    uint64_t <b>MetaAddr</b>()  const {   <i>// DCC or HTile metadata surface</i>
+        return ((fields[6] &gt;&gt; 24u) &amp; 0xFFu) | ((uint64_t)fields[7] &lt;&lt; 8u);
+    }
+};</pre>
+
+  <p>Notice how much a T# carries: not just address and size but tiling mode, mip range, array slices, swizzle, and the address of a separate compression-metadata surface. All of that has to be translated into a Vulkan image with a compatible format and layout.</p>
+
+  <h4 id="the-problem-this-creates">The problem this creates</h4>
+  <p>Suppose a pixel shader samples a texture. In the machine code you will see something like:</p>
+<pre>s_load_dwordx4  s[8:11], s[0:1], 0x20      <i>// load a pointer from user data + 0x20</i>
+s_load_dwordx8  s[12:19], s[8:9], 0x40     <i>// load a T# from that table + 0x40</i>
+image_sample    v[0:3], v[4:5], s[12:19], s[20:23] dmask:0xf</pre>
+
+  <p>To bind a Vulkan descriptor, Kyty must determine <em>which texture</em> <code>s[12:19]</code> will hold — and that requires evaluating the shader's own address arithmetic before the shader ever runs. Three components cooperate:</p>
+
+  <div class="stack">
+    <div class="layer k"><span class="nm">1 · ScalarProvenance</span><span class="chip kyty">kyty</span><span class="ds">A dataflow analysis over scalar registers. For every scalar value it records an origin: a user-data slot, a constant, an arithmetic combination of known values, a <code>ReadConst</code> (a memory load), a phi node — or unknown. 34 KB, with a 52 KB test file.</span></div>
+    <div class="arrow">↓</div>
+    <div class="layer k"><span class="nm">2 · BuildSrtPlan</span><span class="chip kyty">kyty</span><span class="ds">Turns provenance into a <em>recipe</em>: the list of memory reads needed to recover each descriptor, expressed relative to user data. Constant offsets get compact flat-buffer slots; genuinely dynamic offsets stay explicit and are never given a fake slot.</span></div>
+    <div class="arrow">↓ at draw time, every draw</div>
+    <div class="layer k"><span class="nm">3 · MaterializeResources</span><span class="chip kyty">kyty</span><span class="ds">Executes the recipe against the <em>current</em> user data and guest memory, producing a concrete <code>ResourceSnapshot</code>: this exact address, this format, this size.</span></div>
+  </div>
+
+  <p>The data structures are small and readable:</p>
+  <div class="filename">src/graphics/shader/recompiler/ir/ShaderIR.h:562</div>
+<pre>struct SrtRead {
+    uint32_t value       = 0;   <i>// which scalar value this read produces</i>
+    uint32_t flat_offset = 0;   <i>// slot in the flattened buffer</i>
+    uint32_t use_pc      = 0;   <i>// where it was used, for diagnostics</i>
+};
+
+struct SrtPlan {
+    std::vector&lt;SrtRead&gt;  reads;
+    std::vector&lt;uint32_t&gt; dynamic_reads;     <i>// offsets not known at compile time</i>
+    std::vector&lt;uint32_t&gt; dynamic_sources;
+};
+
+struct DescriptorValue {
+    std::array&lt;uint32_t, 8&gt; dwords      = {};   <i>// a materialised V#, T# or S#</i>
+    uint32_t                dword_count = 0;
+};</pre>
+
+  <h4 id="why-compilation-and-binding-are-separate">Why compilation and binding are separate</h4>
+  <p>The consequence of this design is important: <strong>the SPIR-V module and its plan are compiled once and cached; the plan is re-executed on every draw.</strong> One compiled shader serves many draws with different textures bound.</p>
+
+  <div class="filename">src/graphics/shader/shader.h:44</div>
+<pre><i>// Resolves an immutable native shader plan against current user data. The prior stage is</i>
+<i>// preserved if any ReadConst, snapshot, or specialization check fails.</i>
+bool <b>ShaderMaterializeStageRuntime</b>(std::shared_ptr&lt;const IR::Program&gt; program,
+                                   std::span&lt;const uint32_t&gt; user_data, uint64_t shader_base,
+                                   ShaderStageRuntime&amp; stage, std::string* error);</pre>
+
+  <p>Read that comment carefully. If a descriptor read fails — a null pointer, an unmapped address — Kyty keeps the <em>previous</em> stage rather than binding garbage. A failed read produces a stale frame, not corruption or a device loss. That is a deliberate robustness choice, and it is why glitches in this emulator often look like a lagging texture rather than a crash.</p>
+    </div>
+  </section>
+
+  <section class="band band-watch">
+    <div class="band-h"><span class="band-t">Watch</span></div>
+    <p class="band-why">
+      Following a resource from a user-data register, through the shader resource table, to the actual buffer. This indirection is why a wrong pointer here produces garbled geometry rather than a clean crash.
+    </p>
+    <div data-viz="srtwalk"></div>
+  </section>
+  <section class="band band-try">
+    <div class="band-h"><span class="band-t">Try</span></div>
+    <p class="band-why">
+      Take a raw register value apart into the fields the hardware defines. Change bits and watch which piece of pipeline state moves.
+    </p>
+    <div data-viz="regdecode"></div>
+  </section>
+  <section class="band band-do">
+    <div class="band-h"><span class="band-t">Do</span></div>
+    <p class="band-why">
+      Use a real capture if you have one — the register values in your own frame are more instructive than any example.
+    </p>
+
+    <div class="check">
+      <p class="check-h">Checkpoint</p>
+      <ul class="check-list">
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Explain what a <b>V#</b>, a <b>T#</b> and an <b>S#</b> are.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Find where the emulator keeps its shadow copy of the hardware register file.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Explain how a shader gets the address of its resource table.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Decode one real register write from your own command-buffer dump.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Explain why descriptor validation was worth adding, given the failure mode without it.</label>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+</main>
+
+<script src="assets/topics.js?v=17" defer></script>
+<script src="assets/search-index.js?v=17" defer></script>
+<script src="assets/app.js?v=17" defer></script>
+<script src="assets/viz.js?v=17" defer></script>
+<script src="assets/atlas.js?v=17" defer></script>
+<script src="assets/lab.js?v=17" defer></script>
+<script src="assets/figs.js?v=17" defer></script>
+<script src="assets/figures.js?v=17" defer></script>
+<script src="assets/highlight.js?v=17" defer></script>
+<script src="assets/tutor.js?v=17" defer></script>
+</body>
+</html>
+
+

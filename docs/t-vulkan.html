@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Vulkan backend — KytyPS5</title>
+<meta name="description" content="Pipelines, image layout and getting a finished frame onto the screen.">
+<link rel="stylesheet" href="assets/viz.css?v=17">
+<link rel="stylesheet" href="assets/atlas.css?v=17">
+<link rel="stylesheet" href="assets/lab.css?v=17">
+<link rel="stylesheet" href="assets/tutor.css?v=17">
+<link rel="stylesheet" href="assets/app.css?v=17">
+<link rel="stylesheet" href="assets/highlight.css?v=17">
+</head>
+<body>
+
+<main class="topic" data-app-content>
+
+  <p class="topic-eyebrow">Graphics · 17</p>
+  <h1 id="the-vulkan-backend">The Vulkan backend</h1>
+  <p class="topic-deck">
+    The last leg: turning accumulated state into real Vulkan objects, getting texture memory into a layout the GPU can sample, and presenting the result. This is also where most performance answers live.
+  </p>
+
+  <section class="band band-read">
+    <div class="band-h"><span class="band-t">Read</span></div>
+    <div class="prose">
+<p class="deck">The host side. Its central job is caching: turning "this guest address range, in this format, used this way" into "this Vulkan object" — and knowing when that answer stops being true.</p>
+
+  <h4 id="device-setup">Device setup</h4>
+  <div class="filename">src/graphics/host_gpu/vulkanInstance.h</div>
+<pre>inline constexpr uint32_t VULKAN_TARGET_API_VERSION = <b>VK_API_VERSION_1_3</b>;
+
+struct VulkanInstance {
+    vk::Instance       instance;
+    vk::PhysicalDevice physical_device;
+    vk::Device         device;
+    VmaAllocator       allocator;
+    bool     memory_budget_ext_enabled;
+    bool     rt_extensions_enabled;
+    bool     <b>subgroup_size_control_enabled</b>;
+    bool     sample_rate_shading_enabled;
+    uint32_t subgroup_size, min_subgroup_size, max_subgroup_size;
+    vk::ShaderStageFlags required_subgroup_size_stages;
+    Common::Mutex queue_mutex;
+    uint32_t      queue_family;
+    vk::Queue     queue;
+    ...
+};</pre>
+
+  <p>One queue, guarded by a mutex. The 57 guest queues of <a href="t-pm4.html">topic 14</a> are multiplexed onto it — ordering is preserved through timeline semaphores rather than through hardware queues.</p>
+
+  <p>Format capability queries are memoised, because they are asked constantly and are not cheap:</p>
+<pre>vk::FormatProperties GetFormatProperties(vk::Format format) const {
+    std::scoped_lock lock(m_format_properties_mutex);
+    auto [it, inserted] = m_format_properties.try_emplace(format);
+    if (inserted) physical_device.getFormatProperties(format, &amp;it-&gt;second);
+    return it-&gt;second;
+}</pre>
+
+  <h4 id="the-five-caches">The five caches</h4>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Cache</th><th>Keyed by</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>TextureCache</code> 71 KB</td><td>address + format + extent + binding type</td><td>The most complex object in the project. Aliasing, depth/stencil pairing, mip expansion, upload, download, garbage collection.</td></tr>
+        <tr><td><code>BufferCache</code> 49 KB</td><td>guest address range</td><td>Vertex, index, uniform and storage buffers, with a page-table index from addresses to buffer IDs.</td></tr>
+        <tr><td><code>PipelineCache</code> 11 KB</td><td>shader IDs + full static state + attachment formats</td><td>The key is compared as raw bytes.</td></tr>
+        <tr><td><code>DescriptorCache</code> 12 KB</td><td>binding layout</td><td>Allocates and recycles sets; returned to the pool only after the owning fence signals.</td></tr>
+        <tr><td><code>SamplerCache</code> 7 KB</td><td>the guest S#</td><td>Small and simple by comparison.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4 id="the-pipeline-key">The pipeline key</h4>
+  <p>Vulkan bakes fixed-function state into the pipeline object, so every state difference needs a distinct pipeline. Kyty packs the whole lot into one byte-comparable struct:</p>
+
+  <div class="filename">…/pipeline/pipelineCache.h:34</div>
+<pre><b>#pragma pack(push, 1)</b>
+struct PipelineStaticParameters {
+    float                 viewport_scale[3], viewport_offset[3];
+    bool                  negative_one_to_one, depth_clip_enable;
+    int                   scissor_ltrb[4];
+    vk::PrimitiveTopology topology;
+    uint32_t              samples;
+    bool                  sample_shading_enable, with_depth, depth_test_enable, depth_write_enable;
+    vk::CompareOp         depth_compare_op;
+    bool                  depth_bounds_test_enable;
+    float                 depth_min_bounds, depth_max_bounds;
+    bool                  stencil_test_enable;
+    PipelineStencilStaticState stencil_front, stencil_back;
+    uint32_t              color_count;
+    uint32_t              color_mask[RENDER_COLOR_ATTACHMENTS_MAX];
+    bool                  cull_front, cull_back, face;
+    uint8_t               color_srcblend[…], color_comb_fcn[…], color_destblend[…];
+    uint8_t               alpha_srcblend[…], alpha_comb_fcn[…], alpha_destblend[…];
+    bool                  separate_alpha_blend[…], blend_enable[…], blend_bypass[…];
+    float                 blend_color_red, green, blue, alpha;
+};
+<b>#pragma pack(pop)</b>
+
+static_assert(std::is_trivially_copyable_v&lt;PipelineStaticParameters&gt;);
+static_assert(alignof(PipelineStaticParameters) == 1);
+static_assert(sizeof(PipelineStaticParameters) == /* an explicit sum of every member */);</pre>
+
+  <p>The packing and the size assertion exist because the hash walks the struct byte by byte. Padding bytes would be uninitialised, so identical states could hash differently — producing a slow, silent pipeline explosion. The <code>static_assert</code> makes any accidental padding a build error.</p>
+
+  <h4 id="command-submission">Command submission</h4>
+  <div class="filename">…/renderer/commandScheduler.h:32</div>
+<pre>class CommandScheduler {
+public:
+    static constexpr int <b>BufferCount = 8</b>;
+
+    void Begin(HW::Context&amp;, HW::UserConfig&amp;, HW::Shader&amp;);
+    void BeginRendering(const RenderState&amp;);
+    void Flush();
+    void Finish();
+    void Wait(uint64_t tick);
+    void DeferOperation(Common::UniqueFunction&lt;void&gt;&amp;&amp;);
+    void <b>DeferPriorityOperation</b>(Common::UniqueFunction&lt;void&gt;&amp;&amp;);
+    ...
+private:
+    <b>MasterSemaphore</b> m_master;              <i>// timeline semaphore, monotonic tick</i>
+    std::array&lt;std::unique_ptr&lt;RenderCommandBuffer&gt;, BufferCount&gt; m_buffers;
+    std::queue&lt;PendingOperation&gt; m_pending_operations, m_priority_operations;
+    std::jthread m_priority_thread;
+};</pre>
+
+  <p>Eight command buffers in rotation, each with a fence, plus a timeline semaphore providing a monotonically increasing tick. Anything that must outlive a submission is registered against the current buffer:</p>
+<pre>void RetireBufferAfterFence(std::unique_ptr&lt;VulkanBuffer&gt; buffer);
+void RetainResourceUntilFence(std::shared_ptr&lt;void&gt; resource);
+void RecycleDescriptorAfterFence(VulkanDescriptorSet&amp; set);</pre>
+
+  <p>The separate priority thread exists because some deferred work — a readback the guest is blocking on — cannot wait for the normal drain without deadlocking.</p>
+
+  <h4 id="what-happens-on-one-draw">What happens on one draw</h4>
+  <p>Following the real call chain:</p>
+  <div class="stack">
+    <div class="layer g"><span class="nm">CpOpDrawIndexAuto</span><span class="chip guest">guest</span><span class="ds"><code>pm4Handlers.cpp:2084</code> — unpack <code>index_count</code> and <code>flags</code> from the packet body.</span></div>
+    <div class="arrow">↓</div>
+    <div class="layer k"><span class="nm">CommandProcessor::DrawIndexAuto</span><span class="chip kyty">kyty</span><span class="ds"><code>graphicsRun.cpp:1239</code> — apply predication, resolve the current register state, forward to the executor.</span></div>
+    <div class="arrow">↓</div>
+    <div class="layer h"><span class="nm">RenderExecutor::DrawAuto</span><span class="chip host">host</span><span class="ds"><code>renderDraw.cpp:1281</code> — set debug info, build a <code>DrawCallInfo</code>.</span></div>
+    <div class="arrow">↓</div>
+    <div class="layer h"><span class="nm">PrepareDrawRenderState</span><span class="chip host">host</span><span class="ds"><code>renderDraw.cpp:812</code> — resolve colour and depth targets, then <code>ShaderCompileInfoVS</code> and <code>ShaderCompileInfoPS</code> (cache hit or recompile), then materialise resources.</span></div>
+    <div class="arrow">↓</div>
+    <div class="layer h"><span class="nm">ExecutePreparedDraw</span><span class="chip host">host</span><span class="ds"><code>renderDraw.cpp:1063</code> — <code>PrepareBindings</code>, then <code>CreateGraphicsPipeline</code> (line 1085), then bind and record <code>vkCmdDraw</code>.</span></div>
+  </div>
+
+  <p>Each step logs its phase name via <code>LogDrawPhase</code>, so a crash or hang inside a draw can be localised from the log alone.</p>
+
+  <h4 id="texture-cache-internals-worth-knowing">Texture cache internals worth knowing</h4>
+<pre>enum class BindingType : uint8_t { Texture, Storage, RenderTarget, DepthTarget, VideoOut };
+
+ImageId       <b>FindImage</b>(ImageDesc&amp; desc, bool exact_format = false);
+ImageId       FindImageFromRange(uint64_t address, uint64_t size, bool ensure_valid = true);
+vk::ImageView FindTexture(ImageId id, const ImageDesc&amp; desc);
+void          MarkGpuWritten(ImageId id);
+bool          <b>InvalidateMemoryFromGPU</b>(uint64_t address, uint64_t size, bool formatted_buffer_write = false);
+bool          SynchronizeImageToBuffer(uint64_t address, uint64_t size);
+void          <b>RunGarbageCollector</b>();</pre>
+
+  <p>Aliasing is the routine case, not the exception — games reuse memory aggressively, so two images legitimately overlap:</p>
+<pre>std::vector&lt;ImageId&gt; FindImagesInRegion(uint64_t address, uint64_t size, bool page_overlap) const;
+OverlapResult        <b>ResolveOverlap</b>(const ImageInfo&amp; requested, BindingType binding,
+                                    ImageId cached, ImageId merged);
+ImageId              ResolveDepthOverlap(const ImageInfo&amp; requested, BindingType binding, ImageId cached);
+ImageId              <b>ExpandImage</b>(const ImageInfo&amp; info, ImageId source);
+void                 AssociateStencil(ImageId depth, GuestRange stencil);</pre>
+
+  <p>And memory pressure is managed with explicit thresholds:</p>
+<pre>uint64_t m_total_used_memory   = 0;
+uint64_t m_trigger_gc_memory   = 0;
+uint64_t m_pressure_gc_memory  = <b>1536ull * 1024 * 1024</b>;      <i>// 1.5 GB</i>
+uint64_t m_critical_gc_memory  = <b>3ull * 1024 * 1024 * 1024</b>;   <i>// 3 GB</i>
+Common::LeastRecentlyUsedCache&lt;ImageId, uint64_t&gt; m_lru_cache;</pre>
+
+  <div class="learn">
+    <div class="lh">Learn more · the Vulkan side</div>
+    <ul>
+      <li><span class="kind">Tutorial</span><div><a href="https://vkguide.dev/">Vulkan Guide</a><span class="d">Its chapters on descriptor sets, pipelines and the render loop map almost one-to-one onto <code>DescriptorCache</code>, <code>PipelineCache</code> and <code>CommandScheduler</code>. The fastest way to understand why those classes are shaped as they are.</span></div></li>
+      <li><span class="kind spec">Docs</span><div><a href="https://docs.vulkan.org/guide/latest/synchronization.html">Khronos Vulkan Guide — Synchronization</a><span class="d">Fences, semaphores, events and pipeline barriers. This is the part of Vulkan most easily got subtly wrong, and it is exactly what <code>MasterSemaphore</code> and the fence-retention helpers are managing. Khronos also has <a href="https://www.khronos.org/blog/understanding-vulkan-synchronization">Understanding Vulkan Synchronization</a> as a gentler introduction.</span></div></li>
+      <li><span class="kind code">Code</span><div><a href="https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator">VulkanMemoryAllocator</a><span class="d">The allocator Kyty links. Its documentation explains why raw <code>vkAllocateMemory</code> is unusable directly and what the sub-allocation strategies cost.</span></div></li>
+    </ul>
+  </div>
+
+<p class="deck">Guest memory holds swizzled data; Vulkan wants something else. Converting between them is 59 KB of address arithmetic plus a family of compute shaders.</p>
+
+  <figure data-viz="tiling"></figure>
+
+  <h4 id="the-layout-families">The layout families</h4>
+  <div class="filename">src/graphics/guest_gpu/tile.h:28</div>
+<pre>enum class TileBlockFamily : uint32_t {
+    Standard256B,      <i>// small textures</i>
+    Standard4KB,
+    Standard4KB3D,
+    Standard64KB,      <i>// the common case for large textures</i>
+    Standard64KB3D,
+    Prt64KB,           <i>// partially-resident (sparse) textures</i>
+    Prt64KB3D,
+    RenderTarget64KB,  <i>// colour attachments</i>
+    Depth64KB,         <i>// depth/stencil, with its own interleaving</i>
+    Count,
+};</pre>
+
+  <p>Each family has a different swizzle, and the parameters change with bytes-per-element and with mip level. Small mips eventually stop being tiled at all and fall into a packed "tail":</p>
+
+<pre>struct TileVolumeLayout {
+    TileBlockFamily family;
+    uint32_t        bytes_per_element;
+    uint32_t        texel_width, texel_height;
+    uint32_t        <b>first_tail_level</b>;      <i>// below this, mips are packed together</i>
+    uint32_t        block_depth;
+    uint64_t        block_slice_size;
+    uint64_t        total_size;
+    uint64_t        level_offsets[16];
+    uint64_t        level_sizes[16];
+    uint32_t        tail_x[16], tail_y[16];  <i>// position within the packed tail</i>
+    uint32_t        level_widths[16], level_heights[16];
+};</pre>
+
+  <h4 id="the-api">The API</h4>
+<pre>bool TileGetBlockLayout(TileBlockFamily family, uint32_t bytes_per_element, TileBlockLayout&amp; layout);
+bool <b>TileGetBlockOffset</b>(const TileBlockLayout&amp;, uint32_t x, uint32_t y, uint32_t z, uint32_t&amp; byte_offset);
+bool <b>TileGetBlockXor</b>(const TileBlockLayout&amp;, uint32_t block_x, uint32_t block_y, uint32_t&amp; byte_offset);
+
+bool TileGetTextureVolumeLayout(uint32_t format, uint32_t width, uint32_t height, uint32_t depth,
+                                uint32_t levels, uint32_t tile, TileVolumeLayout&amp; layout);
+
+bool TileGetHtileSize(uint32_t width, uint32_t height, TileSizeAlign&amp; htile_size);
+bool TileGetDepthSize(uint32_t width, uint32_t height, uint32_t pitch, uint32_t z_format,
+                      uint32_t stencil_format, bool htile, TileSizeAlign&amp; stencil_size,
+                      TileSizeAlign&amp; htile_size, TileSizeAlign&amp; depth_size, uint32_t num_fragments_log2 = 0);
+uint32_t TileGetRenderTargetPitch(uint32_t width, uint32_t bytes_per_element, uint32_t num_fragments_log2 = 0);</pre>
+
+  <p><code>TileGetBlockXor</code> deserves a note. Beyond the in-block interleave, AMD applies an XOR of block coordinates into the address so that adjacent blocks land in different memory channels and banks. Miss it and images come out looking like a shuffled checkerboard rather than obviously wrong.</p>
+
+  <h4 id="conversion-runs-on-the-gpu">Conversion runs on the GPU</h4>
+  <p>Detiling a 4K texture on the CPU would be unacceptable, so Kyty ships a compute shader per layout family. They are compiled at build time and embedded into the binary (<code>embed_spirv.cmake</code>):</p>
+
+<pre>src/graphics/host_gpu/shaders/
+├─ gpu_tiler_common.inc            shared helpers
+├─ gpu_tiler_standard.inc          shared 256B/4KB logic
+├─ gpu_tiler_standard4.comp        standard 4 KB
+├─ gpu_tiler_standard64.comp       standard 64 KB
+├─ gpu_tiler_standard256.comp      standard 256 B
+├─ gpu_tiler_standard4_3d.comp     3D variants
+├─ gpu_tiler_standard64_3d.comp
+├─ gpu_tiler_prt.comp              partially-resident
+├─ gpu_tiler_prt_3d.comp
+├─ gpu_tiler_render_target.comp    colour attachments
+├─ gpu_tiler_depth.comp            depth/stencil
+├─ gpu_tiler_promote_d16.comp      16-bit depth → 32-bit
+├─ gpu_tiler_demote_d16.comp       and back
+└─ gpu_tiler_swap_bgra16.comp      channel order fix-ups</pre>
+
+  <p>The last three are not tiling at all — they are format adaptations for cases where the host GPU cannot represent a guest format directly. <code>promote_d16</code> / <code>demote_d16</code> exist because some drivers handle 16-bit depth poorly, so Kyty may store it as 32-bit and convert on the way in and out.</p>
+
+  <h4 id="compression-metadata">Compression metadata</h4>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Surface</th><th>What it is</th><th>Kyty's approach</th></tr></thead>
+      <tbody>
+        <tr><td><strong>HTile</strong></td><td>Per-tile depth range and compression state alongside a depth buffer, used for fast rejection and fast clears.</td><td>Sizes are computed by <code>TileGetHtileSize</code>; clear state is tracked so a "cleared" surface need not be materialised.</td></tr>
+        <tr><td><strong>DCC</strong></td><td>Delta Colour Compression metadata for render targets.</td><td>The address comes from the T#'s <code>MetaAddr()</code>. The texture cache tracks meta surfaces and their clear masks (<code>IsMeta</code>, <code>IsMetaCleared</code>, <code>ClearMeta</code>, <code>TouchMeta</code>).</td></tr>
+        <tr><td><strong>CMask / FMask</strong></td><td>Fast-clear mask and MSAA fragment mask.</td><td>Addresses are carried in <code>HW::RenderTarget</code>; used to detect fast-clear-only targets.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout g">
+    <span class="lbl">Why fast clears matter so much</span>
+    <p>A "cleared" render target on real hardware may contain no pixel data at all — only a metadata surface saying "everything is this colour." If Kyty ignored that and read the pixels, it would get stale garbage. Tracking clear state is therefore not an optimisation but a correctness requirement.</p>
+  </div>
+
+<p class="deck">A game does not "present a frame." It registers buffers, renders into one, and asks the display hardware to scan it out at the next vertical blank. Reproducing that protocol faithfully matters more than it sounds.</p>
+
+  <h4 id="the-protocol">The protocol</h4>
+  <div class="filename">src/graphics/presentation/videoOut.h</div>
+<pre>int VideoOutOpen(int user_id, int bus_type, int index, const void* param);
+int <b>VideoOutRegisterBuffers2</b>(int handle, int set_index, int buffer_index_start,
+                             const VideoOutBuffers* buffers, int buffer_num,
+                             const VideoOutBufferAttribute2* attribute, int category, void* option);
+int <b>VideoOutSubmitFlip</b>(int handle, int index, int flip_mode, int64_t flip_arg);
+int VideoOutIsFlipPending(int handle);
+int VideoOutGetFlipStatus(int handle, VideoOutFlipStatus* status);
+int <b>VideoOutAddVblankEvent</b>(EventQueue::KernelEqueue eq, int handle, void* udata);
+int VideoOutAddFlipEvent(EventQueue::KernelEqueue eq, int handle, void* udata);
+int VideoOutWaitVblank(int handle);</pre>
+
+  <p>Step by step:</p>
+  <ol>
+    <li><strong>Register.</strong> The game hands over guest addresses plus a tiling and format description. Kyty records them; the texture cache creates images lazily.</li>
+    <li><strong>Render.</strong> Ordinary draws into one of those buffers, through the normal command stream.</li>
+    <li><strong>Flip.</strong> <code>VideoOutSubmitFlip</code> is queued, not immediate. A flip submitted while another is pending must <em>block</em>, exactly as on hardware — games rely on this for pacing.</li>
+    <li><strong>Notify.</strong> Flip and vertical-blank events are delivered into the game's event queues.</li>
+  </ol>
+
+  <h4 id="the-gpu-side-flip">The GPU-side flip</h4>
+  <p>The interesting case is a flip requested from <em>inside</em> the command stream, which must happen after the preceding draws complete:</p>
+<pre>class VideoOutDriver final {
+public:
+    int  <b>SubmitFlipFromGpu</b>(Graphics::CommandBuffer&amp; buffer, int handle, int index,
+                           int flip_mode, int64_t flip_arg, uint64_t&amp; request_id);
+    void PrepareFlip(uint64_t request_id, Graphics::CommandBuffer&amp; buffer);
+    void CompleteFlip(uint64_t request_id);
+    void SubmitFlipPreparation(uint64_t request_id);
+    void WaitForSubmitSlot();
+    void WaitFlipDone(int handle, int index);
+};</pre>
+  <p>It becomes a Vulkan submission ordered by timeline semaphore, and the command processor has matching entry points — <code>Flip()</code>, <code>FlipWithInterrupt()</code>, <code>PrepareCpuFlip()</code>, <code>WaitFlipDone()</code>.</p>
+
+  <h4 id="virtual-vertical-blank">Virtual vertical blank</h4>
+  <p>A timer fires at the configured rate — 60 Hz by default, <code>--vblank-frequency</code> — and pushes events into every queue that registered for them. This must stay steady even when rendering is slow, because many engines drive their entire simulation from it. A game that waits on vblank and gets it late does not just render late; it simulates late.</p>
+
+  <h4 id="the-final-blit">The final blit</h4>
+  <p>Only at the very end does the guest's buffer reach the host window. The swapchain path is ordinary Vulkan: acquire an image, blit or resolve the guest buffer into it, present. <code>swapchain.cpp</code> handles format negotiation, present modes and resize.</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>File</th><th>Role</th></tr></thead>
+      <tbody>
+        <tr><td><code>presentation/videoOut.cpp</code> 61 KB</td><td>The whole flip model, buffer sets, attributes, events, output modes, colour settings.</td></tr>
+        <tr><td><code>presentation/window/vulkanWindow.cpp</code> 43 KB</td><td>Instance and device creation, extension and feature selection, queue setup.</td></tr>
+        <tr><td><code>presentation/window/swapchain.cpp</code> 33 KB</td><td>Swapchain lifecycle, format selection, present.</td></tr>
+        <tr><td><code>presentation/window/window.cpp</code> 31 KB</td><td>SDL2 window and the main-thread event loop; keyboard, mouse and gamepad handling.</td></tr>
+        <tr><td><code>presentation/renderDoc.cpp</code> 12 KB</td><td>Loads the RenderDoc API at runtime for frame capture (<code>--rd</code>).</td></tr>
+      </tbody>
+    </table>
+  </div>
+    </div>
+  </section>
+
+  <section class="band band-watch">
+    <div class="band-h"><span class="band-t">Watch</span></div>
+    <p class="band-why">
+      And how a finished frame actually reaches the screen.
+    </p>
+    <div data-viz="flipmodel"></div>
+  </section>
+  <section class="band band-try">
+    <div class="band-h"><span class="band-t">Try</span></div>
+    <p class="band-why">
+      Compute the byte offset of a texel under both layouts. Note that with a narrow texture the two agree — tiling only pays off once a row exceeds a cache line, which is why the default here is wide.
+    </p>
+    <div data-viz="tileaddr"></div>
+    <p class="band-why" style="margin-top:26px">
+      Change render state and watch the pipeline cache key move. Every distinct key is a pipeline compile, and a key that includes state which cannot affect the result is where first-encounter stutter comes from.
+    </p>
+    <div data-viz="pipekey"></div>
+    <p class="band-why" style="margin-top:26px">
+      And the synchronisation: timeline semaphores ordering work that the CPU and GPU are both racing through.
+    </p>
+    <div data-viz="timeline"></div>
+  </section>
+  <section class="band band-do">
+    <div class="band-h"><span class="band-t">Do</span></div>
+    <p class="band-why">
+      If you have RenderDoc set up, this is the topic where a capture pays for itself.
+    </p>
+
+    <div class="check">
+      <p class="check-h">Checkpoint</p>
+      <ul class="check-list">
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Find where the emulator creates a Vulkan pipeline, and identify what goes into the cache key.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Explain why a key containing state that cannot affect the output causes duplicate pipelines.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Explain what a timeline semaphore is and which PM4 packet ends up signalling one.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Explain why texture tiling exists, and when it makes no difference.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Take a RenderDoc capture of a title and find one draw in it.</label>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+</main>
+
+<script src="assets/topics.js?v=17" defer></script>
+<script src="assets/search-index.js?v=17" defer></script>
+<script src="assets/app.js?v=17" defer></script>
+<script src="assets/viz.js?v=17" defer></script>
+<script src="assets/atlas.js?v=17" defer></script>
+<script src="assets/lab.js?v=17" defer></script>
+<script src="assets/figs.js?v=17" defer></script>
+<script src="assets/figures.js?v=17" defer></script>
+<script src="assets/highlight.js?v=17" defer></script>
+<script src="assets/tutor.js?v=17" defer></script>
+</body>
+</html>
+
+

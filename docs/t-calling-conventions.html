@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calling conventions &amp; the ABI wall — KytyPS5</title>
+<meta name="description" content="Guest code speaks System V AMD64. Your host compiler on Windows speaks Microsoft x64. Every call between them crosses that wall.">
+<link rel="stylesheet" href="assets/viz.css?v=17">
+<link rel="stylesheet" href="assets/atlas.css?v=17">
+<link rel="stylesheet" href="assets/lab.css?v=17">
+<link rel="stylesheet" href="assets/tutor.css?v=17">
+<link rel="stylesheet" href="assets/app.css?v=17">
+<link rel="stylesheet" href="assets/highlight.css?v=17">
+</head>
+<body>
+
+<main class="topic" data-app-content>
+
+  <p class="topic-eyebrow">Foundations · 03</p>
+  <h1 id="calling-conventions-the-abi-wall">Calling conventions & the ABI wall</h1>
+  <p class="topic-deck">
+    Guest code was compiled for the System V AMD64 ABI. On Windows your host compiler emits Microsoft x64. The two disagree about which registers carry arguments — and since guest code runs natively, nothing translates between them for free.
+  </p>
+
+  <section class="band band-read">
+    <div class="band-h"><span class="band-t">Read</span></div>
+    <div class="prose">
+<p class="deck">The instruction sets match; the conventions do not. This chapter is the minimum x86-64 you need, and then the specific mismatch that shapes a surprising amount of KytyPS5.</p>
+
+  <h4 id="the-registers">The registers</h4>
+  <p>x86-64 has sixteen 64-bit general-purpose registers. Their names are historical and inconsistent, which is confusing at first and then stops mattering:</p>
+<pre>rax rbx rcx rdx        <i>the original four, extended to 64-bit</i>
+rsi rdi                <i>"source index" / "destination index"</i>
+rbp rsp                <i>frame pointer / stack pointer</i>
+r8 r9 r10 r11          <i>added with x86-64</i>
+r12 r13 r14 r15
+
+xmm0 … xmm15           <i>128-bit vector registers, used for float arguments too</i>
+rip                    <i>instruction pointer (not directly writable)</i>
+rflags                 <i>condition flags</i></pre>
+
+  <p>Plus <strong>segment registers</strong>, a leftover from 16-bit days. In 64-bit mode most are ignored, but two survive with a specific job: <code>fs</code> and <code>gs</code> provide a per-thread base address, used to reach thread-local storage. Remember <code>fs</code> — it comes back in <a href="t-patching.html">topic 08</a> and causes real trouble.</p>
+
+  <h4 id="what-a-calling-convention-is">What a calling convention is</h4>
+  <p>Machine code has no concept of a "function argument." When you write <code>f(a, b)</code>, the compiler must decide: which register or stack slot does <code>a</code> go in? Who cleans up the stack? Which registers may <code>f</code> destroy? A <strong>calling convention</strong> (or ABI, application binary interface) is the agreed answer.</p>
+
+  <p>Two conventions matter here, and they disagree about almost everything:</p>
+
+  <div class="fig">
+    <div class="fig-head"><span>Where do the arguments go?</span><span>change the count</span></div>
+    <div class="fig-body">
+      <div class="dec-input">
+        <label for="abi-count">Integer arguments</label>
+        <input id="abi-count" type="number" min="0" max="8" value="6" style="width:8ch">
+      </div>
+      <div class="abi">
+        <div class="abi-col">
+          <h5>System V AMD64 — used by the PS5, Linux, macOS</h5>
+          <div id="abi-sysv"></div>
+        </div>
+        <div class="abi-col">
+          <h5>Microsoft x64 — used by Windows</h5>
+          <div id="abi-ms"></div>
+        </div>
+      </div>
+    </div>
+    <div class="fig-note"><p>System V passes six integer arguments in registers; Microsoft passes four, and requires the caller to reserve 32 bytes of "shadow space" on the stack even when all arguments fit in registers. The register order is different too — <code>rcx</code> is the fourth argument under System V and the <em>first</em> under Microsoft.</p></div>
+  </div>
+
+  <p>They also differ on which registers a function must preserve. Under System V, <code>rbx rbp r12–r15</code> are callee-saved. Under Microsoft, that list additionally includes <code>rsi rdi</code> and the upper halves of <code>xmm6–xmm15</code>. A function compiled for one convention and called by the other will silently corrupt registers the caller expected to survive.</p>
+
+  <h4 id="how-kytyps5-bridges-it">How KytyPS5 bridges it</h4>
+  <p>Clang lets you set the convention per function with an attribute. Kyty defines two macros and uses them everywhere the boundary is crossed:</p>
+
+  <div class="filename">src/common/abi.h</div>
+<pre>#define <b>KYTY_MS_ABI</b>   __attribute__((ms_abi))
+#define <b>KYTY_SYSV_ABI</b> __attribute__((sysv_abi))</pre>
+
+  <p>Any function the guest can call is marked <code>KYTY_SYSV_ABI</code>. The compiler then emits a System V prologue for that one function, while the rest of the emulator is compiled with the platform's native convention:</p>
+
+<pre>int <b>KYTY_SYSV_ABI</b> ContentExportInit2(const ContentExportInitParam2* init_param) {
+    PRINT_NAME();
+    if (init_param == nullptr) return CONTENT_EXPORT_ERROR_INVALID_PARAM;
+    ...
+}</pre>
+
+  <p>The reverse direction exists too. When the emulator generates machine code that guest code will call — the TLS stubs of <a href="t-patching.html">topic 08</a> — that stub must switch <em>back</em> to the Microsoft convention before calling into C++. You can read the switch happening by hand in <code>Jit::SafeCall</code>:</p>
+
+  <div class="filename">src/loader/jit.h — SafeCall, abbreviated</div>
+<pre>sub    rsp,0x80            <i>make room</i>
+pushfq                     <i>save flags</i>
+push   rcx / rdx / r8 / r9 / r10 / r11 / rbx / rdi / rsi
+mov    rbx,rsp
+and    rsp,0xfffffffffffffff0   <b>align stack to 16 bytes</b>
+sub    rsp,0x20                 <b>reserve Win64 shadow space</b>
+movabs rcx,&lt;handler&gt;
+call   rcx
+mov    rsp,rbx             <i>restore, pop everything back</i>
+...
+ret</pre>
+
+  <div class="callout h">
+    <span class="lbl">Why the build refuses MSVC</span>
+    <p>Microsoft's compiler has no <code>sysv_abi</code> attribute. There is no way to write this code in MSVC, so <code>src/CMakeLists.txt</code> rejects <code>cl.exe</code> at configure time and requires <code>clang-cl</code>. This is the single most common first-time build failure.</p>
+  </div>
+
+  <h4 id="one-more-x86-64-detail-variadic-functions">One more x86-64 detail: variadic functions</h4>
+  <p>Under System V, a variadic function such as <code>printf</code> receives, in <code>al</code>, the number of vector registers used for arguments. That is why the generated import thunk in <a href="t-nids.html">topic 07</a> begins with <code>push rax</code> — preserving <code>al</code> across the resolution call, because the target might be variadic.</p>
+  <p>It is also why Kyty cannot simply forward a guest <code>printf</code> to the host's <code>vprintf</code>: the argument list layout differs. <code>src/libs/guestPrintf.cpp</code> is 25 KB implementing the format-string interpreter from scratch for exactly this reason.</p>
+
+  <div class="learn">
+    <div class="lh">Learn more · the two calling conventions</div>
+    <ul>
+      <li><span class="kind spec">Spec</span><div><a href="https://gitlab.com/x86-psABIs/x86-64-ABI">System V AMD64 psABI — official repository</a><span class="d">The living standard for the convention the PS5 uses. The register assignment, stack alignment and variadic <code>al</code> rule described above all come from here. A commonly-cited stable PDF of the earlier draft is <a href="https://refspecs.linuxbase.org/elf/x86_64-abi-0.99.pdf">also available</a>.</span></div></li>
+      <li><span class="kind spec">Spec</span><div><a href="https://learn.microsoft.com/en-us/cpp/build/x64-calling-convention">Microsoft x64 calling convention</a><span class="d">The other half of the mismatch — four register arguments and the mandatory 32-byte shadow space that <code>Jit::SafeCall</code> has to reserve by hand.</span></div></li>
+      <li><span class="kind">Reference</span><div><a href="https://wiki.osdev.org/System_V_ABI">OSDev Wiki — System V ABI</a><span class="d">A shorter, more approachable summary if the specification itself is heavy going.</span></div></li>
+    </ul>
+  </div>
+    </div>
+  </section>
+
+  <section class="band band-watch">
+    <div class="band-h"><span class="band-t">Watch</span></div>
+    <p class="band-why">
+      Watch the same six arguments travel under both conventions. The registers do not line up, and neither does the stack — that mismatch is what <code>KYTY_SYSV_ABI</code> exists to resolve.
+    </p>
+    <div data-viz="abiflow"></div>
+  </section>
+  <section class="band band-try">
+    <div class="band-h"><span class="band-t">Try</span></div>
+    <p class="band-why">
+      Now flip the callee's ABI yourself. Set the argument values, switch what the callee <em>believes</em> it was called with, and watch the register file get read completely differently. This is exactly the bug you get from a missing annotation — no crash, just wrong data.
+    </p>
+    <div data-viz="cpustep"></div>
+  </section>
+  <section class="band band-do">
+    <div class="band-h"><span class="band-t">Do</span></div>
+    <p class="band-why">
+      Every HLE function in the codebase carries this annotation. Go see it, and see what happens structurally when the call goes the other way.
+    </p>
+
+    <div class="check">
+      <p class="check-h">Checkpoint</p>
+      <ul class="check-list">
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Open any file in <code>src/libs/</code> and find <code>KYTY_SYSV_ABI</code>. Confirm every guest-callable function has it.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Write out, from memory, the first four integer-argument registers under each ABI.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Explain what <b>shadow space</b> is and which convention requires it.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Find where the emulator calls <em>into</em> guest code (a thread entry point or a callback). That is the same wall, crossed in the opposite direction.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Explain why omitting the annotation is worse than a crash.</label>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+</main>
+
+<script src="assets/topics.js?v=17" defer></script>
+<script src="assets/search-index.js?v=17" defer></script>
+<script src="assets/app.js?v=17" defer></script>
+<script src="assets/viz.js?v=17" defer></script>
+<script src="assets/atlas.js?v=17" defer></script>
+<script src="assets/lab.js?v=17" defer></script>
+<script src="assets/figs.js?v=17" defer></script>
+<script src="assets/figures.js?v=17" defer></script>
+<script src="assets/highlight.js?v=17" defer></script>
+<script src="assets/tutor.js?v=17" defer></script>
+</body>
+</html>
+
+

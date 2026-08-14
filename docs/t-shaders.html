@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shaders: RDNA 2 → SPIR-V — KytyPS5</title>
+<meta name="description" content="Recompiling compiled GPU binaries into something Vulkan will accept — and recovering the control flow that was thrown away.">
+<link rel="stylesheet" href="assets/viz.css?v=17">
+<link rel="stylesheet" href="assets/atlas.css?v=17">
+<link rel="stylesheet" href="assets/lab.css?v=17">
+<link rel="stylesheet" href="assets/tutor.css?v=17">
+<link rel="stylesheet" href="assets/app.css?v=17">
+<link rel="stylesheet" href="assets/highlight.css?v=17">
+</head>
+<body>
+
+<main class="topic" data-app-content>
+
+  <p class="topic-eyebrow">Graphics · 16</p>
+  <h1 id="shaders-rdna-2-spir-v">Shaders: RDNA 2 → SPIR-V</h1>
+  <p class="topic-deck">
+    Games ship compiled RDNA 2 shader binaries. Vulkan wants SPIR-V. Translating the arithmetic is mechanical; recovering <em>structured</em> control flow from an unstructured branch soup is the actual problem, and the reason this is the largest single piece of the emulator.
+  </p>
+
+  <section class="band band-read">
+    <div class="band-h"><span class="band-t">Read</span></div>
+    <div class="prose">
+<p class="deck">26,000 lines that take a blob of RDNA 2 machine code and produce an equivalent SPIR-V module. It is a real compiler, with a control-flow graph, an intermediate representation, dataflow analyses and a code generator. This is the longest chapter in the book, and deservedly so.</p>
+
+  <h4 id="why-it-is-hard-restated-precisely">Why it is hard, restated precisely</h4>
+  <ul>
+    <li><strong>The input has no structure.</strong> No types, no functions, no variables — 64-bit instruction words operating on 106 scalar and 256 vector registers.</li>
+    <li><strong>Control flow is data.</strong> As <a href="t-gpu-basics.html">topic 13</a> showed, branching is EXEC-mask manipulation. SPIR-V demands declared merge and continue blocks.</li>
+    <li><strong>Resources are opaque.</strong> As <a href="t-registers.html">topic 15</a> showed, finding which texture a shader uses requires evaluating its own address arithmetic.</li>
+    <li><strong>Wave semantics differ.</strong> The shader assumes 32- or 64-lane waves and uses cross-lane instructions; host GPUs have their own subgroup sizes and support levels.</li>
+    <li><strong>Failure is invisible.</strong> A miscompiled shader produces wrong pixels with no crash and no log line. This is why the tests are enormous.</li>
+  </ul>
+
+  <figure data-viz="shaderflow"></figure>
+
+  <h4 id="the-pipeline">The pipeline</h4>
+  <p>One function orchestrates everything, and it logs the beginning and end of each phase with elapsed milliseconds and a shader hash:</p>
+
+  <div class="filename">src/graphics/shader/recompiler/ShaderRecompiler.cpp:640</div>
+<pre>bool <b>TryRecompile</b>(std::span&lt;const uint32_t&gt; code, const CompileOptions&amp; options,
+                  CompileResult&amp; result, std::string* error);</pre>
+
+  <div class="fig">
+    <div class="fig-head"><span>The eleven stages</span><span>click a stage</span></div>
+    <div class="fig-body">
+      <div class="pipe" id="pipe" role="tablist"></div>
+      <div class="step-panel" id="pipe-panel"></div>
+    </div>
+    <div class="fig-note"><p>Enable <code>--shader-log-direction File</code> and you get the decoded listing, the CFG and the IR for every shader, plus these phase timings in the main log — enough to locate a slow or failing compile without a debugger.</p></div>
+  </div>
+
+  <h4 id="stage-1-the-decoder">Stage 1 — the decoder</h4>
+  <p>RDNA 2 instructions come in encoding families, each with its own operand layout:</p>
+  <div class="filename">…/decompiler/ShaderDecoder.h:12</div>
+<pre>enum class Family {
+    Unknown,
+    <b>SOP1, SOP2, SOPK, SOPC, SOPP</b>,     <i>// scalar: 1-src, 2-src, immediate, compare, program</i>
+    <b>VOP1, VOP2, VOP3, VOP3P, VOPC</b>,    <i>// vector: 1-src, 2-src, 3-src, packed, compare</i>
+    VINTRP,                             <i>// interpolation</i>
+    <b>SMEM</b>,                               <i>// scalar memory — this is how descriptors are loaded</i>
+    <b>MUBUF, MTBUF</b>,                       <i>// untyped / typed buffer access</i>
+    FLAT,                               <i>// flat address-space access</i>
+    DS,                                 <i>// local data share (workgroup memory)</i>
+    <b>MIMG</b>,                               <i>// image sample and load</i>
+    <b>EXP</b>                                 <i>// export — how a shader outputs anything</i>
+};</pre>
+
+  <p>The decoded instruction is a wide struct — deliberately, because RDNA 2 instructions carry a great many modifier bits:</p>
+<pre>struct Instruction {
+    uint32_t pc, word, word_count;
+    uint32_t raw[MaxInstructionRawWords];   <i>// up to 5 words</i>
+    Family   family;
+    uint32_t opcode_id;
+    Opcode   opcode;
+    Operand  dst, dst2, src0, src1, src2, src3;
+    uint32_t src_count;
+    uint32_t offset, secondary_offset;
+    uint32_t <b>dmask</b>;                         <i>// which channels an image op returns</i>
+    uint32_t data_dwords, data_bits, data_format, number_format;
+    uint32_t <b>image_sample_flags</b>;             <i>// bias, LOD, gradients, offsets, compare…</i>
+    ImageDimension image_dimension;
+    uint32_t image_address_components;
+    uint32_t image_nsa_addr[MaxImageNsaAddressComponents];
+    bool     glc, slc, idxen, offen;        <i>// cache and addressing modifiers</i>
+    int32_t  branch_offset;
+    uint32_t branch_target;
+    struct { uint32_t target, en; bool done, compr, vm; } <b>exp</b>;
+    std::string unsupported_reason;
+};</pre>
+
+  <p>And an operand carries its own modifier set — SDWA sub-dword addressing, DPP cross-lane patterns, negation, absolute value, clamping, output modifiers:</p>
+<pre>struct Operand {
+    OperandKind kind; uint32_t value; int32_t signed_val; float float_val; uint32_t reg;
+    uint32_t sdwa_sel, sdwa_dst_unused, omod;
+    uint32_t dpp_ctrl, dpp_row_mask, dpp_bank_mask;
+    bool sdwa_sext, dpp_fetch_inactive, dpp_bound_ctrl;
+    bool op_sel, op_sel_hi, negate, negate_hi, absolute, clamp, dpp;
+};</pre>
+
+  <div class="callout g">
+    <span class="lbl">You cannot guess this</span>
+    <p>The README names AMD's <em>RDNA 2 Instruction Set Architecture Reference Guide</em>, document 70648, as the primary reference for this code. Operand encodings are dense and irregular; working on the decoder without the manual open is not feasible.</p>
+  </div>
+
+  <h4 id="stage-2-3-control-flow">Stage 2–3 — control flow</h4>
+  <p>The CFG is built by splitting at branch targets, then computing dominators, post-dominators, back edges, natural loops and strongly connected components:</p>
+
+  <div class="filename">…/cfg/ShaderCFG.h:52</div>
+<pre>struct BasicBlock {
+    uint32_t              id, start_pc, end_pc, inst_begin, inst_end;
+    std::vector&lt;uint32_t&gt; predecessors, successors;
+    std::vector&lt;uint32_t&gt; <b>dominators</b>, <b>post_dominators</b>;
+    Terminator            terminator;
+};
+
+struct Terminator {
+    TerminatorKind  kind;          <i>// Branch, ConditionalBranch, IndirectBranch, Return, Unsupported</i>
+    BranchCondition condition;     <i>// SccZero, VccNonZero, ExecZero… — hardware condition registers</i>
+    uint32_t        true_block, false_block;
+    uint32_t        <b>merge_block</b>, <b>continue_block</b>;   <i>// filled in by Structurize</i>
+    uint32_t        indirect_pc_sgpr;
+    std::vector&lt;uint32_t&gt; indirect_target_pcs, indirect_targets;
+    bool            loop_header;
+};</pre>
+
+  <p>Note that branch conditions are <em>typed</em> to hardware registers — <code>SccZero</code>, <code>VccNonZero</code>, <code>ExecZero</code>. A GPU branch tests a condition register, not an arbitrary value.</p>
+
+  <p><code>Structurize()</code> then computes the merge and continue blocks SPIR-V requires, using nearest-common-post-dominator for selections and loop-exit analysis for loops. When it cannot, it says so precisely:</p>
+<pre>enum class FailureKind {
+    None, InvalidInput, UnsupportedInstruction, InvalidBranchTarget,
+    MissingFallthrough, InvalidLabel,
+    <b>IrreducibleControlFlow</b>,       <i>// an SCC with more than one entry point</i>
+    <b>StructuredControlFlow</b>         <i>// structure could not be recovered</i>
+};</pre>
+
+  <h4 id="the-dispatcher-fallback">The dispatcher fallback</h4>
+  <p>Failure is a supported outcome, not an error. When structure cannot be recovered the recompiler emits the whole shader as a <strong>dispatcher</strong>: one loop around a switch on a program-counter variable, each basic block a case. Slower, but universally correct.</p>
+
+  <p>There is a second, subtler trigger. If a loop header contains an instruction whose SPIR-V lowering itself emits control flow — a bounds-checked buffer load, an atomic, an export — then the emitted loop header would be split across several SPIR-V blocks, which the specification forbids. Kyty detects this ahead of time:</p>
+
+  <div class="filename">…/ShaderRecompiler.cpp:109</div>
+<pre>bool NeedsDispatcherForStructuredLoopHeader(const IR::Program&amp; ir, std::string* reason) {
+    for (const auto&amp; block: ir.blocks) {
+        if (!block.terminator.loop_header) continue;
+        for (const auto&amp; inst: block.instructions) {
+            if (!InstructionMaySplitSpirvBlock(inst)) continue;
+            *reason = fmt::format("loop header block {} contains an instruction whose SPIR-V "
+                                  "lowering emits internal control flow: {}",
+                                  block.id, IR::InstructionToString(inst).c_str());
+            return true;
+        }
+    }
+    return false;
+}</pre>
+
+  <h4 id="stage-4-the-ir">Stage 4 — the IR</h4>
+  <p>Several hundred opcodes, deliberately close to the machine. This is a translator, not an optimising compiler, and staying close keeps the mapping auditable when a shader renders wrongly:</p>
+<pre>enum class Opcode {
+    ControlNop, Waitcnt, Barrier, Sendmsg, ...
+    MoveU32, MoveF32Bits, MoveU64, ReadFirstLaneU32, ReadLaneU32, WriteLaneU32,
+    IAddU32, IAddCarryU32, IMulU32, UMulHighU32, IMadI24U32, UMadU64U32, SadU32,
+    BitFieldExtractU32, BitFieldInsertSelectU32, AlignBitU32, FindLsbU32, ...
+    CompareEqF32, CompareLtF32, CompareClassF32, CompareMaskEqI32, ...
+    SBufferLoadDword, BufferLoadDword, BufferStoreDword, BufferLoadUbyte, ...
+    AtomicSwapU32, AtomicAddU32, AtomicSMinI32, AtomicUMaxU32, ...
+    FlatLoadDword, FlatStoreDword, DsWriteB32, DsAppend, DsConsume,
+    ImageSample, ImageStore, Export, ...
+};</pre>
+
+  <p>The IR program carries everything downstream needs, and tracks which passes have completed:</p>
+  <div class="filename">…/ir/ShaderIR.h:754</div>
+<pre>struct Program {
+    ShaderType         stage;
+    <b>ShaderLaneMaskMode lane_mask_mode</b>;      <i>// NativeWave or PerInvocation</i>
+    uint64_t           shader_hash;
+    uint32_t           <b>wave_size</b>;             <i>// 32 or 64</i>
+    uint32_t           user_data_base, user_data_count;
+    bool               <b>dispatcher_fallback</b>;
+    CFG::FailureKind   cfg_failure_kind;
+    std::string        fallback_reason;
+    std::vector&lt;BasicBlock&gt; blocks;
+    ScalarProvenance   provenance;
+    SrtPlan            srt;
+    ShaderInfo         info;
+    BindingLayout      bindings;
+    bool srt_plan_complete, srt_patching_complete, resource_tracking_complete,
+         shader_info_complete, binding_layout_complete;
+};</pre>
+
+  <div class="primer">
+    <span class="lbl">Lane-mask mode</span>
+    <p><code>NativeWave</code> maps guest waves onto host subgroups directly, using Vulkan's subgroup operations. It is fast but depends on the host supporting the right subgroup size — hence <code>subgroup_size_control_enabled</code> and <code>required_subgroup_size_stages</code> in <code>VulkanInstance</code>.</p>
+    <p><code>PerInvocation</code> is the portable fallback: the EXEC mask becomes an ordinary value and each invocation checks its own bit. Slower, but works anywhere.</p>
+  </div>
+
+  <h4 id="stages-5-8-resources">Stages 5–8 — resources</h4>
+  <p>Covered in <a href="t-registers.html">topic 15</a>. What the tracking pass produces is the classification the Vulkan descriptor layout is generated from:</p>
+<pre>struct BufferResource {
+    uint32_t source, first_use_pc, max_byte_extent, packed_stride, descriptor_format;
+    uint32_t image_alias;                    <i>// a buffer aliasing an image</i>
+    bool read, written, atomic, formatted, scalar;
+};
+
+struct ImageResource {
+    uint32_t                source, first_use_pc;
+    ResourceKind            kind;
+    Decoder::ImageDimension dimension;       <i>// 1D, 2D, 3D, array, MSAA…</i>
+    ImageMipMode            mip_mode;
+    uint32_t                storage_swizzle;
+    bool read, written, atomic, depth_compare, cube;
+};</pre>
+
+  <p>Those booleans matter: <code>written</code> decides sampled image versus storage image, <code>atomic</code> constrains the format, <code>depth_compare</code> selects a comparison sampler. Get the classification wrong and the pipeline either fails validation or silently reads the wrong memory.</p>
+
+  <h4 id="stage-9-bindings">Stage 9 — bindings</h4>
+  <p>Resources become descriptor bindings, grouped by kind so that one binding can hold an array:</p>
+<pre>enum class DescriptorBindingKind {
+    Buffers,
+    Sampled1D, Sampled2D, Sampled3D, Sampled2DArray, Sampled2DMsaa, ...
+    SampledUint1D, SampledUint2D, ...          <i>// integer-format variants</i>
+    Storage1D, Storage2D, Storage3D, ...
+    StorageUint1D, ...
+    Samplers, Gds, AddressMemory, <b>FlattenedSrt</b>, <b>UserData</b>, Count,
+};
+
+struct BindingLayout {
+    uint32_t descriptor_set, push_constant_offset, push_constant_size;
+    uint32_t buffer_offset_dword, buffer_offset_count;
+    std::vector&lt;uint32_t&gt;          user_data_registers;
+    std::vector&lt;DescriptorBinding&gt; descriptors;
+};</pre>
+
+  <p><code>FlattenedSrt</code> and <code>UserData</code> are Kyty's own additions: the flattened SRT reads and the raw user-data dwords are passed to the shader as buffers, because SPIR-V has no equivalent of "values already in scalar registers."</p>
+
+  <h4 id="stage-10-read-lane-elimination">Stage 10 — read-lane elimination</h4>
+  <p><code>v_readlane</code> and <code>v_readfirstlane</code> read one lane of a vector register into a scalar. They map poorly onto SPIR-V subgroup operations, which vary in support across drivers. Where the value is provably uniform, the pass rewrites the read into a direct use and drops the cross-lane operation entirely — every one removed is one fewer host-driver difference to debug.</p>
+
+  <h4 id="stage-11-spir-v-emission">Stage 11 — SPIR-V emission</h4>
+  <p>The largest stage, about 516 KB across a dozen files:</p>
+  <div class="tw">
+    <table>
+      <thead><tr><th class="num">Size</th><th>File</th><th>Handles</th></tr></thead>
+      <tbody>
+        <tr><td class="num">132 KB</td><td><code>spirvEmitterAluOps.cpp</code></td><td>Every arithmetic opcode, including packed 16-bit and saturating variants.</td></tr>
+        <tr><td class="num">76 KB</td><td><code>spirvEmitterMemory.cpp</code></td><td>Buffer and flat access, with the bounds checking SPIR-V does not provide free.</td></tr>
+        <tr><td class="num">69 KB</td><td><code>spirvEmitterInternal.h</code></td><td>Shared emitter state and helpers.</td></tr>
+        <tr><td class="num">53 KB</td><td><code>spirvEmitterControlFlow.cpp</code></td><td>Structured branches, loops, and the dispatcher fallback.</td></tr>
+        <tr><td class="num">40 KB</td><td><code>spirvEmitterModule.cpp</code></td><td>Types, capabilities, entry point, interface variables, descriptors.</td></tr>
+        <tr><td class="num">34 KB</td><td><code>spirvEmitterValues.cpp</code></td><td>Register-to-SSA-value mapping.</td></tr>
+        <tr><td class="num">27 KB</td><td><code>spirvEmitterAnalysis.cpp</code></td><td>Pre-emission analysis of what will be needed.</td></tr>
+        <tr><td class="num">31 KB</td><td><code>spirvEmitterImageOps.cpp</code> + <code>ImageHelpers.cpp</code></td><td>Sampling with the full modifier matrix.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4 id="vertex-fetch-the-stage-that-does-not-exist-in-ha">Vertex fetch: the stage that does not exist in hardware</h4>
+  <p>RDNA 2 has no fixed-function vertex input. Instead the driver compiles a small <strong>fetch shader</strong> that reads attributes from buffers into registers, and the real vertex shader begins with those registers already populated. Games either supply the fetch shader externally or embed it in the vertex shader's prologue.</p>
+
+  <p>Kyty detects the embedded case and rewrites it into real Vulkan vertex inputs:</p>
+<pre>if (options.stage == ShaderType::Vertex &amp;&amp; options.vertex_input_info != nullptr &amp;&amp;
+    options.vertex_input_info-&gt;<b>fetch_embedded</b>) {
+    embedded_fetch = <b>DetectEmbeddedVertexFetch</b>(decoded, options.vertex_input_info,
+                                              ir.user_data_base, ir.user_data_count,
+                                              options.wave_size);
+    auto rewritten = <b>RewriteEmbeddedVertexFetches</b>(ir, options.vertex_input_info,
+                                                  embedded_fetch.loads);
+    ...
+}</pre>
+
+  <p>Detection classifies each prologue SGPR by what it holds:</p>
+<pre>enum class EmbeddedFetchValueType {
+    Unknown, Constant, <b>AttribTable</b>, <b>Attrib</b>, <b>BufferTable</b>, <b>Buffer</b>, <b>Index</b>
+};</pre>
+
+  <h4 id="where-the-test-weight-is">Where the test weight is</h4>
+  <p><code>tests/ShaderRecompilerComputeTests.cpp</code> is <strong>800 KB</strong> — the largest file in the repository, larger than the compiler it tests. With <code>shaderCfgTests.cpp</code> (370 KB), <code>ResourceTrackingTests.cpp</code> (91 KB) and <code>ScalarProvenanceTests.cpp</code> (52 KB), the shader compiler carries roughly 45% of all test code in the project.</p>
+  <p>That ratio is correct. A miscompiled shader crashes nothing and logs nothing; it just draws the wrong thing. Tests are the only defence.</p>
+
+  <div class="learn">
+    <div class="lh">Learn more · shader compilation</div>
+    <ul>
+      <li><span class="kind spec">Spec</span><div><a href="https://docs.amd.com/v/u/en-US/rdna2-shader-instruction-set-architecture">AMD RDNA 2 ISA Reference Guide</a><span class="d">Mandatory for this chapter. Every <code>Opcode</code> in the decoder, every modifier bit in <code>Operand</code>, and the EXEC-mask semantics of <code>s_and_saveexec_b64</code> are defined here. Keep it open beside <code>ShaderDecoder.cpp</code>.</span></div></li>
+      <li><span class="kind spec">Spec</span><div><a href="https://registry.khronos.org/SPIR-V/specs/unified1/SPIRV.html">SPIR-V Specification — Structured Control Flow</a><span class="d">The rules the <code>Structurize</code> pass is trying to satisfy: a header block declares its merge point before control flow diverges, and header and merge bracket a construct defined by dominance and post-dominance. Reading this makes the dispatcher fallback obviously necessary rather than mysterious.</span></div></li>
+      <li><span class="kind">Article</span><div><a href="https://fgiesen.wordpress.com/2011/07/09/a-trip-through-the-graphics-pipeline-2011-index/">A trip through the Graphics Pipeline — parts on shader cores</a><span class="d">Background on why shaders execute in waves at all, and what the hardware is doing around the code the recompiler is translating.</span></div></li>
+      <li><span class="kind code">Code</span><div><a href="https://github.com/shadps4-emu/shadPS4">shadPS4</a><span class="d">An independent PS4 emulator solving the same RDNA-to-SPIR-V problem with different design choices. Comparing the two shader recompilers is genuinely instructive, and KytyPS5's README credits it as a reference for the memory model and AVPlayer.</span></div></li>
+    </ul>
+  </div>
+    </div>
+  </section>
+
+  <section class="band band-watch">
+    <div class="band-h"><span class="band-t">Watch</span></div>
+    <p class="band-why">
+      And the execution model underneath it: instructions run across a wave of lanes at once, with a mask deciding which lanes are live. A branch narrows the mask rather than jumping.
+    </p>
+    <div data-viz="wave"></div>
+  </section>
+  <section class="band band-try">
+    <div class="band-h"><span class="band-t">Try</span></div>
+    <p class="band-why">
+      Drive the execution mask yourself. Turn lanes on and off and watch which ones the instruction actually affects — this is the model the whole translation has to preserve.
+    </p>
+    <div data-viz="wavelab"></div>
+    <p class="band-why" style="margin-top:26px">
+      Then take instructions through the translation directly, and see where a clean one-to-one mapping stops being possible.
+    </p>
+    <div data-viz="isa2spirv"></div>
+  </section>
+  <section class="band band-do">
+    <div class="band-h"><span class="band-t">Do</span></div>
+    <p class="band-why">
+      You have a build that can dump all of this. Use it — reading your own shaders beats any example.
+    </p>
+
+    <div class="check">
+      <p class="check-h">Checkpoint</p>
+      <ul class="check-list">
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Run a title with <code>--shader-log-direction File</code> and open <code>_Shaders/</code>.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Pick a small shader and read its input ISA, its IR, and its emitted SPIR-V side by side.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Explain the difference between an <b>SGPR</b> and a <b>VGPR</b>, and why confusing them is subtly fatal.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Explain what the <b>dispatcher fallback</b> is and when it has to be used.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Find a shader in your dump that hit the fallback, and work out what shape its control flow had.</label>
+        </li>
+      </ul>
+    </div>
+
+    <div class="callout k">
+      <span class="lbl">A good place to contribute</span>
+      <p>An unhandled instruction is now a hard failure rather than a silent skip, which makes missing opcodes easy to find and self-contained to add. Several were added recently for exactly this reason.</p>
+    </div>  </section>
+
+</main>
+
+<script src="assets/topics.js?v=17" defer></script>
+<script src="assets/search-index.js?v=17" defer></script>
+<script src="assets/app.js?v=17" defer></script>
+<script src="assets/viz.js?v=17" defer></script>
+<script src="assets/atlas.js?v=17" defer></script>
+<script src="assets/lab.js?v=17" defer></script>
+<script src="assets/figs.js?v=17" defer></script>
+<script src="assets/figures.js?v=17" defer></script>
+<script src="assets/highlight.js?v=17" defer></script>
+<script src="assets/tutor.js?v=17" defer></script>
+</body>
+</html>
+
+

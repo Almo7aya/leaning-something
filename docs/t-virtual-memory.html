@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Virtual memory, briefly — KytyPS5</title>
+<meta name="description" content="Pages, protection and faults — the mechanism the emulator leans on hardest.">
+<link rel="stylesheet" href="assets/viz.css?v=17">
+<link rel="stylesheet" href="assets/atlas.css?v=17">
+<link rel="stylesheet" href="assets/lab.css?v=17">
+<link rel="stylesheet" href="assets/tutor.css?v=17">
+<link rel="stylesheet" href="assets/app.css?v=17">
+<link rel="stylesheet" href="assets/highlight.css?v=17">
+</head>
+<body>
+
+<main class="topic" data-app-content>
+
+  <p class="topic-eyebrow">Foundations · 04</p>
+  <h1 id="virtual-memory-briefly">Virtual memory, briefly</h1>
+  <p class="topic-deck">
+    Because guest code runs natively, the emulator cannot instrument a memory access. What it can do is take away permission to a page and let the CPU tell it when something touched it. Page protection is not background knowledge here — it is the primary tool.
+  </p>
+
+  <section class="band band-read">
+    <div class="band-h"><span class="band-t">Read</span></div>
+    <div class="prose">
+<p class="deck">Page protection is not a side topic in this project — it is the mechanism by which the emulator detects that the game has touched something the GPU cares about. You need to understand it properly.</p>
+
+  <h4 id="addresses-are-lies">Addresses are lies</h4>
+  <p>When a program reads address <code>0x900001000</code>, that is a <strong>virtual address</strong>. The CPU's memory management unit translates it, through page tables the OS maintains, into a physical address in RAM. The translation happens per <strong>page</strong> — a fixed-size block, 4 KB on PC, 16 KB on PS5.</p>
+
+  <p>Each page table entry carries permission bits: readable, writable, executable. If a program accesses a page in a way the bits forbid, the CPU raises a fault. The OS delivers it to the process as an exception (Windows) or a signal (Linux, macOS).</p>
+
+  <div class="primer">
+    <span class="lbl">Jargon · reserve versus commit</span>
+    <p><strong>Reserving</strong> address space claims a range of virtual addresses so nothing else can use them, without allocating any physical memory. <strong>Committing</strong> backs part of that range with real memory.</p>
+    <p>This split is why an emulator can claim a terabyte of address space up front (see the memory map below) while using only a few gigabytes of RAM. Kyty reserves entire bands and hands out committed pieces from inside them.</p>
+  </div>
+
+  <h4 id="the-three-things-kyty-does-with-protection">The three things Kyty does with protection</h4>
+
+  <div class="stack">
+    <div class="layer k"><span class="nm">1 · Enforce the guest's own protections</span><span class="chip kyty">kyty</span><span class="ds">When the game calls <code>sceKernelMprotect</code>, Kyty applies the equivalent host protection so that a genuine guest bug still faults the way it would on console.</span></div>
+    <div class="layer k"><span class="nm">2 · Detect CPU writes to GPU data</span><span class="chip kyty">kyty</span><span class="ds">Memory the GPU has cached as a Vulkan image is deliberately write-protected. When the game writes to it, the fault tells the renderer its copy is stale. <strong>The fault is the notification.</strong></span></div>
+    <div class="layer k"><span class="nm">3 · Commit reserved ranges lazily</span><span class="chip kyty">kyty</span><span class="ds">A guest touch inside a reserved-but-uncommitted range is caught and the range is committed on demand.</span></div>
+  </div>
+
+  <p>All three funnel into one function — the exception handler installed by the loader — which is why <a href="t-coherency.html">topic 10</a> exists.</p>
+
+  <h4 id="the-page-size-mismatch">The page-size mismatch</h4>
+  <p>The PS5 uses 16 KB pages; PCs use 4 KB. Kyty's guest allocator works in <code>0x4000</code>-byte units:</p>
+
+  <div class="filename">src/loader/runtimeLinker.cpp:2160</div>
+<pre>constexpr uint64_t GUEST_PAGE_SIZE = <b>0x4000</b>;
+program-&gt;base_size_aligned = AlignUp(program-&gt;base_size, GUEST_PAGE_SIZE);</pre>
+
+  <p>The consequence is subtle but pervasive: one guest page is four host pages, so any protection change covers four host pages at once. The memory tracker's dirty bits therefore have coarser granularity than the guest might expect, and a write anywhere in a 16 KB region marks the whole thing dirty. That is correct but conservative — it can cause more uploading than strictly necessary.</p>
+
+  <h4 id="the-address-map-kyty-imposes">The address map Kyty imposes</h4>
+  <p>Kyty does not let the host OS choose where things go. It divides the address space into bands and enforces them:</p>
+
+  <div class="fig">
+    <div class="fig-head"><span>Guest address space (Windows / Linux)</span><span>click a band</span></div>
+    <div class="fig-body">
+      <div class="spacebar" aria-hidden="true">
+        <div class="sm" style="flex:0 0 22%">system managed</div>
+        <div class="sr" style="flex:0 0 22%">system reserved</div>
+        <div class="ua" style="flex:1 1 auto">user area — the guest heap</div>
+        <div class="hh" style="flex:0 0 9%">host high</div>
+      </div>
+      <div class="spacescale"><span>0x00_0004_0000</span><span>log scale — the user area is ~16× the others combined</span><span>0xFB_FFFF_FFFF</span></div>
+      <div class="mmap" style="margin-top:var(--s5)">
+        <div class="bands" id="bands" role="tablist"></div>
+        <div id="band-detail"></div>
+      </div>
+    </div>
+    <div class="fig-note"><p>macOS shifts these ranges and pins them with linker flags — <code>-segaddr SYSTEM_RESERVED,0x7ffffc000 -segaddr USER_AREA,0x7000000000</code> — so the dynamic loader can never place a system library where the guest needs to allocate. <span class="src">src/CMakeLists.txt:323</span></p></div>
+  </div>
+
+  <div class="callout k">
+    <span class="lbl">Why bands, not just "ask the OS"</span>
+    <p>Console software hard-codes addresses and assumes allocations land in particular ranges. It also passes pointers to the GPU, which in Kyty means those pointers must be distinguishable from emulator pointers. Fixing the bands makes both problems tractable: a value beginning <code>0x9…</code> is guest module code, a value beginning <code>0x1…</code> is guest heap, and anything above <code>0x7000_0000_0000</code> is the emulator itself.</p>
+  </div>
+    </div>
+  </section>
+
+  <section class="band band-watch">
+    <div class="band-h"><span class="band-t">Watch</span></div>
+    <p class="band-why">
+      The detail that poisons everything downstream: the guest is certain pages are 16 KB, the host insists they are 4 KB. Watch what happens to a single guest-level protection change.
+    </p>
+    <div data-viz="pagegrain"></div>
+  </section>
+  <section class="band band-try">
+    <div class="band-h"><span class="band-t">Try</span></div>
+    <p class="band-why">
+      Take an address apart by hand. Change it and watch which page it lands in, and where the boundary sits under each page size.
+    </p>
+    <div data-viz="vaddr"></div>
+  </section>
+  <section class="band band-do">
+    <div class="band-h"><span class="band-t">Do</span></div>
+    <p class="band-why">
+      This topic is groundwork, but it is groundwork you will use in the memory and coherency topics constantly.
+    </p>
+
+    <div class="check">
+      <p class="check-h">Checkpoint</p>
+      <ul class="check-list">
+        <li class="check-item">
+          <input type="checkbox">
+          <label>State the guest page size and the host page size, and how many host pages one guest page covers.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Explain what a page fault is, and why an emulator would <em>want</em> to cause one deliberately.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Name the host call that changes page protection on your platform.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Explain why the mismatch means one guest-level protection change is never exactly one host call.</label>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+</main>
+
+<script src="assets/topics.js?v=17" defer></script>
+<script src="assets/search-index.js?v=17" defer></script>
+<script src="assets/app.js?v=17" defer></script>
+<script src="assets/viz.js?v=17" defer></script>
+<script src="assets/atlas.js?v=17" defer></script>
+<script src="assets/lab.js?v=17" defer></script>
+<script src="assets/figs.js?v=17" defer></script>
+<script src="assets/figures.js?v=17" defer></script>
+<script src="assets/highlight.js?v=17" defer></script>
+<script src="assets/tutor.js?v=17" defer></script>
+</body>
+</html>
+
+

@@ -77,7 +77,9 @@
     body.appendChild(ctl);
     body.appendChild(cap);
 
-    var i = 0, timer = null, userPaused = REDUCED, visible = false;
+    /* Starts paused on purpose. Nothing on this site moves until the reader
+       asks it to — Back/Next are the primary controls and Play is opt-in. */
+    var i = 0, timer = null, userPaused = true, visible = false;
     var playBtn = ctl.querySelector('[data-a="play"]');
     var pos = ctl.querySelector(".viz-pos");
 
@@ -681,6 +683,15 @@
     });
   }
   window.VIZ.problem = problem;
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
-  else setTimeout(boot, 0);   // let a later-loaded file register first
+  /* Mount only once every other script has had its chance to register.
+     Deferred scripts execute with readyState === "interactive", *before*
+     DOMContentLoaded fires — so a setTimeout(0) here can beat atlas.js or
+     lab.js to the punch and mount a half-populated registry. Waiting for
+     DOMContentLoaded is correct in both the "loading" and "interactive"
+     phases; only a script injected after load needs the timeout. */
+  if (document.readyState === "loading" || document.readyState === "interactive") {
+    document.addEventListener("DOMContentLoaded", boot, { once: true });
+  } else {
+    setTimeout(boot, 0);
+  }
 })();
