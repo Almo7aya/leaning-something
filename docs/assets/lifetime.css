@@ -43,9 +43,9 @@
 
 /* ---------- progress rail ---------- */
 
-.lt-rail { display: flex; gap: 3px; margin-bottom: 18px; }
+.lt-rail { display: flex; gap: 3px; margin-bottom: 20px; }
 .lt-tick {
-  flex: 1 1 0; height: 6px; min-width: 0;
+  flex: 1 1 0; height: 8px; min-width: 0;
   border: 0; border-radius: 3px; padding: 0;
   background: var(--line); cursor: pointer;
   transition: background .18s;
@@ -58,17 +58,17 @@
 
 .lt-grid {
   display: grid;
-  grid-template-columns: minmax(0, 250px) minmax(0, 1fr) minmax(0, 250px);
-  gap: 12px;
+  grid-template-columns: minmax(0, 300px) minmax(0, 1fr) minmax(0, 310px);
+  gap: 14px;
   align-items: start;
 }
-.lt-right { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.lt-right { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 
 .lt-panel {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 11px;
-  padding: 13px 15px;
+  border-radius: 12px;
+  padding: 15px 17px;
   min-width: 0;
   transition: border-color .2s, box-shadow .2s;
 }
@@ -81,7 +81,7 @@
   text-transform: uppercase; letter-spacing: .1em;
   color: var(--ink-3); margin: 0 0 11px;
 }
-.lt-stage .lt-h { color: var(--ink); font-size: 13px; text-transform: none; letter-spacing: -.01em; }
+.lt-stage .lt-h { color: var(--ink); font-size: 15px; text-transform: none; letter-spacing: -.01em; }
 
 /* ---------- address bands ---------- */
 
@@ -97,9 +97,9 @@
 .lt-band.host  { border-left-color: var(--host); }
 .lt-band.res   { border-left-color: var(--line-2); border-left-style: dashed; }
 .lt-band.fresh { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface-2)); }
-.lt-addr { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); display: block; }
-.lt-name { font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--ink); display: block; margin-top: 1px; }
-.lt-sz   { font-family: var(--mono); font-size: 10px; color: var(--ink-3); display: block; margin-top: 1px; }
+.lt-addr { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); display: block; }
+.lt-name { font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--ink); display: block; margin-top: 1px; }
+.lt-sz   { font-family: var(--mono); font-size: 11px; color: var(--ink-3); display: block; margin-top: 1px; }
 @keyframes lt-in { from { opacity: 0; transform: translateY(-4px); } }
 
 .lt-empty {
@@ -147,19 +147,59 @@
   gap: 4px 10px; margin: 0;
   font-size: 11.5px;
 }
-.lt-facts dt { font-family: var(--mono); font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .06em; }
-.lt-facts dd { font-family: var(--mono); font-size: 11.5px; color: var(--ink); margin: 0; }
+.lt-facts dt { font-family: var(--mono); font-size: 11px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .06em; }
+.lt-facts dd { font-family: var(--mono); font-size: 12.5px; color: var(--ink); margin: 0; }
 
 /* ---------- narration ---------- */
 
+.lt-foot {
+  display: flex; align-items: flex-start; gap: 26px;
+  margin: 22px 0 0; flex-wrap: wrap;
+}
 .lt-say {
-  font-family: var(--serif); font-size: 17px; line-height: 1.65;
+  flex: 1 1 460px;
+  font-family: var(--serif); font-size: 19px; line-height: 1.65;
   color: var(--prose);
-  margin: 18px 0 0;
+  margin: 0;
   border-left: 2px solid var(--accent);
-  padding-left: 15px;
+  padding-left: 17px;
   min-height: 3.4em;
   max-width: 88ch;
+}
+
+/* --- link to the topic that covers this step --- */
+.lt-more {
+  flex: 0 1 310px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "kicker arrow" "title arrow";
+  align-items: center;
+  column-gap: 12px;
+  text-decoration: none;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 10px;
+  padding: 12px 16px;
+  background: var(--surface);
+  transition: border-color .14s, background .14s;
+}
+.lt-more:hover { border-color: var(--accent); background: var(--surface-2); }
+.lt-more[hidden] { display: none; }
+.lt-more-k {
+  grid-area: kicker;
+  font-family: var(--mono); font-size: 9.5px;
+  text-transform: uppercase; letter-spacing: .11em;
+  color: var(--ink-3);
+  margin-bottom: 3px;
+}
+.lt-more-t {
+  grid-area: title;
+  font-family: var(--sans); font-size: 14.5px; font-weight: 600;
+  color: var(--ink); line-height: 1.35;
+}
+.lt-more span:last-child {
+  grid-area: arrow;
+  color: var(--accent); font-size: 17px;
 }
 .lt-say b { color: var(--ink); font-weight: 600; }
 .lt-say code {
@@ -184,3 +224,4 @@
 @media (prefers-reduced-motion: reduce) {
   .lt-band, .st-box.pulse { animation: none; }
 }
+

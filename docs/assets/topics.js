@@ -9,6 +9,9 @@ window.KYTY_TOPICS = [
   { id: "lifetime", n: "★", title: "One full run", ready: true, file: "lifetime.html",
     blurb: "The entire emulator in one animation, launch to first frame." },
 
+  { id: "machine", n: "★", title: "The machine, running", ready: true, file: "machine.html",
+    blurb: "A live simulation you can perturb while it runs." },
+
   { part: "Foundations" },
   { id: "what-an-emulator-is", n: "01", title: "What an emulator is", ready: true,
     file: "t-what-an-emulator-is.html",
@@ -108,4 +111,5 @@ window.KYTY_TOPICS = [
   { id: "playground", n: "→", title: "Playground", ready: true, file: "playground.html",
     blurb: "Decode your own command buffers, modules and logs." }
 ];
+
 

@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The machine, running — KytyPS5</title>
+<meta name="description" content="A live simulation of the emulator producing frames continuously. Change the parameters mid-run and watch pipeline-cache thrash, upload cost and serialised compute show up in the frame-time graph.">
+<link rel="stylesheet" href="assets/tutor.css?v=23">
+<link rel="stylesheet" href="assets/app.css?v=23">
+<link rel="stylesheet" href="assets/highlight.css?v=23">
+<link rel="stylesheet" href="assets/machine.css?v=23">
+</head>
+<body>
+
+<main data-app-content class="mc-wrap">
+
+  <header class="mc-hero">
+    <p class="topic-eyebrow">The whole thing · live simulation</p>
+    <h1 id="the-machine-running">The machine, running</h1>
+    <p class="mc-lede">
+      Everything else on this site explains the emulator. This one <b>runs</b> it — frame after
+      frame, continuously, with a cost model behind each one. Change anything on the right while
+      it is going and the consequences show up immediately in the graph.
+    </p>
+    <p class="mc-lede" style="font-size:16px;color:var(--ink-3)">
+      Heavy frames genuinely take longer to play out, so a stutter is something you watch the
+      machine hesitate on. The numbers are a teaching model rather than a benchmark — they are
+      tuned to reproduce the <em>behaviour</em> the topics describe at magnitudes you can see.
+    </p>
+  </header>
+
+  <div class="mc-main">
+
+    <div class="mc-stage" id="machine"></div>
+
+    <aside class="mc-rail">
+
+      <section class="mc-card">
+        <h3>Run</h3>
+        <div class="mc-buttons">
+          <button type="button" class="mc-btn" id="mc-pause">❙❙ Pause</button>
+          <button type="button" class="mc-btn" id="mc-step">Step</button>
+          <button type="button" class="mc-btn" id="mc-reset">Reset</button>
+        </div>
+      </section>
+
+      <section class="mc-card">
+        <h3>Reproduce a pathology</h3>
+        <div class="mc-presets">
+          <button type="button" class="mc-preset" data-preset="smooth">
+            <b>Smooth</b><span>Everything fits. A steady 60, nothing to see — the baseline.</span>
+          </button>
+          <button type="button" class="mc-preset p-thrash" data-preset="thrash">
+            <b>Pipeline thrash</b><span>20 states, 4 cache slots. Every frame recompiles what the last one evicted.</span>
+          </button>
+          <button type="button" class="mc-preset p-uploads" data-preset="uploads">
+            <b>Upload storm</b><span>1 MB granularity with a heavy write rate. Small edits drag whole regions across the bus.</span>
+          </button>
+          <button type="button" class="mc-preset p-serial" data-preset="serial">
+            <b>Serialised compute</b><span>Async compute off at 90 draws. Compute waits behind every batch — 60 fps becomes 30.</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="mc-card">
+        <h3>Parameters</h3>
+        <div id="machine-controls"></div>
+      </section>
+
+    </aside>
+  </div>
+
+  <!-- ---------------------------------------------------------- -->
+  <section class="mc-notes">
+    <h2 id="what-you-are-looking-at" style="font-family:var(--mono);font-size:22px;font-weight:600;letter-spacing:-.02em;margin:0 0 6px">
+      What you are looking at
+    </h2>
+    <p class="mc-lede" style="font-size:17px">
+      The graph is stacked by where the time went. Three of those four bands are pathologies you
+      can trigger deliberately.
+    </p>
+
+    <div class="mc-note-grid">
+
+      <div class="mc-note n-thrash">
+        <h4>Pipeline thrash — the red band</h4>
+        <p>
+          Every distinct render state needs a compiled Vulkan pipeline. Push <b>distinct pipeline
+          states</b> above <b>cache slots</b> and each frame evicts what the next one needs, so it
+          recompiles the same shaders forever.
+        </p>
+        <p>
+          This is why cache-key design matters: a key that includes state which cannot affect the
+          output creates entries that are secretly identical, and thrashes for no reason. Covered
+          in <a href="t-vulkan.html">topic 17</a>.
+        </p>
+      </div>
+
+      <div class="mc-note n-uploads">
+        <h4>Upload cost — the amber band</h4>
+        <p>
+          Cost scales with <b>granularity</b>, not with how much actually changed. Drag granularity
+          from 4&nbsp;KB up to 1&nbsp;MB at a fixed write rate and watch the band grow — the same
+          writes now drag whole regions across the bus.
+        </p>
+        <p>
+          The opposite extreme is not free either: fine granularity means far more protection
+          changes and faults. That trade is the subject of <a href="t-coherency.html">topic 10</a>.
+        </p>
+      </div>
+
+      <div class="mc-note n-serial">
+        <h4>Serialised compute — the grey band</h4>
+        <p>
+          Turn <b>async compute</b> off and the compute queues stop overlapping the graphics
+          queue; they wait behind every batch, so the penalty grows with the draw count. At 90
+          draws that is enough to turn a 60&nbsp;fps frame into a 30&nbsp;fps one.
+        </p>
+        <p>
+          Real hardware has one graphics queue and 56 compute queues for exactly this reason —
+          see <a href="t-pm4.html">topic 14</a>.
+        </p>
+      </div>
+
+      <div class="mc-note">
+        <h4>VSync, and why 17 ms is worse than 16</h4>
+        <p>
+          With vsync on, a frame that misses the refresh window does not arrive a millisecond
+          late — it waits for the <em>next</em> one. A 17&nbsp;ms frame presents at 33&nbsp;ms.
+        </p>
+        <p>
+          That cliff is why a small regression can feel like the framerate halved. Watch the
+          screen readout say <code>missed vsync</code> while the graph bar has barely moved.
+        </p>
+      </div>
+
+    </div>
+  </section>
+
+</main>
+
+<script src="assets/konva.min.js?v=23" defer></script>
+<script src="assets/topics.js?v=23" defer></script>
+<script src="assets/search-index.js?v=23" defer></script>
+<script src="assets/app.js?v=23" defer></script>
+<script src="assets/highlight.js?v=23" defer></script>
+<script src="assets/machine.js?v=23" defer></script>
+<script src="assets/tutor.js?v=23" defer></script>
+</body>
+</html>
+
+
+
+
+

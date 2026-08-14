@@ -57,87 +57,87 @@
      ============================================================ */
 
   var STEPS = [
-    { p: "Launch", t: "The host process starts",
+    { p: "Launch", t: "The host process starts", to: ["t-what-an-emulator-is.html", "01 · What an emulator is"],
       stage: "boot", focus: "mem",
       say: "Nothing is emulated yet. This is an ordinary program: it registers its subsystems, parses the command line, and opens a window. The guest does not exist." },
 
-    { p: "Launch", t: "Reserve the guest address space",
+    { p: "Launch", t: "Reserve the guest address space", to: ["t-address-space.html", "09 · The guest address space"],
       stage: "reserve", focus: "mem",
       say: "Before any game data is touched, the emulator claims the whole address range the guest expects to own — up front, in one reservation. It cannot hand out addresses later if the host has already used them for something else." },
 
-    { p: "Load", t: "Open eboot.bin",
+    { p: "Load", t: "Open eboot.bin", to: ["t-elf-and-self.html", "05 · ELF, SELF and Sony's format"],
       stage: "self", focus: "stage",
       say: "The executable is a <b>SELF</b>: a Sony container wrapping an ELF. Inside, the type is <code>ET_SCE_DYNEXEC</code> — a value no ordinary loader accepts, which is the first sign you are not dealing with a normal binary." },
 
-    { p: "Load", t: "Read the program headers",
+    { p: "Load", t: "Read the program headers", to: ["t-elf-and-self.html", "05 · ELF, SELF and Sony's format"],
       stage: "phdr", focus: "stage",
       say: "Each <code>PT_LOAD</code> says where its bytes want to live and how much room they need. Note <code>.data</code>: <code>filesz</code> is smaller than <code>memsz</code>, and that gap is <code>.bss</code> — it must be zero-filled, not copied." },
 
-    { p: "Load", t: "Map the segments",
+    { p: "Load", t: "Map the segments", to: ["t-mapping.html", "06 · Mapping a program into memory"],
       stage: "map", focus: "mem",
       say: "Segments are copied to <code>p_vaddr + base</code> and given their final protection. The code band is now R-X and holds real guest instructions — but nothing has executed yet." },
 
-    { p: "Load", t: "Set aside the TLS template",
+    { p: "Load", t: "Set aside the TLS template", to: ["t-threads.html", "11 · Threads and TLS"],
       stage: "tls", focus: "mem",
       say: "<code>PT_TLS</code> is not thread-local storage — it is the <em>pattern</em> for it. Every thread created later gets its own copy, with the <code>.tbss</code> tail zeroed." },
 
-    { p: "Link", t: "Find the imports",
+    { p: "Link", t: "Find the imports", to: ["t-elf-and-self.html", "05 · ELF, SELF and Sony's format"],
       stage: "dynlib", focus: "stage",
       say: "The imports are not in the usual place. They live in <code>PT_OS_DYNLIBDATA</code>, a proprietary segment holding the symbol table, string table and relocations — which is why a stock <code>readelf</code> reports a module with no imports at all." },
 
-    { p: "Link", t: "Resolve the NIDs",
+    { p: "Link", t: "Resolve the NIDs", to: ["t-nids.html", "07 · NIDs and the runtime linker"],
       stage: "nid", focus: "stage",
       say: "Each import names a function by <b>NID</b> — an 11-character encoded id, not a name. The runtime linker looks each one up in a database built at startup from every <code>LIB_FUNC</code> registration in the emulator." },
 
-    { p: "Link", t: "Patch the GOT",
+    { p: "Link", t: "Patch the GOT", to: ["t-nids.html", "07 · NIDs and the runtime linker"],
       stage: "got", focus: "mem",
       say: "The resolved address is written into the Global Offset Table. <b>The game's own machine code is never modified</b> — it already calls through the table, so one pointer write is the entire binding step." },
 
-    { p: "Link", t: "Rewrite what cannot run",
+    { p: "Link", t: "Rewrite what cannot run", to: ["t-patching.html", "08 · Patching guest instructions"],
       stage: "patch", focus: "stage",
       say: "Some instructions cannot execute as written. Guest code reads TLS through <code>fs:[0]</code>, which means something else on the host — so the loader edits those instructions in place, keeping them exactly the same length so nothing after them shifts." },
 
-    { p: "Run", t: "Jump to the entry point",
+    { p: "Run", t: "Jump to the entry point", to: ["t-calling-conventions.html", "03 · Calling conventions & the ABI wall"],
       stage: "abi", focus: "stage",
       say: "Control enters guest code. This is the ABI wall: the emulator was compiled for the host convention, the guest for <b>System V</b>. Arguments live in different registers on each side, so the crossing has to be deliberate — and from here the CPU runs the game's own instructions natively, at full speed." },
 
-    { p: "Run", t: "The game spawns threads",
+    { p: "Run", t: "The game spawns threads", to: ["t-threads.html", "11 · Threads and TLS"],
       stage: "threads", focus: "mem",
       say: "Guest threads are real host threads — there is no scheduler here. Each gets a stack and its own copy of the TLS template before its first instruction runs." },
 
-    { p: "Run", t: "The game allocates memory",
+    { p: "Run", t: "The game allocates memory", to: ["t-address-space.html", "09 · The guest address space"],
       stage: "alloc", focus: "mem",
       say: "The game asks for direct memory at a specific address and gets it, because the whole range was reserved in step 2. It will store raw pointers into this block and hand them to the GPU later." },
 
-    { p: "Draw", t: "The game writes command packets",
+    { p: "Draw", t: "The game writes command packets", to: ["t-pm4.html", "14 · PM4 & the command processor"],
       stage: "pm4", focus: "stage",
       say: "The game does not call a draw function the emulator can intercept. It writes <b>PM4 packets</b> into a ring buffer and rings a doorbell. Register writes accumulate as state; the draw packet is what forces a decision." },
 
-    { p: "Draw", t: "The command processor reads them back",
+    { p: "Draw", t: "The command processor reads them back", to: ["t-pm4.html", "14 · PM4 & the command processor"],
       stage: "cp", focus: "stage",
       say: "Read a header, take the opcode, consume exactly the declared number of dwords, dispatch, repeat. Getting a length wrong here desynchronises everything after it — which is why an unknown packet consumed cleanly beats one interpreted badly." },
 
-    { p: "Draw", t: "Recompile the shader",
+    { p: "Draw", t: "Recompile the shader", to: ["t-shaders.html", "16 · Shaders: RDNA 2 to SPIR-V"],
       stage: "shader", focus: "stage",
       say: "The game shipped compiled <b>RDNA&nbsp;2</b> machine code. Vulkan wants SPIR-V. The arithmetic maps almost one to one; the hard part is rebuilding <em>structured</em> control flow that the original compiler threw away." },
 
-    { p: "Draw", t: "Create the pipeline",
+    { p: "Draw", t: "Create the pipeline", to: ["t-vulkan.html", "17 · The Vulkan backend"],
       stage: "pipeline", focus: "screen",
       say: "All the accumulated register state becomes one Vulkan pipeline object. It misses the cache the first time, so this compiles mid-frame — the reason a title can stutter the first time it shows you something new." },
 
-    { p: "Draw", t: "Bind the resources",
+    { p: "Draw", t: "Bind the resources", to: ["t-registers.html", "15 · Registers, sharps & resources"],
       stage: "bind", focus: "stage",
       say: "The shader reaches its data through <b>sharps</b> — packed descriptors found by walking from a user-data register into a resource table. Each becomes a Vulkan descriptor. A wrong pointer here gives you garbled geometry, not a clean crash." },
 
-    { p: "Draw", t: "The texture is stale",
+    { p: "Draw", t: "The texture is stale", to: ["t-coherency.html", "10 · Page faults & CPU/GPU coherency"],
       stage: "fault", focus: "stage",
       say: "The CPU wrote that texture, and the GPU has not seen it. The emulator knew because the page was write-protected and the store <b>faulted</b> — with no interpreter to instrument, a page fault is the notification channel. Only the dirty pages are uploaded." },
 
-    { p: "Draw", t: "Draw",
+    { p: "Draw", t: "Draw", to: ["t-gpu-basics.html", "13 · How a GPU actually draws"],
       stage: "draw", focus: "screen",
       say: "<code>vkCmdDraw</code>. Geometry is transformed, the fragment shader samples the texture that was just uploaded, and pixels land in the render target." },
 
-    { p: "Present", t: "Signal and flip",
+    { p: "Present", t: "Signal and flip", to: ["t-vulkan.html", "17 · The Vulkan backend"],
       stage: "flip", focus: "screen",
       say: "An <code>IT_RELEASE_MEM</code> packet becomes a timeline semaphore signal, so the CPU learns the frame is done. The finished image is flipped to the window — and the whole loop begins again for frame two." }
   ];
@@ -502,8 +502,12 @@
 
     wrap.appendChild(grid);
 
+    var foot = el("div", "lt-foot");
     var say = el("p", "lt-say");
-    wrap.appendChild(say);
+    var more = el("a", "lt-more");
+    foot.appendChild(say);
+    foot.appendChild(more);
+    wrap.appendChild(foot);
 
     host.appendChild(wrap);
 
@@ -564,6 +568,14 @@
       phase.className = "lt-phase p-" + st.p.toLowerCase();
       stageH.textContent = st.t;
       say.innerHTML = st.say;
+      if (st.to) {
+        more.href = st.to[0];
+        more.innerHTML = '<span class="lt-more-k">Read the topic</span>' +
+          '<span class="lt-more-t">' + esc(st.to[1]) + "</span><span aria-hidden=\"true\">→</span>";
+        more.hidden = false;
+      } else {
+        more.hidden = true;
+      }
       renderStage(st);
       renderBands(i);
       renderFacts(i);
@@ -623,3 +635,4 @@
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot, { once: true });
   else boot();
 })();
+
