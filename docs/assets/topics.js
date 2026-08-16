@@ -9,6 +9,14 @@ window.KYTY_TOPICS = [
   { id: "lifetime", n: "★", title: "One full run", ready: true, file: "lifetime.html",
     blurb: "The entire emulator in one animation, launch to first frame." },
 
+  { id: "browser-emulator", n: "⬢", title: "Browser micro-emulator", ready: true,
+    file: "browser-emulator.html",
+    blurb: "A playable guest executable with interpreted CPU, virtual memory, HLE and WebGL GPU." },
+
+  { id: "system-explorer", n: "◆", title: "KytyPS5 system explorer", ready: true,
+    file: "system-explorer.html",
+    blurb: "Inspect boot, native execution, HLE, memory, graphics and I/O while the model runs." },
+
   { id: "machine", n: "★", title: "The machine, running", ready: true, file: "machine.html",
     blurb: "A live simulation you can perturb while it runs." },
 
@@ -111,5 +119,4 @@ window.KYTY_TOPICS = [
   { id: "playground", n: "→", title: "Playground", ready: true, file: "playground.html",
     blurb: "Decode your own command buffers, modules and logs." }
 ];
-
 

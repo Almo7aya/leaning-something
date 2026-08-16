@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Browser micro-emulator — KytyPS5 learning lab</title>
+<meta name="description" content="A playable browser micro-emulator with a bytecode guest CPU, virtual memory, NID-linked HLE services, PM4-like command processor, WebGL renderer, audio, input and live diagnostics.">
+<link rel="stylesheet" href="assets/tutor.css?v=25">
+<link rel="stylesheet" href="assets/app.css?v=25">
+<link rel="stylesheet" href="assets/highlight.css?v=25">
+<link rel="stylesheet" href="assets/browser-emulator.css?v=25">
+</head>
+<body>
+
+<main data-app-content class="be-wrap">
+  <header class="be-hero">
+    <p class="topic-eyebrow">Executable lab · a game running inside the browser</p>
+    <h1 id="browser-micro-emulator">Browser micro-emulator</h1>
+    <p class="be-lede">
+      This page does not animate a prepared story. It boots a synthetic executable into virtual
+      RAM, interprets its guest instructions, resolves imports through a GOT, runs HLE services,
+      decodes a PM4-like command ring and renders the result through real WebGL pipelines. The
+      little game below is the output of that machine.
+    </p>
+    <div class="be-contract">
+      <span><b>Guest</b> 32-bit fixed-width bytecode</span>
+      <span><b>Memory</b> 2 MB paged address space</span>
+      <span><b>Kernel</b> two scheduled guest threads</span>
+      <span><b>GPU</b> packet stream → WebGL2</span>
+      <span><b>I/O</b> keyboard, gamepad, Web Audio</span>
+    </div>
+  </header>
+
+  <section class="be-machine" id="be-machine" aria-label="Playable browser micro-emulator">
+    <header class="be-toolbar">
+      <div class="be-brand">
+        <i id="be-power-led"></i>
+        <span><b>ASTERIA μCONSOLE</b><small id="be-status-sub">power on self-test</small></span>
+      </div>
+
+      <div class="be-actions" aria-label="Emulator controls">
+        <button type="button" class="be-button be-primary" id="be-run">Pause</button>
+        <button type="button" class="be-button" id="be-step">Step frame</button>
+        <button type="button" class="be-button" id="be-reset">Cold reboot</button>
+        <button type="button" class="be-button" id="be-sound">Enable sound</button>
+      </div>
+
+      <label class="be-speed">Clock
+        <select id="be-speed" aria-label="Guest clock multiplier">
+          <option value="0.5">0.5×</option>
+          <option value="1" selected>1×</option>
+          <option value="2">2×</option>
+          <option value="4">4×</option>
+        </select>
+      </label>
+    </header>
+
+    <div class="be-boot-rail" id="be-boot-rail" aria-label="Executable boot stages"></div>
+
+    <div class="be-runtime">
+      <section class="be-display-card" aria-labelledby="be-game-title">
+        <header class="be-display-head">
+          <div>
+            <span class="be-micro">VIDEO_OUT_0 · 960 × 540</span>
+            <h2 id="be-game-title">Signal Run</h2>
+          </div>
+          <div class="be-frame-lights" aria-label="Graphics state">
+            <span id="be-cpu-light">CPU</span><span id="be-upload-light">UPLOAD</span><span id="be-gpu-light">GPU</span><span id="be-flip-light">FLIP</span>
+          </div>
+        </header>
+
+        <div class="be-screen-shell" id="be-screen-shell" tabindex="0" aria-label="Signal Run game. Use WASD or arrow keys to move.">
+          <canvas id="be-screen" width="960" height="540"></canvas>
+          <div class="be-crt" aria-hidden="true"></div>
+          <div class="be-game-hud">
+            <div><small>SCORE</small><b id="be-score">000000</b></div>
+            <div class="be-health"><small>INTEGRITY</small><span id="be-health"></span></div>
+            <div><small>HIGH</small><b id="be-high">000000</b></div>
+          </div>
+          <div class="be-boot-screen" id="be-boot-screen">
+            <div class="be-boot-logo"><i></i><b>ASTERIA</b><span>μCONSOLE / DEBUG FIRMWARE</span></div>
+            <pre id="be-boot-text">power on self-test…</pre>
+          </div>
+          <div class="be-game-over" id="be-game-over" hidden>
+            <b>GUEST PROCESS TERMINATED</b>
+            <span>Integrity reached zero. Cold reboot to load the executable again.</span>
+            <button type="button" id="be-restart-game">Reboot game</button>
+          </div>
+        </div>
+
+        <div class="be-help">
+          <span><kbd>WASD</kbd> / <kbd>ARROWS</kbd> move the guest player</span>
+          <span>Collect amber signals · avoid pink sentries</span>
+          <span><kbd>P</kbd> pause · <kbd>N</kbd> step</span>
+        </div>
+
+        <div class="be-touch" aria-label="Touch controls">
+          <button type="button" data-touch="up" aria-label="Move up">↑</button>
+          <button type="button" data-touch="left" aria-label="Move left">←</button>
+          <button type="button" data-touch="down" aria-label="Move down">↓</button>
+          <button type="button" data-touch="right" aria-label="Move right">→</button>
+        </div>
+      </section>
+
+      <aside class="be-live-card" aria-labelledby="be-live-title">
+        <header>
+          <div><span class="be-micro">LIVE MACHINE STATE</span><h2 id="be-live-title">What is executing now</h2></div>
+          <span class="be-live-badge" id="be-live-badge">BOOT</span>
+        </header>
+
+        <div class="be-boundary" id="be-boundary">
+          <span id="be-boundary-from">host</span><i>→</i><span id="be-boundary-to">loader</span>
+          <p id="be-boundary-text">Reserving guest address space.</p>
+        </div>
+
+        <div class="be-live-metrics" id="be-live-metrics"></div>
+
+        <section class="be-next-instructions">
+          <h3>Guest instruction window</h3>
+          <ol id="be-mini-disasm"></ol>
+        </section>
+
+        <section class="be-event-section">
+          <header><h3>Hardware / HLE trace</h3><button type="button" id="be-clear-log">clear</button></header>
+          <ol class="be-event-log" id="be-event-log" aria-live="polite"></ol>
+        </section>
+      </aside>
+    </div>
+
+    <section class="be-debugger" aria-labelledby="be-debugger-title">
+      <header class="be-debugger-head">
+        <div><span class="be-micro">DEBUGGER ATTACHED</span><h2 id="be-debugger-title">The game and the machine share this state</h2></div>
+        <div class="be-tabs" role="tablist" aria-label="Micro-emulator diagnostics">
+          <button type="button" role="tab" aria-selected="true" aria-controls="be-panel-cpu" id="be-tab-cpu" data-be-tab="cpu">CPU</button>
+          <button type="button" role="tab" aria-selected="false" aria-controls="be-panel-memory" id="be-tab-memory" data-be-tab="memory">Memory</button>
+          <button type="button" role="tab" aria-selected="false" aria-controls="be-panel-loader" id="be-tab-loader" data-be-tab="loader">Loader &amp; HLE</button>
+          <button type="button" role="tab" aria-selected="false" aria-controls="be-panel-gpu" id="be-tab-gpu" data-be-tab="gpu">Command processor &amp; GPU</button>
+        </div>
+      </header>
+
+      <div class="be-panel" id="be-panel-cpu" role="tabpanel" aria-labelledby="be-tab-cpu">
+        <div class="be-cpu-grid">
+          <section class="be-instrument be-register-instrument">
+            <header><b>Integer registers</b><span>active guest thread</span></header>
+            <div class="be-registers" id="be-registers"></div>
+          </section>
+          <section class="be-instrument be-thread-instrument">
+            <header><b>Guest scheduler</b><span>cooperative frame slices</span></header>
+            <div class="be-thread-list" id="be-thread-list"></div>
+          </section>
+          <section class="be-instrument be-disasm-instrument">
+            <header><b>Executable disassembly</b><span>decoded from guest RX memory</span></header>
+            <div class="be-disassembly" id="be-disassembly"></div>
+          </section>
+          <section class="be-instrument be-cpu-stats">
+            <header><b>Interpreter counters</b><span>measured, not estimated</span></header>
+            <dl id="be-cpu-stats"></dl>
+          </section>
+        </div>
+      </div>
+
+      <div class="be-panel" id="be-panel-memory" role="tabpanel" aria-labelledby="be-tab-memory" hidden>
+        <div class="be-memory-grid">
+          <section class="be-instrument be-map-instrument">
+            <header><b>Virtual address map</b><span>actual committed ranges and protection</span></header>
+            <div class="be-memory-map" id="be-memory-map"></div>
+          </section>
+          <section class="be-instrument be-pages-instrument">
+            <header><b>512 guest pages</b><span>writes light the same dirty map the GPU consumes</span></header>
+            <div class="be-page-legend"><span class="rx">RX code</span><span class="rw">RW data</span><span class="dirty">dirty</span><span class="gpu">GPU current</span></div>
+            <div class="be-pages" id="be-pages"></div>
+          </section>
+          <section class="be-instrument be-hex-instrument">
+            <header><b>Entity memory</b><span>live words from the guest data segment</span></header>
+            <pre id="be-hexdump"></pre>
+          </section>
+          <section class="be-instrument be-fault-instrument">
+            <header><b>Protection and coherency</b><span>fault / upload counters</span></header>
+            <dl id="be-memory-stats"></dl>
+          </section>
+        </div>
+      </div>
+
+      <div class="be-panel" id="be-panel-loader" role="tabpanel" aria-labelledby="be-tab-loader" hidden>
+        <div class="be-loader-grid">
+          <section class="be-instrument be-elf-instrument">
+            <header><b>Synthetic executable</b><span>the object the loader actually mapped</span></header>
+            <dl id="be-elf-info"></dl>
+            <div class="be-segments" id="be-segments"></div>
+          </section>
+          <section class="be-instrument be-import-instrument">
+            <header><b>NID import table and GOT</b><span>resolved addresses are used by SYS instructions</span></header>
+            <div class="be-imports" id="be-imports"></div>
+          </section>
+          <section class="be-instrument be-vfs-instrument">
+            <header><b>Virtual file system</b><span>browser storage behind console paths</span></header>
+            <div class="be-vfs" id="be-vfs"></div>
+          </section>
+          <section class="be-instrument be-hle-instrument">
+            <header><b>HLE call profiler</b><span>real calls made by guest bytecode</span></header>
+            <div class="be-hle-profile" id="be-hle-profile"></div>
+          </section>
+        </div>
+      </div>
+
+      <div class="be-panel" id="be-panel-gpu" role="tabpanel" aria-labelledby="be-tab-gpu" hidden>
+        <div class="be-gpu-grid">
+          <section class="be-instrument be-ring-instrument">
+            <header><b>PM4-like command ring</b><span>header: opcode + declared payload length</span></header>
+            <div class="be-ring-summary" id="be-ring-summary"></div>
+            <div class="be-ring-words" id="be-ring-words"></div>
+          </section>
+          <section class="be-instrument be-gpu-register-instrument">
+            <header><b>Command-processor registers</b><span>state packets accumulate before draws</span></header>
+            <dl id="be-gpu-registers"></dl>
+          </section>
+          <section class="be-instrument be-pipeline-instrument">
+            <header><b>Real WebGL pipeline cache</b><span>programs compile on first use</span></header>
+            <div class="be-pipelines" id="be-pipelines"></div>
+          </section>
+          <section class="be-instrument be-frame-instrument">
+            <header><b>Current frame route</b><span>live work from guest store to present</span></header>
+            <div class="be-frame-route" id="be-frame-route"></div>
+          </section>
+          <section class="be-instrument be-fault-lab">
+            <header><b>Fault injection</b><span>break a real invariant, then cold reboot</span></header>
+            <div class="be-fault-actions">
+              <button type="button" id="be-flush-pipelines">Flush pipeline cache</button>
+              <button type="button" id="be-corrupt-pm4">Corrupt next PM4 header</button>
+              <button type="button" id="be-write-rx">Write to RX code</button>
+            </div>
+            <p id="be-fault-status">All invariants currently hold.</p>
+          </section>
+          <section class="be-instrument be-gpu-stats">
+            <header><b>Renderer counters</b><span>reported by this browser run</span></header>
+            <dl id="be-gpu-stats"></dl>
+          </section>
+        </div>
+      </div>
+    </section>
+  </section>
+
+  <section class="be-explanation" aria-labelledby="what-is-real-here">
+    <p class="topic-eyebrow">Reading the experiment honestly</p>
+    <h2 id="what-is-real-here">What is real here—and what is deliberately smaller</h2>
+    <div class="be-explain-grid">
+      <article><b>Actually happening</b><p>The executable is assembled, mapped and interpreted at runtime. Its memory writes, branch decisions, HLE calls, packets, shader compilations, draw calls, input and save data all drive the visible game.</p></article>
+      <article><b>Faithful shape</b><p>The guest/HLE/GPU boundaries mirror KytyPS5: imports become callable targets, game state lives at guest addresses, command packets accumulate graphics state, dirty memory uploads before drawing, and presentation is separate.</p></article>
+      <article><b>Intentionally smaller</b><p>The guest ISA is a teaching RISC rather than x86-64, packets are a compact PM4-like subset, and WebGL replaces Vulkan. A browser cannot safely map and execute a real PS5 binary.</p></article>
+    </div>
+  </section>
+</main>
+
+<script src="assets/topics.js?v=25" defer></script>
+<script src="assets/search-index.js?v=25" defer></script>
+<script src="assets/app.js?v=25" defer></script>
+<script src="assets/highlight.js?v=25" defer></script>
+<script src="assets/browser-emulator.js?v=25" defer></script>
+<script src="assets/tutor.js?v=25" defer></script>
+</body>
+</html>

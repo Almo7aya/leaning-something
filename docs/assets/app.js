@@ -70,7 +70,7 @@
   }
   function progress() {
     var d = done(), n = 0;
-    var real = LIST.filter(function (t) { return t.id !== "playground" && t.id !== "lifetime" && t.id !== "machine"; });
+    var real = LIST.filter(function (t) { return t.id !== "playground" && t.id !== "lifetime" && t.id !== "machine" && t.id !== "system-explorer" && t.id !== "browser-emulator"; });
     real.forEach(function (t) { if (d[t.id]) n++; });
     return { done: n, total: real.length, pct: real.length ? Math.round(n / real.length * 100) : 0 };
   }
@@ -294,7 +294,7 @@
     if (grid) grid.innerHTML = "";
 
     var d = done();
-    var real = LIST.filter(function (t) { return t.id !== "playground" && t.id !== "lifetime" && t.id !== "machine"; });
+    var real = LIST.filter(function (t) { return t.id !== "playground" && t.id !== "lifetime" && t.id !== "machine" && t.id !== "system-explorer" && t.id !== "browser-emulator"; });
     var built = real.filter(function (t) { return t.ready; });
 
     // Next thing to do: first built topic not yet finished, else the first built one.
@@ -529,5 +529,4 @@
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
   else boot();
 })();
-
 

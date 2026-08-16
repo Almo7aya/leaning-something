@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KytyPS5 system explorer — live emulator simulation</title>
+<meta name="description" content="An inspectable live model of KytyPS5: boot, ELF loading, NID linking, native guest execution, HLE services, memory coherency, PM4, shader recompilation, Vulkan, audio, input and presentation.">
+<link rel="stylesheet" href="assets/tutor.css?v=24">
+<link rel="stylesheet" href="assets/app.css?v=24">
+<link rel="stylesheet" href="assets/highlight.css?v=24">
+<link rel="stylesheet" href="assets/system-explorer.css?v=24">
+</head>
+<body>
+
+<main data-app-content class="mc-wrap">
+
+  <header class="mc-hero">
+    <p class="topic-eyebrow">The whole machine · inspect it while it runs</p>
+    <h1 id="kytyps5-system-explorer">KytyPS5 system explorer</h1>
+    <p class="mc-lede">
+      Start at <code>main()</code>, watch a PS5 executable become a native host thread, then follow
+      one frame through HLE calls, page faults, PM4 packets, shader recompilation, Vulkan queues,
+      audio and the window. Every moving part is clickable.
+    </p>
+
+    <div class="mc-truths" aria-label="Three facts that shape this emulator">
+      <div><span>CPU</span><b>Guest x86-64 runs natively</b><small>No fetch/decode interpreter in the hot path.</small></div>
+      <div><span>OS</span><b>Console libraries are HLE</b><small>NIDs are wired to hand-written Kyty functions.</small></div>
+      <div><span>GPU</span><b>RDNA 2 becomes Vulkan</b><small>PM4 and shaders are translated into host work.</small></div>
+    </div>
+  </header>
+
+  <section class="mc-machine" id="machine" aria-label="Interactive KytyPS5 emulator simulation">
+    <noscript>
+      <p class="mc-fail">This explorer needs JavaScript. The rest of the course remains readable without it.</p>
+    </noscript>
+
+    <header class="mc-toolbar">
+      <div class="mc-run-state" aria-live="polite">
+        <span class="mc-state-dot" id="mc-state-dot"></span>
+        <span><b id="mc-state">Booting</b><small id="mc-clock">startup · step 1</small></span>
+      </div>
+
+      <div class="mc-run-buttons" aria-label="Simulation controls">
+        <button type="button" class="mc-action mc-action-primary" id="mc-play">Pause</button>
+        <button type="button" class="mc-action" id="mc-step">Step event</button>
+        <button type="button" class="mc-action" id="mc-reboot">Replay boot</button>
+        <button type="button" class="mc-action" id="mc-frame">Jump to frame loop</button>
+      </div>
+
+      <label class="mc-speed">
+        <span>Speed</span>
+        <select id="mc-speed" aria-label="Simulation speed">
+          <option value="0.5">0.5×</option>
+          <option value="1" selected>1×</option>
+          <option value="2">2×</option>
+          <option value="4">4×</option>
+        </select>
+      </label>
+    </header>
+
+    <div class="mc-sequence" id="mc-sequence" aria-label="Current boot or frame sequence"></div>
+
+    <div class="mc-workspace">
+      <section class="mc-map-card" aria-labelledby="mc-map-title">
+        <header class="mc-card-head">
+          <div>
+            <span class="mc-kicker">Live architecture</span>
+            <h2 id="mc-map-title">Follow the boundary crossings</h2>
+          </div>
+          <div class="mc-filter" id="mc-filter" aria-label="Filter the architecture map">
+            <button type="button" class="is-active" data-filter="all">All</button>
+            <button type="button" data-filter="boot">Boot</button>
+            <button type="button" data-filter="services">Services</button>
+            <button type="button" data-filter="memory">Memory</button>
+            <button type="button" data-filter="graphics">Graphics</button>
+          </div>
+        </header>
+
+        <div class="mc-map-wrap" id="mc-map-wrap">
+          <svg class="mc-links" id="mc-links" aria-hidden="true"></svg>
+          <div class="mc-map" id="mc-map"></div>
+        </div>
+
+        <div class="mc-now" aria-live="polite">
+          <span class="mc-now-index" id="mc-now-index">01</span>
+          <div><b id="mc-now-title">Host process starts</b><p id="mc-now-body"></p></div>
+          <span class="mc-now-cost" id="mc-now-cost">startup</span>
+        </div>
+      </section>
+
+      <aside class="mc-side">
+        <section class="mc-inspector" aria-labelledby="mc-inspector-title">
+          <div class="mc-inspector-kind" id="mc-inspector-kind">Kyty subsystem</div>
+          <h2 id="mc-inspector-title">Select a subsystem</h2>
+          <p id="mc-inspector-summary">Click any box in the architecture map to see its job, live signals, source files and likely failure symptoms.</p>
+          <dl class="mc-inspector-live" id="mc-inspector-live"></dl>
+          <div class="mc-source-list" id="mc-source-list"></div>
+          <a class="mc-topic-link" id="mc-topic-link" href="tour.html">Open the architecture tour →</a>
+        </section>
+
+        <section class="mc-scenarios" aria-labelledby="mc-scenario-title">
+          <div class="mc-side-title">
+            <div><span class="mc-kicker">Experiments</span><h2 id="mc-scenario-title">Change the workload</h2></div>
+            <button type="button" class="mc-reset-tuning" id="mc-reset-tuning">Reset</button>
+          </div>
+          <div class="mc-preset-grid" id="mc-presets"></div>
+          <div class="mc-controls" id="mc-controls"></div>
+        </section>
+      </aside>
+    </div>
+
+    <section class="mc-deck" aria-labelledby="mc-deck-title">
+      <header class="mc-deck-head">
+        <div>
+          <span class="mc-kicker">Instrument panel</span>
+          <h2 id="mc-deck-title">Open the subsystem up</h2>
+        </div>
+        <div class="mc-tabs" role="tablist" aria-label="Simulation detail views">
+          <button type="button" role="tab" aria-selected="true" aria-controls="mc-panel-overview" id="mc-tab-overview" data-tab="overview">Overview</button>
+          <button type="button" role="tab" aria-selected="false" aria-controls="mc-panel-memory" id="mc-tab-memory" data-tab="memory">Memory &amp; loader</button>
+          <button type="button" role="tab" aria-selected="false" aria-controls="mc-panel-graphics" id="mc-tab-graphics" data-tab="graphics">Graphics</button>
+          <button type="button" role="tab" aria-selected="false" aria-controls="mc-panel-services" id="mc-tab-services" data-tab="services">Services &amp; I/O</button>
+        </div>
+      </header>
+
+      <div class="mc-panel" id="mc-panel-overview" role="tabpanel" aria-labelledby="mc-tab-overview">
+        <div class="mc-metrics" id="mc-metrics"></div>
+        <div class="mc-overview-grid">
+          <section class="mc-instrument mc-chart-card">
+            <header><div><b>Frame time</b><span>CPU + translation + GPU + wait</span></div><strong id="mc-fps">— fps</strong></header>
+            <canvas id="mc-chart" height="230" aria-label="Recent simulated frame times"></canvas>
+            <div class="mc-chart-legend" aria-hidden="true">
+              <span class="cpu">CPU &amp; PM4</span><span class="upload">upload</span><span class="compile">compile</span><span class="gpu">GPU</span><span class="wait">present wait</span>
+            </div>
+          </section>
+
+          <section class="mc-instrument mc-budget-card">
+            <header><div><b>Current frame budget</b><span id="mc-budget-label">building first frame</span></div></header>
+            <div class="mc-budget" id="mc-budget"></div>
+            <dl class="mc-budget-list" id="mc-budget-list"></dl>
+          </section>
+
+          <section class="mc-instrument mc-log-card">
+            <header><div><b>Boundary trace</b><span>Newest event first</span></div><button type="button" id="mc-clear-log">Clear</button></header>
+            <ol class="mc-log" id="mc-log" aria-label="Simulation event log"></ol>
+          </section>
+        </div>
+      </div>
+
+      <div class="mc-panel" id="mc-panel-memory" role="tabpanel" aria-labelledby="mc-tab-memory" hidden>
+        <div class="mc-memory-grid">
+          <section class="mc-instrument mc-address-card">
+            <header><div><b>Guest virtual address space</b><span>Segments appear as boot reaches them</span></div></header>
+            <div class="mc-address-space" id="mc-address-space"></div>
+          </section>
+          <section class="mc-instrument mc-loader-card">
+            <header><div><b>Loader &amp; linker</b><span>SELF/ELF → mapped and callable</span></div></header>
+            <div class="mc-loader-flow" id="mc-loader-flow"></div>
+            <dl class="mc-loader-stats" id="mc-loader-stats"></dl>
+          </section>
+          <section class="mc-instrument mc-pages-card">
+            <header><div><b>CPU/GPU coherency</b><span>192 watched regions · host protection is the notification channel</span></div></header>
+            <div class="mc-page-key"><span class="clean">clean</span><span class="dirty">CPU dirty</span><span class="uploading">upload</span><span class="protected">GPU copy current</span></div>
+            <div class="mc-pages" id="mc-pages" aria-label="Watched memory regions"></div>
+            <p class="mc-inline-status" id="mc-page-status"></p>
+          </section>
+        </div>
+      </div>
+
+      <div class="mc-panel" id="mc-panel-graphics" role="tabpanel" aria-labelledby="mc-tab-graphics" hidden>
+        <div class="mc-graphics-grid">
+          <section class="mc-instrument mc-ring-card">
+            <header><div><b>PM4 command ring</b><span id="mc-ring-status">Guest write head → Kyty read head</span></div></header>
+            <div class="mc-ring" id="mc-ring"></div>
+            <div class="mc-ring-key"><span class="state">state</span><span class="draw">draw</span><span class="sync">sync</span><span class="dispatch">dispatch</span></div>
+          </section>
+          <section class="mc-instrument mc-register-card">
+            <header><div><b>Shadow register file</b><span id="mc-register-status">State accumulates until a draw</span></div></header>
+            <div class="mc-registers" id="mc-registers"></div>
+          </section>
+          <section class="mc-instrument mc-shader-card">
+            <header><div><b>Shader recompiler</b><span>RDNA 2 binary → valid SPIR-V</span></div></header>
+            <div class="mc-shader-flow" id="mc-shader-flow"></div>
+          </section>
+          <section class="mc-instrument mc-cache-card">
+            <header><div><b>Vulkan pipeline cache</b><span id="mc-cache-status">Compile only on a miss</span></div></header>
+            <div class="mc-cache" id="mc-cache"></div>
+          </section>
+          <section class="mc-instrument mc-queues-card">
+            <header><div><b>Host GPU submission</b><span id="mc-queue-status">Graphics + asynchronous compute</span></div></header>
+            <div class="mc-queues" id="mc-queues"></div>
+          </section>
+          <section class="mc-instrument mc-screen-card">
+            <header><div><b>Window / video out</b><span id="mc-screen-status">Waiting for the first flip</span></div></header>
+            <div class="mc-screen" id="mc-screen" aria-label="Simulated emulator output">
+              <div class="mc-screen-world">
+                <i></i><i></i><i></i><i></i><i></i>
+                <span class="mc-screen-hud"></span>
+              </div>
+              <div class="mc-scanline"></div>
+              <span class="mc-screen-off">no frame yet</span>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <div class="mc-panel" id="mc-panel-services" role="tabpanel" aria-labelledby="mc-tab-services" hidden>
+        <div class="mc-services-grid">
+          <section class="mc-instrument mc-threads-card">
+            <header><div><b>Real host threads carrying guest work</b><span>Guest scheduling maps onto host scheduling</span></div></header>
+            <div class="mc-threads" id="mc-threads"></div>
+          </section>
+          <section class="mc-instrument mc-hle-card">
+            <header><div><b>Recent HLE calls</b><span>GOT target → ABI bridge → C++ implementation</span></div></header>
+            <div class="mc-hle-list" id="mc-hle-list"></div>
+          </section>
+          <section class="mc-instrument mc-io-card">
+            <header><div><b>Input</b><span>Host events become DualSense state</span></div></header>
+            <div class="mc-controller" id="mc-controller" aria-hidden="true">
+              <span class="stick left"></span><span class="stick right"></span>
+              <span class="pad up"></span><span class="pad down"></span><span class="pad side"></span>
+              <span class="face a"></span><span class="face b"></span><span class="face c"></span><span class="face d"></span>
+            </div>
+            <p class="mc-inline-status" id="mc-input-status">polling host controller</p>
+          </section>
+          <section class="mc-instrument mc-audio-card">
+            <header><div><b>Audio output ring</b><span id="mc-audio-status">Buffered PCM blocks</span></div></header>
+            <div class="mc-audio-ring" id="mc-audio-ring"></div>
+          </section>
+          <section class="mc-instrument mc-kernel-card">
+            <header><div><b>Kernel objects</b><span>HLE wrappers over host primitives</span></div></header>
+            <div class="mc-kernel-objects" id="mc-kernel-objects"></div>
+          </section>
+        </div>
+      </div>
+    </section>
+  </section>
+
+  <section class="mc-reading" aria-labelledby="how-to-use-this-explorer">
+    <div>
+      <p class="topic-eyebrow">How to use it</p>
+      <h2 id="how-to-use-this-explorer">Watch once, then break one assumption</h2>
+      <p>
+        Let boot finish once. The active route shows the game crossing from guest code into Kyty
+        and then the host. Open each instrument tab while frames continue. After that, apply one
+        workload preset and watch the route, log and frame budget agree about the cause.
+      </p>
+    </div>
+    <div class="mc-reading-grid">
+      <article><span>01</span><h3>Cold pipelines</h3><p>A new combination of registers and shaders must become a Vulkan pipeline before its first draw.</p><a href="t-vulkan.html">Vulkan backend →</a></article>
+      <article><span>02</span><h3>Dirty memory</h3><p>Native CPU stores cannot be instrumented, so protected pages and faults reveal which GPU resources changed.</p><a href="t-coherency.html">Page-fault coherency →</a></article>
+      <article><span>03</span><h3>Missing HLE export</h3><p>A NID without an implementation cannot cross the console-library boundary. Replay boot with the fault preset to see where it stops.</p><a href="t-nids.html">Runtime linking →</a></article>
+      <article><span>04</span><h3>Serial submission</h3><p>Turning overlap off makes compute queue behind graphics; the same work now extends the critical path.</p><a href="t-pm4.html">PM4 and queues →</a></article>
+    </div>
+    <p class="mc-disclaimer">
+      This is a deterministic teaching model derived from the repository, not KytyPS5 running in
+      the browser and not a performance benchmark. Names, ownership boundaries and ordering follow
+      the source; timings and workload sizes are deliberately illustrative.
+    </p>
+  </section>
+
+</main>
+
+<script src="assets/topics.js?v=24" defer></script>
+<script src="assets/search-index.js?v=24" defer></script>
+<script src="assets/app.js?v=24" defer></script>
+<script src="assets/highlight.js?v=24" defer></script>
+<script src="assets/system-explorer.js?v=24" defer></script>
+<script src="assets/tutor.js?v=24" defer></script>
+</body>
+</html>
