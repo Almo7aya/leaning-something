@@ -58,6 +58,7 @@
     entityActive: DATA_BASE + 0x600
   };
   var ENTITY_COUNT = 22;
+  var MAX_HEALTH = 8;
 
   var PERM = { R: 1, W: 2, X: 4 };
   function permText(bits) {
@@ -805,7 +806,7 @@
       "void main(){ vec2 p=vec2((gl_VertexID<<1)&2, gl_VertexID&2); v_uv=p; gl_Position=vec4(p*2.0-1.0,0.0,1.0); }";
     var postFS = "#version 300 es\n" +
       "precision highp float; uniform sampler2D u_scene; uniform float u_tick; in vec2 v_uv; out vec4 outColor;\n" +
-      "void main(){ vec2 uv=vec2(v_uv.x,1.0-v_uv.y); float bend=0.018; vec2 cc=uv-0.5; uv+=cc*dot(cc,cc)*bend;\n" +
+      "void main(){ vec2 uv=v_uv; float bend=0.018; vec2 cc=uv-0.5; uv+=cc*dot(cc,cc)*bend;\n" +
       "vec2 px=vec2(1.0/960.0,0.0); float r=texture(u_scene,uv+px*0.8).r; float g=texture(u_scene,uv).g; float b=texture(u_scene,uv-px*0.8).b;\n" +
       "vec3 col=vec3(r,g,b); float grid=(step(0.975,fract(uv.x*24.0))+step(0.982,fract(uv.y*13.5)))*0.018; col+=vec3(0.10,0.42,0.52)*grid;\n" +
       "float scan=0.965+0.035*sin(uv.y*540.0*3.14159); float vig=1.0-smoothstep(0.25,0.72,length(uv-0.5)); col*=scan*(0.78+0.22*vig);\n" +
@@ -1117,7 +1118,7 @@
     m.write32(ADDR.inputX, 0, "loader", true);
     m.write32(ADDR.inputY, 0, "loader", true);
     m.write32(ADDR.score, 0, "loader", true);
-    m.write32(ADDR.health, 5, "loader", true);
+    m.write32(ADDR.health, MAX_HEALTH, "loader", true);
     m.write32(ADDR.tick, 0, "loader", true);
     m.write32(ADDR.invulnerable, 0, "loader", true);
     m.write32(ADDR.entityCount, ENTITY_COUNT, "loader", true);
@@ -1165,7 +1166,7 @@
       self.write(ADDR.invulnerable, 70, "cpu");
       self.spawnEntity(index, 0, false);
       self.audio.beep(115, 0.28, "sawtooth", 0.06);
-      self.event("FAULT", "sentry collision → guest integrity " + health + "/5", "fault");
+      self.event("FAULT", "sentry collision → guest integrity " + health + "/" + MAX_HEALTH, "fault");
       self.setBoundary("guest collision", "HLE damage", "The interpreted collision path crossed into a game service and updated guest memory.", "FAULT");
       if (health <= 0) {
         self.processAlive = false;
@@ -1444,12 +1445,12 @@
 
   function renderHud() {
     var score = emu.memory && emu.booted ? emu.read(ADDR.score) : 0;
-    var health = emu.memory && emu.booted ? emu.read(ADDR.health) : 5;
+    var health = emu.memory && emu.booted ? emu.read(ADDR.health) : MAX_HEALTH;
     $("be-score").textContent = String(Math.max(0, score)).padStart(6, "0");
     $("be-high").textContent = String(Math.max(0, emu.highScore)).padStart(6, "0");
     var host = $("be-health");
     host.innerHTML = "";
-    for (var i = 0; i < 5; i++) host.appendChild(make("i", i < health ? "" : "is-empty"));
+    for (var i = 0; i < MAX_HEALTH; i++) host.appendChild(make("i", i < health ? "" : "is-empty"));
   }
 
   function renderBoundary() {
@@ -1929,7 +1930,7 @@
 
   window.BROWSER_EMULATOR = {
     emulator: emu,
-    constants: { memorySize: MEM_SIZE, pageSize: PAGE_SIZE, addresses: ADDR, opcodes: OP, packets: PKT },
+    constants: { memorySize: MEM_SIZE, pageSize: PAGE_SIZE, maxHealth: MAX_HEALTH, addresses: ADDR, opcodes: OP, packets: PKT },
     reboot: function () { emu.coldBoot(); },
     step: function () { $("be-step").click(); },
     pause: function () { if (emu.running) $("be-run").click(); }
