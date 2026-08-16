@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glossary — KytyPS5</title>
+<meta name="description" content="Every term the course uses, in one place — the machine, loading, memory, graphics, C++, and the toolchain — each with the topic that covers it.">
+<link rel="stylesheet" href="assets/viz.css?v=23">
+<link rel="stylesheet" href="assets/atlas.css?v=23">
+<link rel="stylesheet" href="assets/lab.css?v=23">
+<link rel="stylesheet" href="assets/tutor.css?v=23">
+<link rel="stylesheet" href="assets/app.css?v=23">
+<link rel="stylesheet" href="assets/highlight.css?v=23">
+</head>
+<body>
+
+<main class="topic" data-app-content>
+
+  <p class="topic-eyebrow">Appendix · G</p>
+  <h1 id="glossary">Glossary</h1>
+  <p class="topic-deck">
+    Every term the course uses, in one place. Each entry links to the topic that actually explains it — treat this as the index page you scan when a word you half-remember shows up.
+  </p>
+
+  <section class="band band-read">
+    <div class="band-h"><span class="band-t">Read</span></div>
+    <div class="prose">
+
+  <h4 id="the-machine">The machine</h4>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Term</th><th>One line</th><th>Topic</th></tr></thead>
+      <tbody>
+        <tr><td><strong>HLE</strong></td><td>High-level emulation — reimplement the <em>interfaces</em> the game calls, not the hardware. KytyPS5 is HLE.</td><td><a href="t-what-an-emulator-is.html">01</a></td></tr>
+        <tr><td><strong>LLE</strong></td><td>Low-level emulation — reproduce the machine itself and boot real firmware on it.</td><td><a href="t-what-an-emulator-is.html">01</a></td></tr>
+        <tr><td><strong>ABI</strong></td><td>Application binary interface — the rules for how functions pass arguments and return (which registers, who cleans the stack).</td><td><a href="t-calling-conventions.html">03</a>, <a href="t-cpp-asm.html">C2</a></td></tr>
+        <tr><td><strong>System V / Microsoft x64</strong></td><td>The two calling conventions that disagree here — the PS5 uses the former, Windows the latter. <code>KYTY_SYSV_ABI</code>/<code>KYTY_MS_ABI</code> bridge them.</td><td><a href="t-calling-conventions.html">03</a></td></tr>
+        <tr><td><strong>Guest / Host</strong></td><td>Guest = the console world the game lives in. Host = your PC. The emulator maps guest things onto host things.</td><td><a href="t-what-an-emulator-is.html">01</a></td></tr>
+        <tr><td><strong>TLS</strong></td><td>Thread-local storage — per-thread memory reached through a segment register (<code>fs</code>/<code>gs</code>).</td><td><a href="t-threads.html">11</a></td></tr>
+        <tr><td><strong>kqueue</strong></td><td>FreeBSD's unified event mechanism the PS5 exposes — the basis of <code>eventQueue.cpp</code>.</td><td><a href="t-hle.html">12</a>, <a href="t-cpp-concurrency.html">C4</a></td></tr>
+        <tr><td><strong>Fiber (ULT)</strong></td><td>A user-level cooperative thread — many lightweight stacks switched by hand on one host thread. <code>libUlt.cpp</code>.</td><td><a href="t-cpp-asm.html">C2</a>, <a href="t-cpp-concurrency.html">C4</a></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4 id="loading-a-game">Loading a game</h4>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Term</th><th>One line</th><th>Topic</th></tr></thead>
+      <tbody>
+        <tr><td><strong>ELF</strong></td><td>The standard executable format — segments, program headers, dynamic tags. PS5 modules are ELF with Sony extras.</td><td><a href="t-elf-and-self.html">05</a></td></tr>
+        <tr><td><strong>SELF</strong></td><td>Sony's container around the ELF — decrypted/FSELF modules are what emulators load.</td><td><a href="t-elf-and-self.html">05</a></td></tr>
+        <tr><td><strong><code>eboot.bin</code></strong></td><td>The main game module — what <code>--game</code> ultimately loads (as <code>/app0/eboot.bin</code>).</td><td><a href="t-elf-and-self.html">05</a></td></tr>
+        <tr><td><strong>ET_SCE_*</strong></td><td>The Sony module type tags that make a normal loader reject the file — <code>ET_SCE_DYNEXEC</code> etc.</td><td><a href="t-elf-and-self.html">05</a></td></tr>
+        <tr><td><strong>PT_OS_DYNLIBDATA</strong></td><td>Sony's private segment holding the imports/exports a standard ELF reader never looks at.</td><td><a href="t-elf-and-self.html">05</a></td></tr>
+        <tr><td><strong>NID</strong></td><td>Name identifier — a short encoded id (like <code>0GnN4QCgIfs</code>) a game imports by instead of a function name.</td><td><a href="t-nids.html">07</a></td></tr>
+        <tr><td><strong>GOT / PLT</strong></td><td>Global offset table / procedure linkage table — the indirection a dynamic call goes through; the loader rewrites the GOT slot to point at your function.</td><td><a href="t-nids.html">07</a></td></tr>
+        <tr><td><strong>Relocation</strong></td><td>Fixing up addresses after a module is placed at a real base address.</td><td><a href="t-nids.html">07</a></td></tr>
+        <tr><td><strong>Red zone</strong></td><td>The 128 bytes below <code>rsp</code> System V lets leaf functions use — dangerous on Windows, fixed by <code>redZonePatcher.cpp</code>.</td><td><a href="t-cpp-asm.html">C2</a></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4 id="memory">Memory</h4>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Term</th><th>One line</th><th>Topic</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Guest address / vaddr</strong></td><td>An address in the game's virtual memory — an integer throughout the code, a real pointer only at the boundary.</td><td><a href="t-cpp-language.html">C1</a></td></tr>
+        <tr><td><strong>Address band</strong></td><td>One of the fixed regions of the guest address space (direct, flexible, pooled memory).</td><td><a href="t-address-space.html">09</a></td></tr>
+        <tr><td><strong>Page fault</strong></td><td>A CPU exception on a protected memory access — here, the primary notification channel between CPU and GPU.</td><td><a href="t-coherency.html">10</a></td></tr>
+        <tr><td><strong>Coherency</strong></td><td>Making CPU and GPU see the same memory — done here by fault-driven upload, not copying.</td><td><a href="t-coherency.html">10</a></td></tr>
+        <tr><td><strong>16 KB vs 4 KB pages</strong></td><td>The guest believes pages are 16 KB; the host uses 4 KB. The emulator reconciles them at fault time.</td><td><a href="t-coherency.html">10</a></td></tr>
+        <tr><td><strong>TEB</strong></td><td>Thread Environment Block — Windows' per-thread structure, whose stack limits the guest-stack switch has to hide.</td><td><a href="t-cpp-asm.html">C2</a></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4 id="graphics">Graphics</h4>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Term</th><th>One line</th><th>Topic</th></tr></thead>
+      <tbody>
+        <tr><td><strong>PM4</strong></td><td>The packet format the game writes to tell the GPU what to do — register writes and draws, decoded by the command processor.</td><td><a href="t-pm4.html">14</a></td></tr>
+        <tr><td><strong>Command processor</strong></td><td>The software that consumes the PM4 stream and turns it into Vulkan work.</td><td><a href="t-pm4.html">14</a></td></tr>
+        <tr><td><strong>Ring buffer</strong></td><td>The circular buffer the game fills with PM4 packets, read by the command processor.</td><td><a href="t-pm4.html">14</a></td></tr>
+        <tr><td><strong>Register state</strong></td><td>The accumulated hardware register writes that become pipeline state — a draw packet itself carries almost nothing.</td><td><a href="t-registers.html">15</a></td></tr>
+        <tr><td><strong>SRT</strong></td><td>Shader resource table — where user data SGPRs point, holding the descriptors a shader consumes.</td><td><a href="t-registers.html">15</a></td></tr>
+        <tr><td><strong>Descriptor (V#/T#/S#)</strong></td><td>V# = buffer, T# = sampler, S# = image — the fixed four-dword structs describing resources. Decode them in the <a href="playground.html#desc-decoder">Playground</a>.</td><td><a href="t-registers.html">15</a>, <a href="playground.html">P</a></td></tr>
+        <tr><td><strong>RDNA2</strong></td><td>The PS5's GPU architecture — the instruction set the shader recompiler decodes.</td><td><a href="t-gpu-basics.html">13</a></td></tr>
+        <tr><td><strong>SGPR / VGPR</strong></td><td>Scalar and vector registers in a GPU shader — scalars are per-wave, vectors are per-lane.</td><td><a href="t-shaders.html">16</a></td></tr>
+        <tr><td><strong>EXEC mask</strong></td><td>The register that decides which lanes of a wave execute — every branch in RDNA2 is arithmetic on it.</td><td><a href="t-shaders.html">16</a>, <a href="lab.html">L</a></td></tr>
+        <tr><td><strong>Wave / wavefront</strong></td><td>A group of lanes executing together — the unit of GPU parallelism.</td><td><a href="t-shaders.html">16</a></td></tr>
+        <tr><td><strong>SPIR-V</strong></td><td>The typed, structured shader format Vulkan accepts — what the recompiler emits.</td><td><a href="t-gpu-basics.html">13</a></td></tr>
+        <tr><td><strong>Dispatcher fallback</strong></td><td>When control-flow structurisation fails, the recompiler emits one loop over a switch on the program counter instead of proper blocks.</td><td><a href="t-shaders.html">16</a></td></tr>
+        <tr><td><strong>chksum / shader hash</strong></td><td>The value used as the shader cache key — hash in, compiled SPIR-V + pipeline out.</td><td><a href="t-cpp-performance.html">C7</a></td></tr>
+        <tr><td><strong>Timeline semaphore</strong></td><td>A monotonically increasing GPU counter a submission waits on and signals — how CPU and GPU overlap.</td><td><a href="t-cpp-concurrency.html">C4</a>, <a href="t-vulkan.html">17</a></td></tr>
+        <tr><td><strong>Fence</strong></td><td>A per-submission signal that releases retained resources (staging buffers, descriptor sets).</td><td><a href="t-cpp-concurrency.html">C4</a></td></tr>
+        <tr><td><strong>Vulkan / MoltenVK</strong></td><td>Vulkan is the host graphics API; MoltenVK provides it on macOS.</td><td><a href="t-vulkan.html">17</a></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4 id="c-plus-plus">C++</h4>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Term</th><th>One line</th><th>Topic</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Translation unit</strong></td><td>One <code>.cpp</code> plus its includes, compiled to one object file.</td><td><a href="t-cpp-build.html">C3</a></td></tr>
+        <tr><td><strong>ODR</strong></td><td>One Definition Rule — the reason headers mark shared functions <code>inline</code>.</td><td><a href="t-cpp-build.html">C3</a></td></tr>
+        <tr><td><strong>RAII</strong></td><td>Resource acquisition is initialisation — an object owns a resource and releases it in its destructor.</td><td><a href="t-cpp-language.html">C1</a></td></tr>
+        <tr><td><strong><code>static_assert</code></strong></td><td>A compile-time assertion — fails the <em>build</em>, used to lock struct sizes and template contracts.</td><td><a href="t-cpp-language.html">C1</a></td></tr>
+        <tr><td><strong><code>reinterpret_cast</code></strong></td><td>"Treat these bytes as this type" — unchecked; the emulator's pointer↔integer workhorse.</td><td><a href="t-cpp-language.html">C1</a></td></tr>
+        <tr><td><strong>Move semantics</strong></td><td>Transferring ownership instead of copying — <code>std::move</code>/<code>std::forward</code>, the move-only <code>UniqueFunction</code>.</td><td><a href="t-cpp-language.html">C1</a></td></tr>
+        <tr><td><strong>Template</strong></td><td>A compile-time factory of functions/classes — non-type parameters, specialisation, <code>constexpr</code> evaluation.</td><td><a href="t-cpp-language.html">C1</a></td></tr>
+        <tr><td><strong><code>constexpr</code> / <code>consteval</code></strong></td><td>Values and functions evaluated at build time.</td><td><a href="t-cpp-language.html">C1</a></td></tr>
+        <tr><td><strong><code>thread_local</code></strong></td><td>Per-thread storage — how <code>PRINT_NAME</code> traces one thread without locks.</td><td><a href="t-cpp-concurrency.html">C4</a></td></tr>
+        <tr><td><strong>EXIT / EXIT_IF</strong></td><td>The project's fatal-error macros — report + stack trace + exit 321. No exceptions, no RTTI.</td><td><a href="t-cpp-build.html">C3</a></td></tr>
+        <tr><td><strong><code>LIB_FUNC</code> / <code>LIB_VERSION</code></strong></td><td>The macros that register an HLE function against a NID in the symbol database.</td><td><a href="t-hle.html">12</a>, <a href="t-cpp-language.html">C1</a></td></tr>
+        <tr><td><strong><code>KYTY_SYSV_ABI</code></strong></td><td>The per-function attribute that makes a host function speak the guest's calling convention.</td><td><a href="t-calling-conventions.html">03</a></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4 id="toolchain">Toolchain</h4>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Term</th><th>One line</th><th>Topic</th></tr></thead>
+      <tbody>
+        <tr><td><strong>CMake</strong></td><td>The build system — <code>CMakeLists.txt</code> is the manifest; configure then build.</td><td><a href="t-cpp-build.html">C3</a></td></tr>
+        <tr><td><strong>clang-cl</strong></td><td>Clang speaking MSVC's command-line dialect — the only supported compiler on Windows (MSVC lacks <code>sysv_abi</code>).</td><td><a href="t-cpp-build.html">C3</a></td></tr>
+        <tr><td><strong>lld</strong></td><td>LLVM's linker — produces the <code>.map</code> file that turns crash addresses into symbols.</td><td><a href="t-cpp-build.html">C3</a></td></tr>
+        <tr><td><strong>glslangValidator</strong></td><td>Compiles the emulator's own GLSL compute shaders to SPIR-V during the build, then embedded as headers.</td><td><a href="t-cpp-build.html">C3</a></td></tr>
+        <tr><td><strong>CTest / gtest</strong></td><td>The test runner and framework — <code>kyty_tests</code> builds them, <code>ctest</code> runs them.</td><td><a href="t-cpp-build.html">C3</a></td></tr>
+        <tr><td><strong><code>--printf-direction File</code></strong></td><td>The flag that sends every log line to <code>_kyty.txt</code> — the start of every diagnosis.</td><td><a href="t-debugging.html">18</a></td></tr>
+        <tr><td><strong>RenderDoc</strong></td><td>A frame debugger, hooked via <code>--rd</code>.</td><td><a href="t-debugging.html">18</a></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+    </div>
+  </section>
+
+  <section class="band band-do">
+    <div class="band-h"><span class="band-t">Do</span></div>
+    <p class="band-why">
+      A glossary is only useful if you use it to <em>find</em> things.
+    </p>
+
+    <div class="check">
+      <p class="check-h">Checkpoint</p>
+      <ul class="check-list">
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Pick five terms you only half-knew and jump to their topics. For each, find the term used in a real source file within five minutes.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Explain, without looking, the difference between a NID and a GOT slot, and between a fence and a timeline semaphore.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>For the graphics terms you chose, decode a real example in the Playground (PM4 decoder, descriptor decoder, or ISA decoder).</label>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+</main>
+
+<script src="assets/topics.js?v=23" defer></script>
+<script src="assets/search-index.js?v=23" defer></script>
+<script src="assets/app.js?v=23" defer></script>
+<script src="assets/viz.js?v=23" defer></script>
+<script src="assets/atlas.js?v=23" defer></script>
+<script src="assets/lab.js?v=23" defer></script>
+<script src="assets/figs.js?v=23" defer></script>
+<script src="assets/figures.js?v=23" defer></script>
+<script src="assets/highlight.js?v=23" defer></script>
+<script src="assets/tutor.js?v=23" defer></script>
+</body>
+</html>

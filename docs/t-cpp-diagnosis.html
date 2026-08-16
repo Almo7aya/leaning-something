@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A boot failure, diagnosed — KytyPS5</title>
+<meta name="description" content="A worked case study: a game that boots to a black screen and then crashes — the tools, the log-reading, the cause-vs-symptom discipline, and the fix.">
+<link rel="stylesheet" href="assets/viz.css?v=23">
+<link rel="stylesheet" href="assets/atlas.css?v=23">
+<link rel="stylesheet" href="assets/lab.css?v=23">
+<link rel="stylesheet" href="assets/tutor.css?v=23">
+<link rel="stylesheet" href="assets/app.css?v=23">
+<link rel="stylesheet" href="assets/highlight.css?v=23">
+</head>
+<body>
+
+<main class="topic" data-app-content>
+
+  <p class="topic-eyebrow">Appendix · C8</p>
+  <h1 id="a-boot-failure-diagnosed">A boot failure, diagnosed</h1>
+  <p class="topic-deck">
+    Everything so far has been tools and vocabulary. This is the day you actually use them: a game that boots to a black screen and then crashes, walked from the command line to the fix — the same loop topic 19 turns into a habit.
+  </p>
+
+  <section class="band band-read">
+    <div class="band-h"><span class="band-t">Read</span></div>
+    <div class="prose">
+<p class="deck">The scenario is real, the names are not. A title we'll call <em>Neptune</em> boots, stays on a black screen for a few seconds, and then the process dies. Everything below is what a diagnosis of that actually looks like.</p>
+
+  <h4 id="the-setup">The setup — turn the taps on</h4>
+  <p>You never diagnose blind. Run once with everything the project has to say, pointed at files:</p>
+
+  <div class="filename">the first run</div>
+<pre>.\_Build\windows\install\kyty_emulator.exe --game "D:\Games\Neptune" `
+  --printf-direction File --printf-output-file _kyty.txt `
+  --command-buffer-dump true --shader-log-direction File</pre>
+
+  <p>Three artifacts land on disk: <code>_kyty.txt</code> (every log line), the command-buffer dumps, and <code>_Shaders/</code> (the shader compile trail). The <code>--printf-direction</code> and <code>--shader-log-direction</code> switches are the ones from <a href="t-debugging.html">topic 18</a>; the playground tools are designed to read exactly these files. The screen is irrelevant now — the log is the evidence.</p>
+
+  <h4 id="step-one-the-log">Step one — read the log in both directions</h4>
+  <p>Open <code>_kyty.txt</code>. <strong>Top-down</strong> you see the boot story: modules loading, mounts happening, relocations resolving. Then, near the bottom, the <strong>unresolved imports</strong> — the loader logs every NID it could not bind, with the owning module:</p>
+
+  <div class="filename">from _kyty.txt — the work queue</div>
+<pre>[1][00:00:01.241] Loader::Programs:: ... : unresolved symbol rPo6tV8D9bM#B#A, lib = "Neptune_Game", mod = "Neptune_Game"
+[1][00:00:01.244] Loader::Programs:: ... : unresolved symbol pT2fEBBpEJk#A#A, lib = "libScePad", mod = "libScePad"
+[1][00:00:01.310] Loader::Programs:: ... : unresolved symbol 0GnN4QCgIfs#D#A, lib = "libSceVideoOut", mod = "libSceVideoOut"</pre>
+
+  <p>Three habits, all learned earlier:</p>
+  <ul>
+    <li><strong>Bottom-up is for the crash; top-down is for the story.</strong> Unresolved imports are not errors yet — they become errors only if the game <em>calls</em> them. Each line is a candidate for <a href="t-first-change.html">topic 19</a>.</li>
+    <li><strong>The <code>#B#A</code> tail is the id encoding from the <a href="playground.html#id64">id encoder tool</a></strong> — module and library ids, not a readable name.</li>
+    <li><strong>The whole log is droppable into the <a href="playground.html#log-triage">log triage tool</a></strong>, which groups these lines into "unresolved", "unimplemented", and "errors" buckets. That is the to-do list.</li>
+  </ul>
+
+  <p>In Neptune's case the log ends not with unresolved imports but with the <code>kyty_exception_handler:</code> block. The black screen was the game waiting on a call that never returned; the crash is where it finally gave up.</p>
+
+  <h4 id="step-two-the-crash-block">Step two — the crash block, through the reader</h4>
+  <p>Copy the crash block from <code>_kyty.txt</code> — from <code>kyty_exception_handler:</code> down through the <code>Stack trace</code> — into the <a href="playground.html#crash-log-reader">crash-log reader</a>. What comes back:</p>
+
+  <div class="filename">the crash, annotated</div>
+<pre>kyty_exception_handler: 0x00000009000A3B4C
+exception module: D:\Games\Neptune\eboot.bin
+exception: type=AccessViolation, av_type=Write, av_addr=0000000000000000, native_code=c0000005
+regs: rax=0  rbx=... rcx=... rsp=...
+Stack trace [thread = 1]:
+[0] 00000009000A3B4C, off=00000000000A3B4C, eboot.bin
+[1] 0000000900C01234, off=0000000000001234, libScePad.sprx</pre>
+
+  <p>The discipline from <a href="t-cpp-build.html">topic C3</a>, applied:</p>
+  <ul>
+    <li><strong>The symptom is the write to address 0.</strong> Something passed a null pointer into a function that wrote through it. The native code <code>c0000005</code> is STATUS_ACCESS_VIOLATION — expected.</li>
+    <li><strong>The cause is frame <code>[1]</code>.</strong> The crash <em>happens</em> in <code>eboot.bin</code>, but the caller is <code>libScePad.sprx</code> at offset <code>0x1234</code> — a pad library function. Neptune was reading a controller that isn't there, got a null state, and handed it onward.</li>
+    <li><strong>Cross-check with the register table.</strong> <code>rax = 0</code> is the giveaway: the value being written is a null. A register dump is only useful when you ask "which register was supposed to hold an address?"</li>
+  </ul>
+
+  <h4 id="step-three-the-module">Step three — confirm what the loader sees</h4>
+  <p>The crash names <code>libScePad.sprx</code>. If the pad library resolved but behaves wrong, look at the module itself: drop <code>eboot.bin</code> or the <code>.sprx</code> into the <a href="playground.html#elf-inspector">module inspector</a>. You expect the <code>ET_SCE_*</code> type and a <code>PT_OS_DYNLIBDATA</code> segment — the loader-only tags from topic 05. If those are present and the dynamic tags list includes <code>DT_OS_NEEDED_MODULE</code> for <code>libScePad</code>, the binding story is coherent and the bug is in the emulator's pad implementation, not the loading.</p>
+
+  <h4 id="step-four-the-instruction">Step four — the instruction itself</h4>
+  <p>From the crash block's <code>code-32</code> bytes, you can decode the exact instruction that died. The <a href="playground.html#shader-isa">RDNA2 decoder</a> is for shaders, but the same idea applies here: feed the <code>code-32</code> bytes to any x86 disassembler (or read them with Zydis, which is in the tree — topic C6) and confirm the operation is a store through a null base. That turns "access violation" into "this exact store wrote to a null pointer" — the difference between a symptom and a cause.</p>
+
+  <h4 id="step-five-the-fix">Step five — the fix loop</h4>
+  <p>The pad library returned a null controller state where the game expected a valid one. The fix is exactly <a href="t-first-change.html">topic 19</a>: find the pad <code>padReadState</code>-shaped function in <code>src/libs/libPad.cpp</code>, work out what it should return when no controller is attached, and return a zeroed-but-valid state instead of a null. The loop:</p>
+  <ol>
+    <li>Rebuild, re-run, confirm the <code>kyty_exception_handler:</code> line is gone.</li>
+    <li>Confirm the <strong>game</strong> proceeds — the black screen clearing is the real test, not the absence of a crash.</li>
+    <li>Re-run with the <a href="playground.html#shader-log">shader artifact reader</a> on the <code>_Shaders/</code> output once frames render — a black screen that <em>doesn't</em> crash is usually a shader problem, not a crash problem.</li>
+  </ol>
+
+  <h4 id="when-it-is-not-a-crash">When it is not a crash</h4>
+  <p>A persistent black screen with no crash block is a different animal, and it is worth listing its checklist because it comes up more often:</p>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Symptom</th><th>Suspect</th><th>Evidence</th></tr></thead>
+      <tbody>
+        <tr><td>Black screen, no crash, CPU idle</td><td>a blocking HLE call never returned</td><td>the log ends mid-import-resolution; <code>PRINT_NAME</code> trace stops at one function</td></tr>
+        <tr><td>Black screen, CPU busy</td><td>a draw is submitted but nothing renders</td><td>command-buffer dump: feed the <a href="playground.html#pm4-decoder">PM4 decoder</a>; look for a draw with no render-target state (the Lab's <code>pm4build</code> shows the failure shape)</td></tr>
+        <tr><td>Black screen, first frame slow then nothing</td><td>a shader fell back or failed to compile</td><td><code>_Shaders/</code> + the <a href="playground.html#shader-log">shader reader</a>: the SPIR-V is missing or the dispatcher fallback ran (topic 16)</td></tr>
+        <tr><td>Flicker then crash on frame N</td><td>a resource lifetime bug</td><td>the crash trace names a texture/buffer address; the timeline story (topic C4) is the suspect</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout k">
+    <span class="lbl">The whole method in one line</span>
+    <p>Run with the taps on → read the log top-down for the story and bottom-up for the crash → label each crash block (symptom = the address, cause = the stack trace) → confirm with the module and instruction tools → fix the <em>caller</em> → re-run until the black screen clears, then check the shaders. That is not debugging procedure; it is the entire course in one habit.</p>
+  </div>
+
+  <div class="learn">
+    <div class="lh">Learn more · the diagnosis craft</div>
+    <ul>
+      <li><span class="kind">Guide</span><div><a href="t-debugging.html">Debugging &amp; diagnostics</a><span class="d">Topic 18 — the full flag table and the artifacts each one produces, which this case study assumes.</span></div></li>
+      <li><span class="kind">Guide</span><div><a href="t-cpp-build.html#reading-a-crash-log">Reading a crash log</a><span class="d">Topic C3's annotated walk through every block of the dump, referenced above.</span></div></li>
+      <li><span class="kind">Article</span><div><a href="https://pythonspeed.com/articles/debugging-techniques/">Debugging technique for unfamiliar code</a><span class="d">The general skill — the "read it in both directions" habit is not C++-specific.</span></div></li>
+    </ul>
+  </div>
+    </div>
+  </section>
+
+  <section class="band band-watch">
+    <div class="band-h"><span class="band-t">Watch</span></div>
+    <p class="band-why">
+      Which switch produces which artifact — the first step of the case study, and the same map the crash reader and shader reader tools were built on.
+    </p>
+    <div data-viz="diagflow"></div>
+  </section>
+  <section class="band band-try">
+    <div class="band-h"><span class="band-t">Try</span></div>
+    <p class="band-why">
+      Run the case study on your own title, in miniature — this time the tools do the heavy lifting.
+    </p>
+
+    <div class="callout k">
+      <span class="lbl">A ten-minute lab</span>
+      <p>Take any title you own, run it with the three flags from Step one, and feed the result to three playground tools in order: <a href="playground.html#log-triage">log triage</a> (find the buckets), <a href="playground.html#crash-log-reader">crash reader</a> (if it crashed), <a href="playground.html#elf-inspector">module inspector</a> (what the loader saw). Write down the one line that is the <em>cause</em> rather than the symptom. Then compare with the demo log in the crash reader to check your judgment.</p>
+    </div>
+  </section>
+  <section class="band band-do">
+    <div class="band-h"><span class="band-t">Do</span></div>
+    <p class="band-why">
+      These are the case study's checkpoints, minus the specific crash — they hold for any title.
+    </p>
+
+    <div class="check">
+      <p class="check-h">Checkpoint</p>
+      <ul class="check-list">
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Run a title with the three flags and confirm the three artifacts appear on disk.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Read <code>_kyty.txt</code> both ways: the boot story top-down, and any crash block bottom-up.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Pick the most promising unresolved import and explain, from the log line, which module owns it and what the <code>#…#</code> tail means.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>If there is a crash: label the symptom (fault address + access type) and the cause (the stack trace frame you would fix).</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Confirm the fix idea is a "return the right value" change in <code>src/libs/</code> rather than a loader change — using the module inspector to check the binding story.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Re-run and state which of the two success criteria matters more: no crash, or the game visibly progressing.</label>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+</main>
+
+<script src="assets/topics.js?v=23" defer></script>
+<script src="assets/search-index.js?v=23" defer></script>
+<script src="assets/app.js?v=23" defer></script>
+<script src="assets/viz.js?v=23" defer></script>
+<script src="assets/atlas.js?v=23" defer></script>
+<script src="assets/lab.js?v=23" defer></script>
+<script src="assets/figs.js?v=23" defer></script>
+<script src="assets/figures.js?v=23" defer></script>
+<script src="assets/highlight.js?v=23" defer></script>
+<script src="assets/tutor.js?v=23" defer></script>
+</body>
+</html>

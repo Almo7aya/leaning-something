@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Concurrency &amp; the memory model — KytyPS5</title>
+<meta name="description" content="Four threads, one address space: who runs what, how work is handed off, and the C++ primitives — atomics, locks, condition variables, timeline semaphores — that make it safe.">
+<link rel="stylesheet" href="assets/viz.css?v=23">
+<link rel="stylesheet" href="assets/atlas.css?v=23">
+<link rel="stylesheet" href="assets/lab.css?v=23">
+<link rel="stylesheet" href="assets/tutor.css?v=23">
+<link rel="stylesheet" href="assets/app.css?v=23">
+<link rel="stylesheet" href="assets/highlight.css?v=23">
+</head>
+<body>
+
+<main class="topic" data-app-content>
+
+  <p class="topic-eyebrow">Appendix · C4</p>
+  <h1 id="concurrency-the-memory-model">Concurrency &amp; the memory model</h1>
+  <p class="topic-deck">
+    The emulator is four threads doing four completely different jobs, sharing one address space. This page is the map: who runs what, how work gets from one thread to another, and the C++ primitives — atomics, locks, condition variables, timeline semaphores — that hold it together.
+  </p>
+
+  <section class="band band-read">
+    <div class="band-h"><span class="band-t">Read</span></div>
+    <div class="prose">
+<p class="deck">For a web engineer the closest analogy is a service worker plus a render thread plus a worker pool sharing a page — except here there is no runtime to arbitrate, and a mistake corrupts the whole process.</p>
+
+  <h4 id="the-four-threads">The four threads</h4>
+  <p>Three of them are created before a single instruction of the game runs. The <strong>main thread</strong> drives the window and SDL; the <strong>guest thread</strong> runs the game itself; the <strong>GPU thread</strong> parses PM4 and drives Vulkan; and the <strong>audio thread</strong> mixes and plays back. This is the guest and GPU pair, both from <code>emulator.cpp</code> and <code>graphicsRun.cpp</code>:</p>
+
+  <div class="filename">src/emulator.cpp — the guest thread, then the main thread parks</div>
+<pre>static void Execute(const std::filesystem::path&amp; game_patch) {
+    Common::Thread guest_thread(
+        [](void* param) {
+            auto* rt = Common::Singleton&lt;Loader::RuntimeLinker&gt;::Instance();
+            rt-&gt;Execute(*static_cast&lt;const std::filesystem::path*&gt;(param));
+        },
+        &amp;patch_path);
+    Libs::Graphics::WindowRun();   <i>// main thread never returns from here</i>
+    std::quick_exit(0);
+}</pre>
+
+  <div class="filename">src/graphics/guest_gpu/graphicsRun.cpp — the GPU thread</div>
+<pre>GpuState::GpuState(RenderContext&amp; renderer): m_renderer(renderer) {
+    m_gfx_cp = std::make_unique&lt;CommandProcessor&gt;(renderer);
+    m_thread = std::jthread(ThreadRun, this);   <i>// one dedicated GPU thread</i>
+}</pre>
+
+  <p>Note the two thread wrappers in one file: the guest thread uses <code>Common::Thread</code> (the project's own wrapper, so it can keep a unique per-thread id for logs and TLS), while the GPU thread uses <code>std::jthread</code> (C++20, joins automatically on destruction). Both run on the same host process — a guest crash is a real crash in this process (see <a href="t-cpp-build.html">topic C3</a>).</p>
+
+  <h4 id="handing-work-between-threads">Handing work between threads</h4>
+  <p>The guest never touches Vulkan directly. It fills PM4 buffers and calls <code>GpuState::SendCommand</code>, which has the classic "run inline if you're already on the right thread, otherwise queue it" shape:</p>
+
+  <div class="filename">src/graphics/guest_gpu/graphicsRun.cpp — the handoff</div>
+<pre>void GpuState::SendCommand(Common::UniqueFunction&lt;void&gt;&amp;&amp; command) {
+    if (IsGpuThread()) {
+        command();                    <i>// already on the GPU thread: run now</i>
+        return;
+    }
+    Common::LockGuard lock(m_queue_mutex);
+    m_commands.push_back(std::move(command));
+    m_work_available.Signal();        <i>// wake the GPU thread</i>
+}</pre>
+
+  <p>Two ideas worth absorbing:</p>
+  <ul>
+    <li><strong>The lock is held only to push onto the queue, never while running.</strong> <code>m_commands</code> is guarded by <code>m_queue_mutex</code>; the actual work happens outside the lock on the GPU thread. That is the difference between a <em>queue</em> and holding a lock across a long operation.</li>
+    <li><strong>A condition variable is the wake-up.</strong> <code>m_work_available</code> lets the GPU thread <em>sleep</em> when idle and <em>wake</em> exactly when work arrives, instead of busy-polling. The GPU thread's whole job is a loop: wait for signal, pop a submission, process it.</li>
+  </ul>
+
+  <p>The GPU thread actually serves <strong>57 queues</strong> — one graphics queue plus seven compute pipes × eight queues each:</p>
+
+  <div class="filename">src/graphics/guest_gpu/graphicsRun.cpp</div>
+<pre>static constexpr uint32_t ComputePipeCount     = 7;
+static constexpr uint32_t QueuesPerComputePipe = 8;
+static constexpr uint32_t QueueCount           = 1 + ComputePipeCount * QueuesPerComputePipe;
+std::array&lt;std::deque&lt;Submission&gt;, QueueCount&gt; m_queues;</pre>
+
+  <p>The guest submits to a specific queue the way it would on real hardware; Kyty keeps them separate and round-robins its single worker across them. That is a faithful model of a thing it is not physically reproducing.</p>
+
+  <h4 id="atomics-and-memory-order">Atomics and memory order</h4>
+  <p>The tree uses <code>std::atomic</code> for counters that must never tear, and almost always with the default sequential consistency — except where it consciously relaxes. The canonical relaxed example is the log throttling in <code>shader.cpp</code>:</p>
+
+  <div class="filename">src/graphics/shader/shader.cpp — a deliberately relaxed counter</div>
+<pre>static std::atomic_uint log_count {0};
+if (log_count.fetch_add(1, std::memory_order_relaxed) &lt; 32) {
+    <i>// print the same warning at most 32 times, from any thread</i>
+}</pre>
+
+  <p>Why <code>relaxed</code> is correct here and scary elsewhere:</p>
+  <ul>
+    <li><strong>Relaxed</strong> guarantees the operation is atomic and won't be reordered around its own other atomics, but gives <em>no ordering</em> against unrelated memory. Fine for "count how many times this happened" — the count can be a few off and nobody cares.</li>
+    <li><strong>Sequential consistency</strong> (the default when you write no order) additionally gives a single global order of all seq-cst operations. That is what you want when a counter <em>signals something</em> — like <code>m_pending_commands</code>, which another thread observes to decide whether the GPU is still busy.</li>
+  </ul>
+
+  <p>The rule to take away: a counter that only <em>counts</em> can be relaxed; a flag or counter that <em>coordinates</em> must not be. When in doubt, write nothing (the default is safe), and only relax after you can say exactly why.</p>
+
+  <h4 id="locks-and-condition-variables">Locks and condition variables</h4>
+  <p>Where a structure is actually shared and mutated — an address-space free list, a submission queue — the tree locks. The project wraps <code>std::mutex</code> as <code>Common::Mutex</code> with a <code>Common::LockGuard</code> RAII guard, but also uses <code>std::mutex</code> directly:</p>
+
+  <div class="filename">src/kernel/memoryAddressSpace.inc — guarding the free list</div>
+<pre>auto [it, inserted] = m_free.emplace(vaddr, size);   <i>// structured binding (topic C1)</i>
+...
+std::mutex m_mutex;   <i>// every allocation path takes this</i></pre>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Primitive</th><th>Where</th><th>Job</th></tr></thead>
+      <tbody>
+        <tr><td><code>std::atomic</code></td><td><code>graphicsRun.cpp</code>, <code>shader.cpp</code>, <code>ajm.cpp</code></td><td>counters and flags that must not tear</td></tr>
+        <tr><td><code>std::mutex</code> / <code>Common::Mutex</code> + guard</td><td><code>memoryAddressSpace.inc</code>, <code>graphicsRun.cpp</code>, <code>agc.cpp</code></td><td>short critical sections around shared data</td></tr>
+        <tr><td><code>Common::CondVar</code></td><td><code>graphicsRun.cpp</code> (<code>m_work_available</code>, <code>m_idle</code>)</td><td>sleep/wake signalling between producer and consumer</td></tr>
+        <tr><td><code>std::jthread</code></td><td><code>graphicsRun.cpp</code></td><td>the GPU worker, auto-joined on shutdown</td></tr>
+        <tr><td><code>thread_local</code></td><td><code>libs.h</code> (<code>PRINT_NAME</code>)</td><td>per-thread state that never needs a lock at all</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>And the quiet winner: <code>thread_local</code>. The <code>PRINT_NAME</code> flag from <a href="t-hle.html">topic 12</a> is per-thread, so one thread can enable tracing without a single atomic. Anything that is only ever touched by the thread that owns it needs no synchronisation — most of the guest's state is exactly that, because guest threads are host threads.</p>
+
+  <h4 id="the-coherency-channel">The coherency channel — the cross-thread handshake</h4>
+  <p>CPU and GPU share one memory in the guest's model. On the host, the GPU thread must <em>see</em> what the guest thread wrote. The emulator's trick (covered properly in <a href="t-coherency.html">topic 10</a>) is that the GPU never polls — it <em>faults</em>. When the guest writes a page the GPU has been told about, a host page-fault fires on the <strong>faulting thread</strong>, and the exception handler routes it to the memory layer:</p>
+
+  <div class="filename">src/loader/runtimeLinker.cpp — the exception handler, routing to memory</div>
+<pre>if (Libs::LibKernel::Memory::HandleGpuFault(access, info-&gt;access_violation_vaddr)) {
+    return true;   <i>// the fault was a coherency notification, not a bug</i>
+}</pre>
+
+  <p>This is concurrency working <em>through the memory system</em>: the page protection is the lock, the fault is the signal, and no queue or mutex is involved. It is the single most distinctive thing about this codebase, and it is why <code>reinterpret_cast</code> and page-granular thinking dominate.</p>
+
+  <h4 id="fences-and-timeline-semaphores">The GPU's own clock: fences &amp; timeline semaphores</h4>
+  <p>Between the GPU thread and the Vulkan driver, ordering is expressed with semaphores. The renderer submits with <em>wait ticks</em> and <em>signal ticks</em> — a Vulkan <strong>timeline semaphore</strong>, a monotonically increasing counter the GPU advances as work completes:</p>
+
+  <div class="filename">src/graphics/host_gpu/renderer/context.cpp — a submission with ticks</div>
+<pre>n_info.waitSemaphoreValueCount   = submit.num_wait_semaphores;
+n_info.pWaitSemaphoreValues      = submit.wait_ticks.data();
+n_info.signalSemaphoreValueCount = submit.num_signal_semaphores;
+n_info.pSignalSemaphoreValues    = submit.signal_ticks.data();</pre>
+
+  <p>The reason the game and the GPU can overlap is that several submissions are <em>in flight</em> at once, each waiting on the previous one's tick. The <a href="lab.html">Lab's <code>timeline</code> tool</a> is eight command buffers in rotation: a fence per buffer releases retained resources (staging buffers, descriptor sets) only when that buffer's tick passes. If a draw needs a buffer that is still in flight, the CPU blocks on the tick — that back-pressure is how Vulkan throttles the game's frame rate for free.</p>
+
+  <h4 id="the-kernel-primitives">The kernel's own synchronisation surface</h4>
+  <p>Games don't use atomics and mutexes — they use console APIs, and those sit on top of FreeBSD-style primitives in <code>src/kernel/</code>:</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>File</th><th>Primitive</th><th>What it is</th></tr></thead>
+      <tbody>
+        <tr><td><code>eventQueue.cpp</code></td><td>kqueue</td><td>the unified event mechanism — a queue with attached sources (timer, socket, GPU) and <code>kevent</code>-style waits. Covered in <a href="t-hle.html">topic 12</a>.</td></tr>
+        <tr><td><code>semaphore.cpp</code></td><td>counting semaphore</td><td>a counter you can wait on or post to; the classic producer/consumer throttle.</td></tr>
+        <tr><td><code>eventFlag.cpp</code></td><td>event flags</td><td>a bitmask threads wait on for any-or-all bits. Console middleware loves these.</td></tr>
+        <tr><td><code>syncOnAddress.cpp</code></td><td>address sync</td><td>wait/notify on a specific memory address — how the guest does lightweight inter-thread signalling.</td></tr>
+        <tr><td><code>libUlt.cpp</code></td><td>ULT fibers</td><td>Sony's user-level cooperative threads — hundreds of lightweight stacks on one host thread, switched by hand (the <code>FiberSaveContext</code> asm from <a href="t-cpp-asm.html">topic C2</a>).</td></tr>
+        <tr><td><code>pthread.cpp</code></td><td>pthreads</td><td>the real thread substrate — guest threads <em>are</em> host threads.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout h">
+    <span class="lbl">The mental model</span>
+    <p>Guest threads = host threads. Guest mutexes/events = host mutexes/events under a thin shim. The GPU thread = a dedicated worker consuming queues and driving Vulkan. And the coherency layer = memory protection doing the synchronisation the guest believes the hardware provides for free. If you keep those three layers separate, every concurrency bug you meet will fall into one of them.</p>
+  </div>
+
+  <div class="learn">
+    <div class="lh">Learn more · concurrency in C++</div>
+    <ul>
+      <li><span class="kind spec">Reference</span><div><a href="https://en.cppreference.com/w/cpp/atomic/memory_order">cppreference — memory_order</a><span class="d">The definitive explainer of relaxed / acquire / release / seq_cst and what each one actually promises. Read this before ever writing a non-default order.</span></div></li>
+      <li><span class="kind">Article</span><div><a href="https://www.modernescpp.com/index.php/category/multithreading/">Modernes C++ — multithreading</a><span class="d">A readable tour of threads, mutexes, condition variables and atomics, in the exact shape this tree uses them.</span></div></li>
+      <li><span class="kind spec">Spec</span><div><a href="https://man.freebsd.org/cgi/man.cgi?query=kqueue">FreeBSD — kqueue(2)</a><span class="d">The event mechanism the PS5 exposes and <code>eventQueue.cpp</code> reimplements — filters, flags, and the <code>KernelEvent</code> struct from topic 12.</span></div></li>
+      <li><span class="kind code">Reference</span><div><a href="https://en.cppreference.com/w/cpp/thread/jthread">cppreference — std::jthread</a><span class="d">C++20's auto-joining thread, used for the GPU worker. The <code>stop_token</code> is how cooperative shutdown is meant to work.</span></div></li>
+    </ul>
+  </div>
+    </div>
+  </section>
+
+  <section class="band band-watch">
+    <div class="band-h"><span class="band-t">Watch</span></div>
+    <p class="band-why">
+      The three threads the course cares about most, over the life of a run — and where the audio thread (the fourth) fits alongside them.
+    </p>
+    <div data-viz="threads"></div>
+  </section>
+  <section class="band band-try">
+    <div class="band-h"><span class="band-t">Try</span></div>
+    <p class="band-why">
+      Concurrency is easiest to learn by breaking it once. The Lab's <code>timeline</code> tool shows the fence dance without touching the real GPU.
+    </p>
+
+    <div class="callout k">
+      <span class="lbl">A ten-minute lab</span>
+      <p>Open the <a href="lab.html">Lab's <code>timeline</code> tool</a> and submit until all eight command buffers are in flight, then watch a fence release retained resources. Then find <code>log_count.fetch_add(1, std::memory_order_relaxed)</code> in <code>src/graphics/shader/shader.cpp</code> and change <code>relaxed</code> to nothing — rebuild, run, and confirm it still works. That tiny experiment makes "what the default actually buys you" concrete.</p>
+    </div>
+  </section>
+  <section class="band band-do">
+    <div class="band-h"><span class="band-t">Do</span></div>
+    <p class="band-why">
+      These all end at the same two files — <code>emulator.cpp</code> and <code>graphicsRun.cpp</code> — which together contain every thread this process has.
+    </p>
+
+    <div class="check">
+      <p class="check-h">Checkpoint</p>
+      <ul class="check-list">
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Find the four threads: the guest thread in <code>emulator.cpp:154</code>, the GPU thread in <code>graphicsRun.cpp:89</code>, the main thread parked in <code>WindowRun</code>, and the audio output thread.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Read <code>GpuState::SendCommand</code> and explain why the lock is released before the command runs.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Find a <code>relaxed</code> atomic and a default-order atomic. Explain in one sentence each why the relaxation is (or is not) safe there.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Explain what <code>m_work_available</code> is for and what would happen if the GPU thread never called <code>Signal</code>.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Explain why a guest page fault is a <em>notification</em> rather than an error, and which thread's handler decides that (see <code>KytyExceptionHandler</code> in <code>runtimeLinker.cpp</code>).</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>In <code>kernel/syncOnAddress.cpp</code>, identify the wait/notify pair a game thread would call, and how it differs from a mutex.</label>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+</main>
+
+<script src="assets/topics.js?v=23" defer></script>
+<script src="assets/search-index.js?v=23" defer></script>
+<script src="assets/app.js?v=23" defer></script>
+<script src="assets/viz.js?v=23" defer></script>
+<script src="assets/atlas.js?v=23" defer></script>
+<script src="assets/lab.js?v=23" defer></script>
+<script src="assets/figs.js?v=23" defer></script>
+<script src="assets/figures.js?v=23" defer></script>
+<script src="assets/highlight.js?v=23" defer></script>
+<script src="assets/tutor.js?v=23" defer></script>
+</body>
+</html>

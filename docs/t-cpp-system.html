@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The system around the GPU — KytyPS5</title>
+<meta name="description" content="Everything that is not graphics: the boot order, audio, video, network, input, the file sandbox, and the Qt launcher — and the pattern every one of them follows.">
+<link rel="stylesheet" href="assets/viz.css?v=23">
+<link rel="stylesheet" href="assets/atlas.css?v=23">
+<link rel="stylesheet" href="assets/lab.css?v=23">
+<link rel="stylesheet" href="assets/tutor.css?v=23">
+<link rel="stylesheet" href="assets/app.css?v=23">
+<link rel="stylesheet" href="assets/highlight.css?v=23">
+</head>
+<body>
+
+<main class="topic" data-app-content>
+
+  <p class="topic-eyebrow">Appendix · C5</p>
+  <h1 id="the-system-around-the-gpu">The system around the GPU</h1>
+  <p class="topic-deck">
+    The graphics half is the hard half, but a game boots, keeps running, and stays audible because of the other half. This is the map of everything that is not a draw call: audio, video, network, input, the file sandbox, and the launcher — and the one pattern they all share.
+  </p>
+
+  <section class="band band-read">
+    <div class="band-h"><span class="band-t">Read</span></div>
+    <div class="prose">
+<p class="deck">Every one of these libraries is the same shape as the <code>ContentExport</code> example from <a href="t-hle.html">topic 12</a>: a <code>LIB_VERSION</code>, functions marked <code>KYTY_SYSV_ABI</code> with a <code>PRINT_NAME()</code> trace, and a <code>LIB_DEFINE</code> registration block. Once you can read one, you can read them all — so this page is mostly about what each one <em>does</em>.</p>
+
+  <h4 id="the-boot-order">The boot order — why order matters</h4>
+  <p><code>Init()</code> in <code>src/emulator.cpp</code> initialises subsystems in a deliberate order, because each assumes the ones before it exist:</p>
+
+  <div class="filename">src/emulator.cpp — the subsystem sequence</div>
+<pre>subsystems.Initialize&lt;Config::Lifecycle&gt;();
+subsystems.Initialize&lt;Log::Lifecycle&gt;();
+subsystems.Initialize&lt;Loader::Timer::Lifecycle&gt;();
+subsystems.Initialize&lt;Libs::LibKernel::PthreadLifecycle&gt;();
+subsystems.Initialize&lt;Profiler::Lifecycle&gt;();
+subsystems.Initialize&lt;Libs::Network::Lifecycle&gt;();
+subsystems.Initialize&lt;Libs::LibKernel::Memory::Lifecycle&gt;();
+subsystems.Initialize&lt;Libs::LibKernel::FileSystem::Lifecycle&gt;();
+subsystems.Initialize&lt;Libs::Controller::Lifecycle&gt;();
+subsystems.Initialize&lt;Libs::Audio::Lifecycle&gt;();
+subsystems.Initialize&lt;Libs::Graphics::Lifecycle&gt;();</pre>
+
+  <p>Read it as a dependency graph: config first (everything reads it), logging second (everything writes it), then the timer, the pthread layer (so threads exist), the profiler, then the subsystems that need an address space — network, memory, files — then the ones that sit on top: input, audio, and finally graphics. Each <code>Lifecycle</code> is the <code>static constexpr auto initialize</code> pattern from <a href="t-cpp-language.html">topic C1</a>.</p>
+
+  <h4 id="audio">Audio — the busiest non-GPU thread</h4>
+  <p>Three files, roughly 150 KB, one job: turn what the game hands the <em>port</em> API into samples on the output. The console's audio surface has two halves:</p>
+  <ul>
+    <li><strong>Ports &amp; the DSP graph</strong> — <code>audio.cpp</code> (85 KB) implements the port lifecycle (<code>AcmContextCreate</code>, <code>Ngs2SystemCreate</code>, racks, ports) and mixes on a <strong>dedicated thread</strong>. The guest submits fixed-size blocks and <em>expects the call to block when buffers are full</em> — that back-pressure is how games pace themselves against the audio clock.</li>
+    <li><strong>Decode</strong> — <code>ajm.cpp</code> (51 KB) models a fixed-function hardware block. The guest submits a <em>batch of jobs</em> describing input/output buffers and a codec; Kyty parses that job format and routes each job to LibAtrac9 (ATRAC9) or FFmpeg (AAC, MP3).</li>
+  </ul>
+
+  <p>The interesting design point: the guest API is not "give me decoded PCM". It is "here are buffers and a codec description, process them asynchronously". So <code>ajm.cpp</code> is a little command processor, exactly like the GPU's <code>CommandProcessor</code> — decode jobs are just another stream of work.</p>
+
+  <h4 id="video">Video — FFmpeg behind a console API</h4>
+  <p>Two layers: <code>avPlayer.cpp</code> (56 KB) for full-motion-video playback, and <code>libVideoDec2.cpp</code> (23 KB) plus <code>videoDec2Decoder.cpp</code> for the general video-decode API. Both sit on FFmpeg; the README credits <code>shadPS4</code> as a reference for the AVPlayer implementation. Games use these for cutscenes — the part of the run where the GPU thread is suddenly rendering video frames instead of the game.</p>
+
+  <h4 id="network">Network — real sockets, offline-safe PlayStation</h4>
+  <p><code>libNet.cpp</code> (124 KB) plus <code>network.cpp</code> (100 KB) implement sockets, resolvers, SSL and HTTP shims. The subtle part is the <strong>NP surface</strong> — PlayStation Network APIs that a game will call at boot. Kyty stubs these <em>carefully enough that the game continues offline</em> rather than hanging on a login that will never succeed. That is the "pragmatic stub" philosophy from topic 12 applied to an entire service:</p>
+
+  <div class="filename">src/libs/network.h — a slice of the surface</div>
+<pre>int KYTY_SYSV_ABI NetResolverCreate(const char* name, int memid, int flags);
+int KYTY_SYSV_ABI NetResolverStartNtoa(int rid, const char* hostname, void* addr, int timeout, ...);
+int KYTY_SYSV_ABI Socket(int family, int type, int protocol);
+namespace Ssl {
+int KYTY_SYSV_ABI SslInit(uint64_t pool_size);
+int KYTY_SYSV_ABI SslTerm(int ssl_ctx_id);
+}</pre>
+
+  <p>The craft is in the <em>return values</em>: a login call must return "signed in as a guest" or "no session", not an error the game treats as fatal.</p>
+
+  <h4 id="input">Input — SDL events become DualSense state</h4>
+  <p><code>libPad.cpp</code> (12 KB) + <code>controller.cpp</code> (13 KB) is the smallest library and a clean example of the mapping pattern: SDL's event loop runs on the main thread (in <code>WindowRun</code>), and the emulator turns controller events into the <code>padData.h</code> structure a game's <code>padReadState</code> returns. If you want to see one subsystem end to end, this is the shortest one.</p>
+
+  <h4 id="the-file-sandbox">The file sandbox — guest paths, host files</h4>
+  <p>The game believes it lives on a console with <code>/app0</code>, <code>/download0</code>, <code>/temp0</code> and <code>/savedata0</code>. The emulator synthesises that tree from host directories at boot:</p>
+
+  <div class="filename">src/emulator.cpp — mounting the sandbox</div>
+<pre>static void MountSandboxDirs() {
+    std::string title_id;
+    if (!Loader::SystemContentParamSfoGetString("TITLE_ID", &amp;title_id) || title_id.empty()) {
+        title_id = "UNKNOWN";
+    }
+    MountOrCreateDir("_DownloadData/" + title_id, "/download0");
+    MountOrCreateDir("_TempData/"     + title_id, "/temp0");
+    MountOrCreateDir("_TempData/"     + title_id, "/temp");
+}</pre>
+
+  <p><code>kernel/fileSystem.cpp</code> holds the mount table and <code>GetRealFilename()</code>, which every guest path passes through before touching the host. Two bugs live here in the real world: <strong>case sensitivity</strong> (the console is case-insensitive, Linux is not — so lookups fall back to a case-folded scan) and <strong>path translation</strong> (a game asking for <code>/app0/eboot.bin</code> is handed a host path by the loader, never the guest path).</p>
+
+  <h4 id="the-launcher">The launcher — Qt in front of the emulator</h4>
+  <p><code>src/launcher/</code> is a small Qt application that searches the configured game folders recursively for directories containing <code>eboot.bin</code>, lists them, and runs <code>kyty_emulator --game &lt;path&gt;</code>. It is deliberately thin — all the interesting state lives in <code>emulator.cpp</code> and the config layer (<code>common/emulatorConfig.cpp</code>, which both the launcher and the emulator read).</p>
+
+  <div class="callout k">
+    <span class="lbl">The one pattern</span>
+    <p>Every library is a console API surface, not a design you invent. The work is <em>mapping</em>: which host thing stands in for which console thing, and what the game needs to believe. Ports → an audio mix thread. Decode jobs → FFmpeg. Sockets → the OS socket layer. SDL events → DualSense state. Guest paths → host paths. The code reads like a translation table, because it is one.</p>
+  </div>
+
+  <div class="learn">
+    <div class="lh">Learn more · the rest of the system</div>
+    <ul>
+      <li><span class="kind">Reference</span><div><a href="https://wiki.archlinux.org/title/Advanced_Linux_Sound_Architecture">ALSA / audio backends</a><span class="d">The audio layer's host side — SDL2 sits on top of whatever the OS provides, and the port API sits on top of SDL2.</span></div></li>
+      <li><span class="kind spec">Spec</span><div><a href="https://ffmpeg.org/documentation.html">FFmpeg documentation</a><span class="d">The decoder behind AJM, AVPlayer and VideoDec2. The <code>avcodec</code>/<code>avformat</code> split is the mental model for all three.</span></div></li>
+      <li><span class="kind">Reference</span><div><a href="https://wiki.libsdl.org/SDL2/FrontPage">SDL2 wiki</a><span class="d">The window, input and audio host layer. SDL is what makes one binary run on Windows, Linux and macOS.</span></div></li>
+      <li><span class="kind">Guide</span><div><a href="https://doc.qt.io/qt-6/">Qt 6 documentation</a><span class="d">For the launcher — a stock Qt widgets app; nothing here is unusual.</span></div></li>
+    </ul>
+  </div>
+    </div>
+  </section>
+
+  <section class="band band-watch">
+    <div class="band-h"><span class="band-t">Watch</span></div>
+    <p class="band-why">
+      The library map from topic 12, in one picture: every file in <code>src/libs/</code>, grouped by what it does — the graphics driver dominating by volume, and the rest of the system in the middle.
+    </p>
+    <div data-viz="hlemodule"></div>
+  </section>
+  <section class="band band-try">
+    <div class="band-h"><span class="band-t">Try</span></div>
+    <p class="band-why">
+      The fastest way to feel the "translation table" shape is to pick one library and read its full cycle.
+    </p>
+
+    <div class="callout k">
+      <span class="lbl">A ten-minute lab</span>
+      <p>Open <code>src/libs/libPad.cpp</code> and trace one button press end to end: where SDL delivers the event, where it becomes a <code>PadData</code> bit, and which <code>KYTY_SYSV_ABI</code> function the game's <code>padReadState</code> lands in. It is the shortest complete "console API → host reality" loop in the tree.</p>
+    </div>
+  </section>
+  <section class="band band-do">
+    <div class="band-h"><span class="band-t">Do</span></div>
+    <p class="band-why">
+      These checkpoints turn the map into reading you can reproduce.
+    </p>
+
+    <div class="check">
+      <p class="check-h">Checkpoint</p>
+      <ul class="check-list">
+        <li class="check-item">
+          <input type="checkbox">
+          <label>In <code>src/emulator.cpp</code>, list the subsystem init order and explain why Memory comes before Audio but after Network.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Read one function in <code>src/libs/audio.cpp</code> and identify the five conventions from topic 12: <code>LIB_VERSION</code>, <code>KYTY_SYSV_ABI</code>, <code>PRINT_NAME()</code>, argument logging, registration.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Explain why <code>ajm.cpp</code> processes <em>jobs</em> rather than taking a "decode these bytes" call — what hardware model is it impersonating?</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Find the mount table in <code>kernel/fileSystem.cpp</code> and the <code>GetRealFilename</code> translation. Trace what happens to <code>/app0/eboot.bin</code>.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Explain why a stubbed NP login must return a specific value rather than an error, and what happens if it returns the wrong one.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Name the three subsystems that sit on dedicated threads (see <a href="t-cpp-concurrency.html">topic C4</a>) and which one this page's audio library contributes.</label>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+</main>
+
+<script src="assets/topics.js?v=23" defer></script>
+<script src="assets/search-index.js?v=23" defer></script>
+<script src="assets/app.js?v=23" defer></script>
+<script src="assets/viz.js?v=23" defer></script>
+<script src="assets/atlas.js?v=23" defer></script>
+<script src="assets/lab.js?v=23" defer></script>
+<script src="assets/figs.js?v=23" defer></script>
+<script src="assets/figures.js?v=23" defer></script>
+<script src="assets/highlight.js?v=23" defer></script>
+<script src="assets/tutor.js?v=23" defer></script>
+</body>
+</html>

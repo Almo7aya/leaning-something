@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The codebase map &amp; the toolbox — KytyPS5</title>
+<meta name="description" content="Which file does what, the entry points and boot sequence, and the third-party toolbox behind it all — one page to keep open while you read.">
+<link rel="stylesheet" href="assets/viz.css?v=23">
+<link rel="stylesheet" href="assets/atlas.css?v=23">
+<link rel="stylesheet" href="assets/lab.css?v=23">
+<link rel="stylesheet" href="assets/tutor.css?v=23">
+<link rel="stylesheet" href="assets/app.css?v=23">
+<link rel="stylesheet" href="assets/highlight.css?v=23">
+</head>
+<body>
+
+<main class="topic" data-app-content>
+
+  <p class="topic-eyebrow">Appendix · C6</p>
+  <h1 id="the-codebase-map-the-toolbox">The codebase map &amp; the toolbox</h1>
+  <p class="topic-deck">
+    Everything before this has pointed at files in passing. This page is the map you keep open: where each subsystem lives, how a run flows through it, and which third-party library does which job.
+  </p>
+
+  <section class="band band-read">
+    <div class="band-h"><span class="band-t">Read</span></div>
+    <div class="prose">
+<p class="deck">Think of <code>src/</code> as five layers with a clear dependency direction: <code>common</code> → <code>loader</code>/<code>kernel</code> → <code>libs</code> → <code>graphics</code>. Lower layers never depend on higher ones, which is exactly what keeps the map readable.</p>
+
+  <h4 id="the-map-of-src">The map of <code>src/</code></h4>
+
+  <div class="filename">the five layers, one line each</div>
+<pre>src/main.cpp, emulator.cpp     <i>the entry: parse args, boot, run</i>
+src/common/                   <i>everything independent: abi, logging, threads, file,</i>
+                              <i>virtual memory, singleton, debug, host exceptions</i>
+src/loader/                   <i>ELF/SELF loading, the runtime linker, NIDs, JIT stubs,</i>
+                              <i>the red-zone patcher, guest instruction emulation</i>
+src/kernel/                   <i>the guest OS surface: memory, address space, threads,</i>
+                              <i>event queues, semaphores, filesystem</i>
+src/libs/                     <i>the HLE libraries (58 files) — topic C5's translation table</i>
+src/graphics/                 <i>the GPU half: guest formats, Vulkan host, shader recompiler</i>
+src/launcher/                 <i>the Qt launcher that finds games and runs the emulator</i>
+tests/                        <i>focused gtest executables — topic C3</i></pre>
+
+  <p>Within the graphics half, three directories mirror the three roles of a real GPU driver:</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Directory</th><th>Role</th><th>Key files</th></tr></thead>
+      <tbody>
+        <tr><td><code>graphics/guest_gpu/</code></td><td>how the <em>guest</em> sees the GPU — formats, the PM4 command processor, registers</td><td><code>command_processor/</code>, <code>gpu_defs.h</code>, <code>graphicsRun.cpp</code> (the GPU thread, topic C4)</td></tr>
+        <tr><td><code>graphics/host_gpu/</code></td><td>the <em>host</em> Vulkan renderer — context, pipeline cache, image/buffer caches, memory tracking</td><td><code>renderer/context.cpp</code>, <code>renderer/cache/</code>, <code>vulkanCommon.h</code>, <code>pageManager.cpp</code></td></tr>
+        <tr><td><code>graphics/shader/</code></td><td>RDNA2 → SPIR-V: decode, control-flow, IR, emit</td><td><code>recompiler/{decompiler,cfg,ir,emitter}/</code>, <code>shader.cpp</code> (the compile pipeline)</td></tr>
+        <tr><td><code>graphics/presentation/</code></td><td>the window and swapchain — the actual frames on screen</td><td><code>presentation/window/</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4 id="the-entry-points-and-boot-sequence">The entry points and boot sequence</h4>
+  <p>A run flows through exactly these calls — this is the <a href="lifetime.html">Lifetime</a> animation in file form:</p>
+
+  <div class="filename">the boot chain, from argv to the game's main</div>
+<pre>main.cpp
+  └─ ParseArgs()                    <i>--game, the flag table from topic C3</i>
+  └─ Run(options)                   <i>emulator.cpp</i>
+     └─ Init(...)                   <i>the subsystem sequence from topic C5</i>
+     └─ MountSandboxDirs()          <i>/app0, /temp0, ... — topic C5</i>
+     └─ LoadElf(eboot.bin)          <i>runtimeLinker: parse SELF/ELF, dynamic tags</i>
+     └─ Execute(...)                <i>emulator.cpp:152 — spawns the guest thread</i>
+        └─ RuntimeLinker::Execute() <i>preload, resolve relocations, apply patches,</i>
+                                    <i>run initialisers, call the entry point (topic C2's asm)</i>
+     └─ Graphics::WindowRun()       <i>main thread parks here forever</i></pre>
+
+  <p>Three files cover most "where does this happen" questions: <code>emulator.cpp</code> (the sequence), <code>loader/runtimeLinker.cpp</code> (the loading/execution), and <code>common/subsystems.h</code> (the lifecycle machinery that runs each step).</p>
+
+  <h4 id="the-toolbox">The toolbox — third-party libraries</h4>
+  <p>Everything in <code>3rdparty/</code> is pinned as a submodule (or fetched at configure time); the CMake list in the root <code>CMakeLists.txt</code> is the dependency manifest. The ones you will actually touch:</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Library</th><th>What it does</th><th>Where it shows up</th></tr></thead>
+      <tbody>
+        <tr><td><code>SDL2</code></td><td>window, input, audio host layer</td><td><code>WindowRun</code>, <code>controller.cpp</code>, the audio backend</td></tr>
+        <tr><td><code>FFmpeg</code></td><td>audio &amp; video decode</td><td><code>ajm.cpp</code>, <code>avPlayer.cpp</code>, <code>libVideoDec2</code></td></tr>
+        <tr><td><code>Vulkan-Headers</code> + <code>SPIRV-Tools</code></td><td>the Vulkan API and SPIR-V validation/optimisation</td><td>the whole <code>host_gpu</code> layer; <code>spirv-tools-opt</code> in the link list</td></tr>
+        <tr><td><code>VulkanMemoryAllocator</code> (VMA)</td><td>GPU memory allocation</td><td>image/buffer allocation in <code>host_gpu</code></td></tr>
+        <tr><td><code>fmt</code></td><td>type-safe printf-style formatting</td><td><code>LOGF</code>, <code>EXIT</code>, every string build — topic C3</td></tr>
+        <tr><td><code>spdlog</code></td><td>the logging sinks behind <code>common/logging/</code></td><td>every log line, routed to console or file by <code>--printf-direction</code></td></tr>
+        <tr><td><code>magic_enum</code></td><td>enum → string, string → enum at compile time</td><td><code>Common::EnumName</code> (crash logs!), <code>--shader-optimization-type</code> parsing</td></tr>
+        <tr><td><code>xxHash</code></td><td>fast, non-cryptographic hashing</td><td>shader and cache keys</td></tr>
+        <tr><td><code>stb</code></td><td>single-header image decode</td><td><code>libPngDec</code></td></tr>
+        <tr><td><code>nlohmann_json</code></td><td>JSON parsing</td><td><code>param.json</code>, <code>libJson2</code>, game patches</td></tr>
+        <tr><td><code>Zydis</code> (fetched)</td><td>x86-64 disassembler</td><td><code>redZonePatcher.cpp</code> decodes guest instructions with it</td></tr>
+        <tr><td><code>xbyak</code> (fetched)</td><td>x86-64 assembler</td><td><code>redZonePatcher.cpp</code> generates patch/trampoline code</td></tr>
+        <tr><td><code>LibAtrac9</code></td><td>the console's ATRAC9 audio codec</td><td>AJM decode jobs</td></tr>
+        <tr><td><code>imgui</code></td><td>immediate-mode UI</td><td>the IME overlay in <code>presentation/</code></td></tr>
+        <tr><td><code>tracy</code></td><td>frame profiler</td><td><code>--profiler-direction Network</code> (topic C3)</td></tr>
+        <tr><td><code>winpthread</code></td><td>pthread shim on Windows</td><td>linked on <code>clang-cl</code> builds</td></tr>
+        <tr><td><code>gtest</code></td><td>the test framework</td><td>the <code>kyty_tests</code> executables (topic C3)</td></tr>
+        <tr><td><code>cpuinfo</code></td><td>CPU feature detection</td><td>runtime capability checks</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Two of them are the pair you saw in <a href="t-cpp-asm.html">topic C2</a> and the patcher topics from the course: <strong>Zydis</strong> reads the guest's x86 instructions, and <strong>xbyak</strong> writes new ones. The emulator's own JIT in <code>loader/jit.h</code> is hand-assembled bytes; xbyak is the "proper" assembler used where a lot of code has to be generated.</p>
+
+  <h4 id="reading-conventions">Reading conventions that save time</h4>
+  <ul>
+    <li><strong>Names map to hardware.</strong> <code>pm4.h</code>, <code>gpu_defs.h</code>, <code>RegisterDefaults</code> — if a name looks like a datasheet field, it is one. The codebase keeps console names rather than inventing friendly ones (the <code>path.html</code> appendix covers this in detail).</li>
+    <li><strong><code>static</code> = private to the file.</strong> Every HLE implementation is <code>static</code>; anything a subsystem exposes externally is declared in its header with a <code>Lifecycle</code> struct or a <code>KYTY_SYSV_ABI</code> function.</li>
+    <li><strong><code>EXIT_IF</code>/<code>EXIT</code> = the error channel.</strong> Topic C3's macros. A wall of them at the top of a function is a validation contract.</li>
+    <li><strong>Follow a value, not a call graph.</strong> Start from a struct (a <code>V#</code>, a <code>Submission</code>, a <code>KernelEvent</code>) and grep for it — the tree is organised around data, and the data names are stable.</li>
+  </ul>
+
+  <div class="callout k">
+    <span class="lbl">Where to start reading</span>
+    <p>If you want one linear path through the whole tree: <code>main.cpp</code> → <code>emulator.cpp</code> → <code>common/subsystems.h</code> → <code>loader/runtimeLinker.cpp</code> (load one module) → <code>kernel/memory.cpp</code> (allocate one page) → one <code>libs/libPad.cpp</code> function → one draw through <code>commandProcessor</code>. That is roughly the course's own order, and every later page is a deepening of one of those hops.</p>
+  </div>
+
+  <div class="learn">
+    <div class="lh">Learn more · the codebase map</div>
+    <ul>
+      <li><span class="kind">Guide</span><div><a href="path.html#reading-conventions-in-this-codebase">Reading conventions in this codebase</a><span class="d">The learning path's own appendix — naming, comments, and the habits the maintainers expect.</span></div></li>
+      <li><span class="kind spec">Spec</span><div><a href="https://github.com/KytyPS5/KytyPS5">KytyPS5 on GitHub</a><span class="d">The source this whole site is a reading of. The README's "Important areas" list is the maintainers' own map.</span></div></li>
+      <li><span class="kind">Reference</span><div><a href="https://cmake.org/cmake/help/latest/guide/tutorial/">CMake tutorial</a><span class="d">If the <code>CMakeLists.txt</code> is opaque, this is the shortest path to reading the dependency manifest as a manifest.</span></div></li>
+    </ul>
+  </div>
+    </div>
+  </section>
+
+  <section class="band band-watch">
+    <div class="band-h"><span class="band-t">Watch</span></div>
+    <p class="band-why">
+      The boot sequence the map describes, end to end — three threads, three jobs, and where every subsystem in <code>src/</code> sits in the flow.
+    </p>
+    <div data-viz="threads"></div>
+  </section>
+  <section class="band band-try">
+    <div class="band-h"><span class="band-t">Try</span></div>
+    <p class="band-why">
+      Grep is the map's search box. Prove you can navigate it in ten minutes.
+    </p>
+
+    <div class="callout k">
+      <span class="lbl">A ten-minute lab</span>
+      <p>Pick a noun from this page — <code>Submission</code>, <code>KernelEvent</code>, <code>VSharp</code>, <code>PageFaultAccess</code> — and <code>rg</code> it across <code>src/</code>. Read the first struct definition you find, then jump to the two or three places it is consumed. That "follow the value" loop is how every page in this course was researched.</p>
+    </div>
+  </section>
+  <section class="band band-do">
+    <div class="band-h"><span class="band-t">Do</span></div>
+    <p class="band-why">
+      These checkpoints are the map committed to memory.
+    </p>
+
+    <div class="check">
+      <p class="check-h">Checkpoint</p>
+      <ul class="check-list">
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Name the five layers of <code>src/</code> in dependency order, and say which direction dependencies are not allowed to point.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Trace the boot chain from <code>main.cpp</code> to the guest thread — you should be able to list every hop without looking.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>For each of SDL2, FFmpeg, fmt, magic_enum, Zydis, xbyak, spdlog — name the subsystem that uses it.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Explain the difference between <code>guest_gpu</code>, <code>host_gpu</code> and <code>shader</code>, and which of the course's topics maps to each.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Find <code>Common::EnumName</code> in a crash log path — where does magic_enum's string output end up?</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Say what the red-zone patcher uses Zydis for versus xbyak, and where the course covered the red zone.</label>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+</main>
+
+<script src="assets/topics.js?v=23" defer></script>
+<script src="assets/search-index.js?v=23" defer></script>
+<script src="assets/app.js?v=23" defer></script>
+<script src="assets/viz.js?v=23" defer></script>
+<script src="assets/atlas.js?v=23" defer></script>
+<script src="assets/lab.js?v=23" defer></script>
+<script src="assets/figs.js?v=23" defer></script>
+<script src="assets/figures.js?v=23" defer></script>
+<script src="assets/highlight.js?v=23" defer></script>
+<script src="assets/tutor.js?v=23" defer></script>
+</body>
+</html>
