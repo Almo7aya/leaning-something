@@ -83,6 +83,97 @@
   </section>
 
   <!-- ------------------------------------------------------- -->
+  <section class="pg-tool" style="margin-top:52px;background:transparent;box-shadow:none;border-style:dashed">
+    <h2 id="cpp-tools" class="pg-sec-h">Appendix · C++ primer tools</h2>
+    <p class="pg-sub" style="margin-top:8px">
+      The three ideas the C++ appendix keeps returning to, as tools: what the compiler does to a
+      struct, what the JIT writes into a machine-code stub, and what a crash log is actually
+      telling you. No artifacts needed — each one demos itself.
+    </p>
+  </section>
+
+  <!-- ------------------------------------------------------- -->
+  <section class="pg-tool">
+    <h2 id="struct-layout">Struct layout lab <span class="pg-badge b-appx">C++</span></h2>
+    <p class="pg-sub">
+      Padding is the difference between the size you guess and the size the compiler produces.
+      Build a struct, watch the alignment padding appear byte by byte, flip
+      <code>#pragma pack(1)</code> and watch it vanish — then assert the exact size the way
+      <code>static_assert(sizeof(...))</code> does in <code>memory.h</code>.
+    </p>
+    <div class="pg-body" id="pg-layout"></div>
+  </section>
+
+  <!-- ------------------------------------------------------- -->
+  <section class="pg-tool">
+    <h2 id="jit-patch">Machine-code patch calculator <span class="pg-badge b-appx">C++</span></h2>
+    <p class="pg-sub">
+      The emulator writes its own import stubs, and every relative jump or call needs a
+      displacement computed by hand: <code>target − rip</code>, stored little-endian. Give it a
+      <code>rip</code> and a target and watch the exact bytes <code>jit.h</code> would write —
+      including when the target is too far away.
+    </p>
+    <div class="pg-body" id="pg-jit"></div>
+  </section>
+
+  <!-- ------------------------------------------------------- -->
+  <section class="pg-tool">
+    <h2 id="crash-log-reader">Crash-log reader <span class="pg-badge b-appx">C++</span></h2>
+    <p class="pg-sub">
+      Guest code runs natively, so a game crash is a real host exception — and the emulator writes
+      a forensic dump about it. Paste one in and it becomes a page: what faulted, on which
+      register, called from where. The faulting address is a symptom; the stack trace at the
+      bottom is the cause.
+    </p>
+    <div class="pg-body" id="pg-crash"></div>
+  </section>
+
+  <!-- ------------------------------------------------------- -->
+  <section class="pg-tool" style="margin-top:52px;background:transparent;box-shadow:none;border-style:dashed">
+    <h2 id="shader-tools" class="pg-sec-h">Appendix · shaders</h2>
+    <p class="pg-sub" style="margin-top:8px">
+      The shader recompiler's three artifacts, opened: decode the input ISA word by word, read
+      whatever the shader-log dump produced, and unpack the descriptors the shaders bind.
+    </p>
+  </section>
+
+  <!-- ------------------------------------------------------- -->
+  <section class="pg-tool">
+    <h2 id="shader-isa">RDNA2 ISA word decoder <span class="pg-badge b-kyty">GPU</span></h2>
+    <p class="pg-sub">
+      A shader is just 32-bit words until something decodes them. Paste any word from a shader's
+      input ISA and get the encoding family, the instruction name, the operands and the exact bit
+      fields — the same dispatch the recompiler runs, transcribed from
+      <code>ShaderDecoder.cpp</code>.
+    </p>
+    <div class="pg-body" id="pg-isa"></div>
+  </section>
+
+  <!-- ------------------------------------------------------- -->
+  <section class="pg-tool">
+    <h2 id="shader-log">Shader artifact reader <span class="pg-badge b-kyty">GPU</span></h2>
+    <p class="pg-sub">
+      Run with <code>--shader-log-direction File</code> and <code>_Shaders/</code> fills up with
+      the whole compilation: the decoded input ISA (<code>.rdna2</code>), the SPIR-V disassembly
+      (<code>.spvasm</code>) and the binary (<code>.spv</code>). Drop any of them in and it becomes
+      a summary — where the control flow is, what Vulkan will actually run.
+    </p>
+    <div class="pg-body" id="pg-shl"></div>
+  </section>
+
+  <!-- ------------------------------------------------------- -->
+  <section class="pg-tool">
+    <h2 id="desc-decoder">Buffer &amp; sampler descriptor decoder <span class="pg-badge b-kyty">GPU</span></h2>
+    <p class="pg-sub">
+      Every <code>buffer_load</code> and every <code>image_sample</code> reads its parameters from a
+      descriptor in the shader resource table. Give a V# (buffer) or a T# (sampler) its four dwords
+      and read back the address, stride, count, format — or the filtering rules — the way the tree
+      decodes them.
+    </p>
+    <div class="pg-body" id="pg-desc"></div>
+  </section>
+
+  <!-- ------------------------------------------------------- -->
   <section class="pg-tool" style="background:transparent;box-shadow:none;border-style:dashed">
     <h2 id="generate">Don't have artifacts yet?</h2>
     <p class="pg-sub" style="margin-bottom:12px">

@@ -117,6 +117,20 @@ window.KYTY_TOPICS = [
 
   { part: "Tools" },
   { id: "playground", n: "→", title: "Playground", ready: true, file: "playground.html",
-    blurb: "Decode your own command buffers, modules and logs." }
+    blurb: "Decode your own command buffers, modules and logs." },
+
+  { part: "Appendix" },
+  { id: "cpp-language", n: "C1", title: "C++ language, by example", ready: true,
+    file: "t-cpp-language.html",
+    blurb: "The small, dense subset of C++ this tree leans on — templates, constexpr, move semantics, casts, packing, macros — each shown as it actually appears.",
+    src: [] },
+  { id: "cpp-asm", n: "C2", title: "Assembly, the ABI & machine code", ready: true,
+    file: "t-cpp-asm.html",
+    blurb: "Reading the hand-written inline asm and the JIT machine-code buffers that cross the host/guest boundary.",
+    src: [] },
+  { id: "cpp-build", n: "C3", title: "Building, linking & debugging", ready: true,
+    file: "t-cpp-build.html",
+    blurb: "Source to binary, the linker's job, the EXIT macros, and reading the crash log this project writes.",
+    src: [] }
 ];
 

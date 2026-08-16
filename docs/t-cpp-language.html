@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>C++ language, by example — KytyPS5</title>
+<meta name="description" content="The C++ you will actually meet in this tree — templates, move semantics, constexpr, casts, packing and the preprocessor — each one shown as it really appears.">
+<link rel="stylesheet" href="assets/viz.css?v=23">
+<link rel="stylesheet" href="assets/atlas.css?v=23">
+<link rel="stylesheet" href="assets/lab.css?v=23">
+<link rel="stylesheet" href="assets/tutor.css?v=23">
+<link rel="stylesheet" href="assets/app.css?v=23">
+<link rel="stylesheet" href="assets/highlight.css?v=23">
+</head>
+<body>
+
+<main class="topic" data-app-content>
+
+  <p class="topic-eyebrow">Appendix · C1</p>
+  <h1 id="c-language-by-example">C++ language, by example</h1>
+  <p class="topic-deck">
+    You already know how to program, so this is not a C++ course — it is a map of the small, dense subset of C++ this tree leans on. Every construct below appears within the first hour of reading, shown as it actually appears, not as a textbook would dress it up.
+  </p>
+
+  <section class="band band-read">
+    <div class="band-h"><span class="band-t">Read</span></div>
+    <div class="prose">
+<p class="deck">C++ here is not trying to be clever. It is trying to do three things a garbage-collected language never asks of you: control the exact bytes of a struct, keep objects alive for a precise lifetime, and generate code at compile time instead of runtime.</p>
+
+  <h4 id="the-reading-surface">The reading surface</h4>
+  <p>Nearly everything is wrapped in a nested namespace, written with the C++17 shorthand. The nesting is organisational, not semantic — you can usually read the innermost name and ignore the rest:</p>
+
+  <div class="filename">src/kernel/memory.h</div>
+<pre>namespace Libs::LibKernel::Memory {   <i>// Libs { LibKernel { Memory { ... } } }</i>
+  ...
+}</pre>
+
+  <p><code>using</code> aliases replace <code>typedef</code> and are everywhere. The ones that look alarming are function-pointer aliases — read them right to left:</p>
+
+  <div class="filename">src/kernel/memory.h</div>
+<pre>using callback_func_t = void (*)(uintptr_t addr, size_t size);
+<i>//  "callback_func_t" is a pointer to a function that takes</i>
+<i>//   (uintptr_t, size_t) and returns void.</i></pre>
+
+  <p>And a file-local function is spelled <code>static</code> — the pre-C++ way of saying "internal linkage". Almost every HLE implementation in <code>src/libs/</code> is <code>static</code>, so it exists only inside its own translation unit and the linker never exports it. If you see a function without <code>static</code> at file scope and it is not a class member, it is deliberately public.</p>
+
+  <h4 id="auto-the-default-spelling">`auto` — the default spelling</h4>
+  <p><code>auto</code> deduces the type from the initialiser. The tree writes <code>const auto</code> for anything read-only, <code>const auto&amp;</code> to avoid copying, and <code>auto*</code> when the initialiser is a pointer. It never deduces a reference unless you write the <code>&amp;</code> yourself:</p>
+
+  <div class="filename">src/loader/runtimeLinker.cpp</div>
+<pre>const auto aligned_stack_top = reinterpret_cast&lt;uintptr_t&gt;(stack_top) &amp; ~static_cast&lt;uintptr_t&gt;(0x0f);
+const auto guest_rsp         = aligned_stack_top - 2u * sizeof(uintptr_t);</pre>
+
+  <div class="filename">src/libs/vaContext.h</div>
+<pre>auto* addr = reinterpret_cast&lt;T*&gt;(ptr);   <i>// auto* keeps the pointerness</i></pre>
+
+  <p>Think of <code>auto</code> as TypeScript's <code>let x = ...</code> where the type is always inferred — except there is no <code>: Type</code> annotation syntax for it. When a declaration says <code>const auto&amp;</code>, read "a reference that I will not copy and cannot modify".</p>
+
+  <h4 id="constexpr-and-compile-time">`constexpr` — computing at build time</h4>
+  <p><code>constexpr</code> marks a value (or function) that can be evaluated when the binary is built. <code>src/loader/elf.h</code> opens with a wall of them, because the ELF format's magic numbers never change:</p>
+
+  <div class="filename">src/loader/elf.h</div>
+<pre>constexpr char    ELFCLASS64    = 2;
+constexpr int     EM_X86_64     = 62;
+constexpr int     EV_CURRENT    = 1;
+constexpr Elf64_Word PT_LOAD     = 1;
+constexpr Elf64_Sxword DT_NEEDED = 0x00000001;
+<i>// a compile-time database of the format, used to parse game modules</i></pre>
+
+  <p>Its partner is <code>static_assert</code>, which fails the <em>build</em> if the condition is false. The tree uses it as a contract on struct sizes — the ultimate guard against the compiler inserting padding you did not ask for:</p>
+
+  <div class="filename">src/kernel/memory.h</div>
+<pre>struct VirtualQueryInfo { ... };
+
+static_assert(sizeof(VirtualQueryInfo) == 72, "VirtualQueryInfo struct size is incorrect");</pre>
+
+  <p>Then the genuinely modern part. <code>src/common/subsystems.h</code> uses <code>consteval</code> (a function that <em>must</em> run at compile time), <code>if constexpr</code> (compile-time branching) and a <code>requires</code> clause (asking "does this type have a member?"):</p>
+
+  <div class="filename">src/common/subsystems.h</div>
+<pre>template &lt;typename Lifecycle&gt;
+static consteval Callback ShutdownCallback() {
+    if constexpr (requires { Lifecycle::shutdown; }) {
+        return Lifecycle::shutdown;
+    }
+    return nullptr;
+}</pre>
+
+  <p>This is a type that may or may not provide a <code>shutdown</code> member; the code adapts at compile time instead of runtime. It feeds the wider pattern of a <em>Lifecycle</em> descriptor — a struct of <code>static constexpr</code> members that describes a subsystem to a registry:</p>
+
+  <div class="filename">src/kernel/memory.h</div>
+<pre>struct Lifecycle {
+    static constexpr const char* name       = "Memory";
+    static constexpr auto        initialize = Libs::LibKernel::Memory::Initialize;
+    static constexpr auto        shutdown   = Libs::LibKernel::Memory::Shutdown;
+};</pre>
+
+  <p><code>static constexpr auto initialize = SomeFunction;</code> stores a function pointer as a compile-time constant. No virtual dispatch, no runtime registration table — the compiler bakes the pointer in.</p>
+
+  <h4 id="templates-writing-code-that-writes-code">Templates — code that writes code</h4>
+  <p>A template is a recipe instantiated at compile time for each combination of arguments. Three shapes appear constantly:</p>
+
+  <p><strong>1. Function templates that deduce their own sizes.</strong> In <code>OpcodeTable.h</code>, the array size is captured by passing the array by reference — <code>const Entry (&amp;table)[N]</code> — so <code>FindOpcode</code> works for any table without the caller saying how long it is:</p>
+
+  <div class="filename">src/graphics/shader/recompiler/decompiler/OpcodeTable.h</div>
+<pre>template &lt;typename Entry, size_t N&gt;
+constexpr const Entry* FindOpcode(const Entry (&amp;table)[N], uint32_t encoding) {
+    for (const auto&amp; entry: table) {
+        if (entry.encoding == encoding) {
+            return &amp;entry;
+        }
+    }
+    return nullptr;
+}</pre>
+
+  <p><strong>2. Class templates with non-type parameters.</strong> Template arguments do not have to be types — they can be numbers. <code>BitArray&lt;N&gt;</code> is a fixed-size bit set, and the <code>MultiLevelPageTable</code> for the texture cache is configured entirely by numbers:</p>
+
+  <div class="filename">src/graphics/host_gpu/renderer/cache/multiLevelPageTable.h</div>
+<pre>template &lt;typename EntryT, size_t PageBits = 20, size_t AddressSpaceBits = 40,
+          size_t FirstLevelBits = 10&gt;
+class MultiLevelPageTable final {
+    static_assert(AddressSpaceBits &lt; 64);
+    static_assert(PageBits &lt; AddressSpaceBits);
+    ...
+};</pre>
+
+  <p><strong>3. Explicit specialisation.</strong> When one combination needs a hand-written version. <code>vaContext.h</code> has a bespoke reader for 32-byte float4 arguments that the generic path cannot handle:</p>
+
+  <div class="filename">src/libs/vaContext.h</div>
+<pre>template &lt;&gt;
+inline VaFloatX4 VaArg_reg_save_area_fp&lt;VaFloatX4, 32&gt;(VaList* l) {
+    <i>// two 16-byte registers stitched into one float4</i>
+    ...
+}</pre>
+
+  <p>The takeaway: a template is not a function, it is a factory of functions. If the compiler cannot instantiate it for a given argument, the error lands at the <em>call site</em> — which is why template errors read backwards.</p>
+
+  <h4 id="move-semantics-and-perfect-forwarding">Move semantics and perfect forwarding</h4>
+  <p>The single best example in the tree is <code>src/common/uniqueFunction.h</code>, a move-only, type-erased callable written in 54 lines. Read it once and three language features click into place:</p>
+
+  <div class="filename">src/common/uniqueFunction.h — the interesting half</div>
+<pre>template &lt;typename Result, typename... Args&gt;            <i>// variadic template</i>
+class UniqueFunction {
+    ...
+    UniqueFunction(UniqueFunction&amp;&amp;) noexcept            = default;  <i>// movable</i>
+    UniqueFunction(const UniqueFunction&amp;)                = delete;   <i>// not copyable</i>
+
+    template &lt;typename Function&gt;
+    UniqueFunction(Function&amp;&amp; function)
+        : m_callable(std::make_unique&lt;Callable&lt;std::decay_t&lt;Function&gt;&gt;&gt;(
+              std::forward&lt;Function&gt;(function))) {}
+    ...
+};</pre>
+
+  <ul>
+    <li><strong>Move-only.</strong> The copy constructor is <code>= delete</code>, the move is defaulted. A <code>std::function</code> copies; a <code>UniqueFunction</code> cannot, which is exactly the guarantee you want when a closure owns a resource (a buffer, a fence).</li>
+    <li><strong><code>std::decay_t&lt;Function&gt;</code></strong> strips references and <code>const</code> from the deduced type so the stored member has a concrete, plain type.</li>
+    <li><strong><code>std::forward</code></strong> re-applies the argument's original value category — lvalue stays an lvalue, rvalue stays an rvalue — so nothing is copied unnecessarily. <code>std::move</code> is the "I am done with this" cast; <code>std::forward</code> is the "pass it along as it came" cast.</li>
+  </ul>
+
+  <p>The same trio appears in <code>ByteBuffer</code>, where <code>Add(Byte&amp;&amp; val)</code> lets the vector steal the byte instead of copying it. You do not need to write these yourself yet — you need to <em>read</em> them, and the rule that makes reading easy is: <code>&amp;&amp;</code> in a parameter means "accept an rvalue and allow moving from it".</p>
+
+  <h4 id="raii-and-smart-pointers">RAII — the object owns the resource</h4>
+  <p>There is no garbage collector. A resource (memory, a Vulkan handle, a file) is owned by an object whose destructor releases it. <code>std::unique_ptr</code> is the default owner; <code>std::shared_ptr</code> is used when ownership genuinely must be shared.</p>
+
+  <div class="filename">src/graphics/host_gpu/renderer/cache/multiLevelPageTable.h</div>
+<pre>auto&amp; bucket = m_first_level[FirstLevelIndex(page)];
+if (bucket == nullptr) {
+    bucket = std::make_unique&lt;Bucket&gt;();   <i>// allocated lazily, freed by the table's destructor</i>
+    ++m_allocated_buckets;
+}</pre>
+
+  <p>And here is the deliberate use of <code>shared_ptr</code>, from the event-queue code (also covered in <a href="t-hle.html">topic 12</a>): a queue can be destroyed while another thread is blocked in it, so it is pinned with a shared reference for the duration of the operation:</p>
+
+<pre>using KernelEqueueRef = std::shared_ptr&lt;KernelEqueuePrivate&gt;;
+[[nodiscard]] KernelEqueueRef KernelPinEqueue(KernelEqueue eq);</pre>
+
+  <p>The mental model: every resource has exactly one owner, and the owner is a stack object whose lifetime you can trace by closing braces. When a function returns a <code>unique_ptr</code> or <code>shared_ptr</code>, the ownership is being <em>transferred</em> to the caller.</p>
+
+  <h4 id="casts-four-kinds">Casts — four kinds, one habit</h4>
+  <p>Every C++ cast is an explicit conversion, and the four spellings communicate intent:</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Cast</th><th>Means</th><th>In this tree</th></tr></thead>
+      <tbody>
+        <tr><td><code>static_cast</code></td><td>Convert between compatible types</td><td>integer width changes: <code>static_cast&lt;uint32_t&gt;(value)</code>, <code>static_cast&lt;uint32_t&gt;(m_data.size())</code></td></tr>
+        <tr><td><code>reinterpret_cast</code></td><td>"Treat these bytes as this type" — unchecked</td><td>pointer ↔ integer: <code>reinterpret_cast&lt;uintptr_t&gt;(stack_top)</code>, <code>reinterpret_cast&lt;T*&gt;(ptr)</code>. The workhorse of the whole project.</td></tr>
+        <tr><td><code>const_cast</code></td><td>Drop <code>const</code></td><td>rare; the signal is almost always "design smell nearby"</td></tr>
+        <tr><td>C-style <code>(Type)x</code></td><td>whatever compiles</td><td>still common in <code>src/libs/</code>, e.g. <code>(uint64_t)init_param</code> in log lines</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>The one habit to build: <code>reinterpret_cast</code> is a promise with no runtime check. That is why the <code>static_assert(sizeof(...))</code> guards from earlier exist — they are how you make an unchecked cast checked. When you see one, ask: what fixed layout is being relied on, and where is the assert?</p>
+
+  <h4 id="guest-addresses-are-just-integers">Guest addresses are just integers</h4>
+  <p>This is the single most important mental model for the codebase, and it is not a C++ feature — it is how C++ is <em>used</em> here. The game's memory lives in a 48-bit guest address space that the emulator lays out itself. Through most of the code, a guest address is an ordinary integer:</p>
+
+  <div class="filename">src/kernel/memory.h — the API surface</div>
+<pre>void     WriteBacking(uint64_t vaddr, const void* data, uint64_t size) noexcept;
+void     InvalidateMemory(uint64_t vaddr, uint64_t size);
+int      KYTY_SYSV_ABI KernelMprotect(const void* addr, size_t len, int prot);
+uint64_t AllocateProgramMemory(uint64_t search_addr, uint64_t size, ...);</pre>
+
+  <p>A real host pointer appears only at the boundary — when something must be <em>executed</em> or dereferenced. There the two worlds meet through <code>reinterpret_cast</code>:</p>
+
+<pre>auto* func = reinterpret_cast&lt;entry_func_t&gt;(addr);   <i>// guest address → host function pointer</i>
+const auto aligned_stack_top =
+    reinterpret_cast&lt;uintptr_t&gt;(stack_top) &amp; ~static_cast&lt;uintptr_t&gt;(0x0f);</pre>
+
+  <p>So the same eight bytes are a number in one function and a pointer in the next. Read any function that takes a <code>vaddr</code>/<code>uint64_t</code> argument as "this is an address in the guest, not a pointer into my process".</p>
+
+  <h4 id="raw-memory-and-fixed-layouts">Raw memory and fixed layouts</h4>
+  <p>An emulator constantly reinterprets bytes, so the tree is disciplined about layout. Four tools come up over and over:</p>
+
+  <p><strong>1. <code>#pragma pack(1)</code></strong> — turns off padding. The compiler inserts alignment padding between struct members; when the struct must mirror a file format or a wire layout, that padding is poison. <code>src/loader/jit.h</code> wraps its machine-code structs in <code>#pragma pack(1)</code>, and <code>vaContext.h</code> does the same for its register-save area.</p>
+
+  <div class="filename">src/libs/vaContext.h</div>
+<pre>#pragma pack(1)
+
+struct VaList {
+    uint32_t gp_offset;
+    uint32_t fp_offset;
+    void*    overflow_arg_area;
+    void*    reg_save_area;
+};
+
+#pragma pack()</pre>
+
+  <p><strong>2. Bitfields</strong> — flags packed into a single word by declaring a bit width:</p>
+
+  <div class="filename">src/kernel/memory.h</div>
+<pre>struct VirtualQueryInfo {
+    ...
+    uint32_t is_flexible  : 1;
+    uint32_t is_direct    : 1;
+    uint32_t is_stack     : 1;
+    uint32_t is_pooled    : 1;
+    uint32_t is_committed : 1;
+    uint32_t is_gpu_prt   : 1;
+    uint32_t amm_usage    : 1;
+    uint32_t reserved     : 1;
+    char      name[KERNEL_MAXIMUM_NAME_LENGTH];
+    uint8_t   gpu_mask_id;
+    uint8_t   reserved2;
+};
+
+static_assert(sizeof(VirtualQueryInfo) == 72, "VirtualQueryInfo struct size is incorrect");</pre>
+
+  <p>Bitfields are fine <em>inside</em> the emulator where host and guest are the same compiler — but the layout rules are implementation-defined, so you never rely on them across the ABI boundary. Where the guest's layout must match byte-for-byte, the tree uses <code>static_assert</code> to prove it.</p>
+
+  <p><strong>3. Anonymous unions</strong> — several views of the same bytes, selected by a tag. The memory-pool batch entry is one 32-byte record whose meaning depends on <code>op</code>:</p>
+
+  <div class="filename">src/kernel/memory.h</div>
+<pre>struct KernelMemoryPoolBatchEntry {
+    uint32_t op;
+    uint32_t flags;
+    union {
+        struct { void* addr; uint64_t len; uint8_t prot; uint8_t type; } commit;
+        struct { void* addr; uint64_t len; } decommit;
+        struct { void* dst;  void* src;  uint64_t len; } move;
+        ...
+        uintptr_t padding[3];
+    };
+};</pre>
+
+  <p><strong>4. <code>offsetof</code></strong> — the byte offset of a member within a struct. <code>vaContext.h</code> uses it to build a hand-rolled variadic-argument reader by offset arithmetic on the register save area.</p>
+
+  <div class="filename">src/libs/vaContext.h — inside the VA_CONTEXT macro</div>
+<pre>(ctx).va_list.gp_offset         = offsetof(VaRegSave, gp);
+(ctx).va_list.fp_offset         = offsetof(VaRegSave, fp);</pre>
+
+  <h4 id="attributes-messages-to-the-compiler">Attributes — messages to the compiler</h4>
+  <p>Attributes are contracts with the compiler, not runtime features. The ones that recur:</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Attribute</th><th>Promise</th><th>Seen at</th></tr></thead>
+      <tbody>
+        <tr><td><code>[[nodiscard]]</code></td><td>"The return value must not be ignored" — the compiler warns if you drop it</td><td><code>memory.h:112</code>, most of <code>byteBuffer.h</code></td></tr>
+        <tr><td><code>[[maybe_unused]]</code></td><td>"I know I never use this; do not warn"</td><td>the <code>thread_local</code> flag in <code>libs.h</code></td></tr>
+        <tr><td><code>noexcept</code></td><td>"This function does not throw"</td><td><code>memory.h:113</code></td></tr>
+        <tr><td><code>__attribute__((format(printf, a, b)))</code></td><td>check <code>printf</code>-style arguments at compile time, like the C runtime does</td><td><code>KYTY_FORMAT_PRINTF</code> in <code>common.h</code></td></tr>
+        <tr><td><code>noreturn</code>, <code>naked</code>, <code>returns_twice</code>, <code>sysv_abi</code>/<code>ms_abi</code></td><td>the ABI and machine-code edge — the subject of <a href="t-cpp-asm.html">the next topic</a></td><td><code>runtimeLinker.cpp</code>, <code>libKernel.cpp</code>, <code>abi.h</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4 id="the-preprocessor-as-a-code-generator">The preprocessor as a code generator</h4>
+  <p>Modern C++ avoids macros, but this codebase uses them deliberately in three places — and you must read them to read the libraries:</p>
+
+  <p><strong>1. Special-member boilerplate.</strong> Deleted copy/move constructors for a whole class in one line:</p>
+
+  <div class="filename">src/common/common.h</div>
+<pre>#define KYTY_CLASS_NO_COPY(name)                                                       \
+public:                                                                                 \
+    name(const name&amp;)                = delete;                                         \
+    name&amp; operator=(const name&amp;)     = delete;                                         \
+    name(name&amp;&amp;) noexcept            = delete;                                         \
+    name&amp; operator=(name&amp;&amp;) noexcept = delete;</pre>
+
+  <p><strong>2. The HLE registration DSL.</strong> The whole of <code>src/libs/</code> is registered with a handful of macros (covered in <a href="t-hle.html">topic 12</a> and animated below). Notice the <code>#</code> operator in <code>LIB_ADD</code> — it stringifies its argument at compile time, turning a function name into a log label with no reflection machinery:</p>
+
+  <div class="filename">src/libs/libs.h</div>
+<pre>#define LIB_ADD(n, f, t)                                                       \
+    {                                                                          \
+        Loader::SymbolResolve sr {};                                           \
+        sr.name  = n;  sr.library = g_library;  sr.module = g_module;          \
+        ...
+        auto        func     = reinterpret_cast&lt;uint64_t&gt;(f);                  \
+        const char* dbg_name = "" #f;        <i>// "function_name" as a string</i> \
+        s-&gt;Add(sr, func, dbg_name);                                            \
+    }
+
+#define LIB_FUNC(n, f) LIB_ADD(n, f, Loader::SymbolType::Func)</pre>
+
+  <p><strong>3. ABI shims</strong> that must be spelled identically at every call site — <code>VA_ARGS</code> expands to the System V argument list, <code>VA_CONTEXT</code> to the code that captures it into a struct.</p>
+
+  <p>Reading a macro: expand it in your head, pasting the arguments into the body. The <code>\</code> at line ends just means "this macro continues on the next line". <code>__func__</code>, seen inside <code>PRINT_NAME()</code>, is a built-in that is always the current function's name — the macro-compatible alternative to a template <code>__FUNCTION__</code>.</p>
+
+  <p>And the <code>thread_local</code> in <code>LIB_NAME</code> is worth calling out: each translation unit gets its <em>own</em> per-thread flag, which is how <code>PRINT_NAME_ENABLE(true)</code> can turn on tracing for one module on one thread without flooding the log from everywhere else.</p>
+
+  <h4 id="modern-stl-you-will-meet">The modern STL you will meet</h4>
+  <p>Familiarity with a handful of headers covers most of the tree:</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Feature</th><th>What it is</th><th>Seen at</th></tr></thead>
+      <tbody>
+        <tr><td>Structured bindings</td><td>destructuring a pair/tuple into names — like JS</td><td><code>auto [it, inserted] = m_free.emplace(vaddr, size);</code> in <code>memoryAddressSpace.inc</code></td></tr>
+        <tr><td><code>std::optional&lt;T&gt;</code></td><td>a value that may be absent — like <code>T | null</code></td><td><code>redZonePatcher.cpp</code>, <code>profiler.h</code>; read with <code>.has_value()</code> / <code>.value()</code></td></tr>
+        <tr><td><code>std::span&lt;const T&gt;</code></td><td>a non-owning view of contiguous data — like a typed slice</td><td><code>redZonePatcher.h</code>, <code>shader.h</code></td></tr>
+        <tr><td><code>std::from_chars</code></td><td>fast, allocation-free number parsing</td><td><code>main.cpp</code>, <code>gamePatch.cpp</code></td></tr>
+        <tr><td>Lambdas</td><td>anonymous functions, passed as comparators/callbacks</td><td><code>ByteBuffer::Sort</code>, everywhere</td></tr>
+        <tr><td><code>&lt;bit&gt;</code> helpers</td><td>bit tricks: <code>std::countr_zero</code>, <code>std::countl_one</code></td><td><code>bitArray.h</code> scanning for set-bit runs</td></tr>
+        <tr><td><code>std::atomic</code>, <code>std::mutex</code></td><td>thread-safe counters and locks</td><td><code>agc.cpp</code>, <code>ajm.cpp</code>, <code>memoryAddressSpace.inc</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4 id="coming-from-typescript">Coming from TypeScript / JavaScript</h4>
+  <div class="tw">
+    <table>
+      <thead><tr><th>JS / TS</th><th>C++ in this tree</th></tr></thead>
+      <tbody>
+        <tr><td><code>const x = f()</code></td><td><code>const auto x = f()</code></td></tr>
+        <tr><td><code>interface</code></td><td>a class with pure virtual methods — see <code>CallableBase</code> in <code>uniqueFunction.h</code></td></tr>
+        <tr><td>class with methods</td><td>a <code>struct</code> (everything public) is the default here</td></tr>
+        <tr><td>arrow function</td><td>lambda: <code>[capture](params) { ... }</code></td></tr>
+        <tr><td><code>null</code>, optional chaining</td><td><code>nullptr</code>; <code>std::optional</code> + <code>.has_value()</code></td></tr>
+        <tr><td>destructuring <code>const [a, b] = pair</code></td><td><code>auto [a, b] = pair</code></td></tr>
+        <tr><td><code>.map()</code> / <code>.filter()</code></td><td><code>std::transform</code> and friends — or just a loop. STL is verbose; loops are idiomatic here too.</td></tr>
+        <tr><td><code>any</code></td><td>type erasure (as in <code>UniqueFunction</code>), or an integer + tag (as in the packed unions)</td></tr>
+        <tr><td>exceptions</td><td>largely avoided; results are return codes, <code>EXIT_IF</code> asserts, or log lines</td></tr>
+        <tr><td>garbage collector</td><td>RAII: <code>unique_ptr</code>/<code>shared_ptr</code>. You own every allocation.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout k">
+    <span class="lbl">One habit to break</span>
+    <p>In JS, <code>const obj = { ... }</code> gives you a mutable reference — the word <code>const</code> lies. In C++, <code>const</code> is enforced: <code>const T&amp;</code> cannot be modified, and the compiler will not let you forget it. When C++ code seems to be fighting you about <code>const</code>, it is usually telling the truth about an ownership question you should stop and think about.</p>
+  </div>
+
+  <div class="learn">
+    <div class="lh">Learn more · C++ for this codebase</div>
+    <ul>
+      <li><span class="kind spec">Reference</span><div><a href="https://en.cppreference.com/w/">cppreference.com</a><span class="d">The dictionary. For the constructs above, start with the pages on <code>constexpr</code>, templates, move constructors, and the <code>static_assert</code> declaration. Better for looking things up than for learning.</span></div></li>
+      <li><span class="kind">Course</span><div><a href="https://www.learncpp.com/">Learn C++</a><span class="d">A free, genuinely sequential course. Chapter 15 onward (move semantics), chapter 21 (templates) and chapter 20 (classes) map directly onto what this topic covered.</span></div></li>
+      <li><span class="kind code">Book</span><div><a href="https://www.oreilly.com/library/view/effective-modern-c/9781491908419/">Effective Modern C++</a><span class="d">Scott Meyers. Items 7, 11 and 21 are precisely the move/forward/decay machinery in <code>UniqueFunction</code>; item 12 explains the <code>&amp;&amp;</code>-parameter habit.</span></div></li>
+      <li><span class="kind code">Tool</span><div><a href="https://cppinsights.io/">C++ Insights</a><span class="d">Paste a snippet and watch templates, <code>auto</code> and <code>if constexpr</code> expand into the code the compiler really sees. The fastest way to make the "factory of functions" idea concrete.</span></div></li>
+      <li><span class="kind spec">Spec</span><div><a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines">C++ Core Guidelines</a><span class="d">The why behind the conventions this tree follows, including the RAII and smart-pointer rules that make lifetimes traceable.</span></div></li>
+    </ul>
+  </div>
+    </div>
+  </section>
+
+  <section class="band band-watch">
+    <div class="band-h"><span class="band-t">Watch</span></div>
+    <p class="band-why">
+      The macro you will meet on your first change, taken apart: the one line that registers an HLE function, and what it becomes.
+    </p>
+    <div data-viz="cppmacros"></div>
+  </section>
+  <section class="band band-try">
+    <div class="band-h"><span class="band-t">Try</span></div>
+    <p class="band-why">
+      The best way to make all of this concrete is to watch the compiler. Take any snippet from the Read band and put it in Compiler Explorer — you will see the template instantiate, the <code>constexpr</code> fold away, and the <code>reinterpret_cast</code> become nothing at all, because it is only a promise.
+    </p>
+
+    <div class="callout k">
+      <span class="lbl">A ten-minute lab</span>
+      <p>Open <a href="https://godbolt.org/">godbolt.org</a>, set the language to C++ and the compiler to <code>x86-64 clang 18</code> (matching the build). Type <code>constexpr int N = 72; static_assert(N == 72);</code> — then add <code>reinterpret_cast</code> to a pointer and see the generated assembly contain nothing at all. Then paste the <code>UniqueFunction</code> constructor and watch the moves appear.</p>
+    </div>
+  </section>
+  <section class="band band-do">
+    <div class="band-h"><span class="band-t">Do</span></div>
+    <p class="band-why">
+      These checkpoints all end in "and then read the source" — because the source is the only textbook that matches this tree exactly.
+    </p>
+
+    <div class="check">
+      <p class="check-h">Checkpoint</p>
+      <ul class="check-list">
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Open <code>src/common/uniqueFunction.h</code> and name every language feature it uses: variadic template, <code>std::decay_t</code>, <code>std::forward</code>, deleted copy, defaulted move, type erasure.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Open <code>src/kernel/memory.h</code> and find a <code>static_assert(sizeof(...))</code>. Explain in one sentence what layout it protects, and why the assert is stronger than a comment.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Find a <code>#pragma pack(1)</code> (try <code>src/libs/vaContext.h</code>) and a bitfield (<code>VirtualQueryInfo</code>). Explain the difference between "we removed padding" and "we packed flags into a word".</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>In <code>src/loader/jit.h</code>, find the placement-new expression in <code>CallPlt</code>'s constructor. What is being constructed, and into what?</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>In <code>src/libs/libs.h</code>, read <code>LIB_ADD</code> and identify the <code>#</code> operator. What does it produce, and where does that string end up?</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Skim <code>src/graphics/host_gpu/renderer/cache/multiLevelPageTable.h</code> and count the template parameters that are <em>numbers</em> rather than types.</label>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+</main>
+
+<script src="assets/topics.js?v=23" defer></script>
+<script src="assets/search-index.js?v=23" defer></script>
+<script src="assets/app.js?v=23" defer></script>
+<script src="assets/viz.js?v=23" defer></script>
+<script src="assets/atlas.js?v=23" defer></script>
+<script src="assets/lab.js?v=23" defer></script>
+<script src="assets/figs.js?v=23" defer></script>
+<script src="assets/figures.js?v=23" defer></script>
+<script src="assets/highlight.js?v=23" defer></script>
+<script src="assets/tutor.js?v=23" defer></script>
+</body>
+</html>

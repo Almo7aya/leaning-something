@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Building, linking &amp; debugging — KytyPS5</title>
+<meta name="description" content="The toolchain, the compile-and-link pipeline, the EXIT macros, and how to read the crash log this project writes.">
+<link rel="stylesheet" href="assets/viz.css?v=23">
+<link rel="stylesheet" href="assets/atlas.css?v=23">
+<link rel="stylesheet" href="assets/lab.css?v=23">
+<link rel="stylesheet" href="assets/tutor.css?v=23">
+<link rel="stylesheet" href="assets/app.css?v=23">
+<link rel="stylesheet" href="assets/highlight.css?v=23">
+</head>
+<body>
+
+<main class="topic" data-app-content>
+
+  <p class="topic-eyebrow">Appendix · C3</p>
+  <h1 id="building-linking-debugging">Building, linking &amp; debugging</h1>
+  <p class="topic-deck">
+    Reading the code is one thing; making it build and telling a crash log apart from a feature is the other. This page is the bridge: how source becomes a binary in this project, what the linker is really doing, and how the emulator tells you what broke.
+  </p>
+
+  <section class="band band-read">
+    <div class="band-h"><span class="band-t">Read</span></div>
+    <div class="prose">
+<p class="deck">For a web engineer the mental model is: TypeScript + bundler + linter + test runner, transplanted to a compiled language. The pieces line up almost one-to-one, and the differences are the interesting parts.</p>
+
+  <h4 id="the-toolchain-at-a-glance">The toolchain at a glance</h4>
+  <p>The project deliberately restricts itself to one compiler family, one build generator, and one linker:</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Piece</th><th>Choice</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td>Language</td><td>C++20</td><td><code>set(CMAKE_CXX_STANDARD 20)</code> in the root <code>CMakeLists.txt</code> — the <code>consteval</code>/<code>requires</code>/<code>if constexpr</code> from <a href="t-cpp-language.html">topic C1</a> need it.</td></tr>
+        <tr><td>Compiler</td><td>Clang only (MSVC rejected at configure time)</td><td>No other compiler has <code>__attribute__((sysv_abi))</code>, which every HLE function needs. CMake fails with <em>"only Clang and GCC are supported"</em> if you try <code>cl.exe</code>.</td></tr>
+        <tr><td>Build generator</td><td>Ninja</td><td>Fast, parallel, single command. Configure with <code>-G Ninja</code>.</td></tr>
+        <tr><td>Linker</td><td>lld (or <code>lld-link</code> on Windows)</td><td>LLVM's linker; chosen because the compiler is LLVM's. Emits the map file that turns crash addresses into symbols.</td></tr>
+        <tr><td>Shaders</td><td><code>glslangValidator</code></td><td>Found at configure time (<code>find_program(... REQUIRED)</code>) and run during the build to turn GLSL into embedded SPIR-V.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>The very first line of output when you run the emulator is the build string, and it is there to tell you exactly which of these you are running:</p>
+
+  <div class="filename">src/main.cpp — GetBuildString</div>
+<pre>fmt::format("{}, {}, ver = {}, git = {}, date = {}",
+            type.c_str(), compiler.c_str(),   <i>// e.g. "Debug, clang-lld-64"</i>
+            KYTY_VERSION, KYTY_GIT_VERSION, date.ToString().c_str());</pre>
+
+  <p>When you see a bug report, that first line is the reproduction conditions in one line.</p>
+
+  <h4 id="configure-and-build">Configure and build — the three commands</h4>
+  <p>The whole build is three commands, and understanding what each <em>does</em> is the point of this section:</p>
+
+  <div class="filename">first build, from the repository root</div>
+<pre>git submodule update --init --recursive
+
+cmake -S . -B _Build/windows -G Ninja ^
+  -DCMAKE_BUILD_TYPE=Release ^
+  -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl ^
+  -DCMAKE_PREFIX_PATH="C:/Qt/6.x.x/msvc2022_64"
+
+cmake --build _Build/windows --target launcher
+cmake --install _Build/windows --prefix _Build/windows/install</pre>
+
+  <p><strong>Step 1 — dependencies.</strong> Everything the emulator links against lives in <code>3rdparty/</code> as git submodules: SDL2 (windows/input), FFmpeg (audio/video decode), SPIRV-Tools, VulkanMemoryAllocator, fmt, gtest, magic_enum, imgui, Zydis (x86 disassembler), xbyak (x86 assembler), LibAtrac9. This is the equivalent of <code>npm install</code> — except the versions are pinned as commits, like a lockfile.</p>
+
+  <p><strong>Step 2 — configure.</strong> CMake's configure pass does the <em>detection</em> work: verifies 64-bit (<code>if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8) message(FATAL_ERROR ...)</code>), detects endianness (<code>test_big_endian</code>), checks the compiler is Clang, finds <code>glslangValidator</code>, and generates two headers — <code>cmake_config.h</code> (compiler/linker/platform macros) and <code>kytyGitVersion.h</code> (the git hash from <code>generate_version.cmake</code>). Nothing compiles yet.</p>
+
+  <p><strong>Step 3 — build.</strong> Compile and link. Everything after this is the rest of the page.</p>
+
+  <h4 id="what-actually-compiles">What actually compiles</h4>
+  <p>The source list is collected with <code>file(GLOB ... CONFIGURE_DEPENDS)</code> — a huge recursive glob over <code>src/libs</code>, <code>src/graphics</code> (through <code>guest_gpu</code>, <code>host_gpu/renderer/cache|image|pipeline</code>, <code>shader/recompiler/cfg|decompiler|emitter|ir</code>, <code>presentation</code>), <code>src/kernel</code>, <code>src/loader</code>, plus <code>main.cpp</code>. The glob is why adding a new <code>.cpp</code> in those directories needs a CMake re-run to be picked up.</p>
+
+  <p>Then the genuinely unusual part: the GPU's compute shaders are compiled <em>during the build</em>. A custom CMake command runs <code>glslangValidator</code> on each <code>gpu_tiler_*.comp</code>, and <code>embed_spirv.cmake</code> turns the resulting <code>.spv</code> file into a C header containing the bytes as an array:</p>
+
+  <div class="filename">CMakeLists.txt — one embedded shader</div>
+<pre>COMMAND "${KYTY_GLSLANG_VALIDATOR}" -V --target-env vulkan1.0 -Os
+        "-I${gpu_tiler_shader_dir}" -o "${shader_spv}" "${shader_source}"
+COMMAND ${CMAKE_COMMAND} -DINPUT=${shader_spv} -DOUTPUT=${shader_header}
+        -DSYMBOL=${shader_symbol} -P "${KYTY_SOURCE_DIR}/embed_spirv.cmake"</pre>
+
+  <p>So the emulator's own GPU shaders ride inside the binary as byte arrays — no asset loading at runtime, no missing-file bugs. Same trick as the JIT machine code from <a href="t-cpp-asm.html">topic C2</a>: code becomes data at build time.</p>
+
+  <h4 id="linking-like-your-bundler-wishes">Linking — what your bundler wishes it was</h4>
+  <p>Each <code>.cpp</code> is compiled into its own <em>translation unit</em>, producing an object file. The compiler sees exactly one file plus its includes. When you call a function declared in a header, the compiler just records "there will be a symbol called <code>X</code> somewhere". It is the <strong>linker</strong> that joins every object file (and the 3rdparty libraries) and resolves those references — the analogue of your bundler resolving imports, but with the whole program laid out into one binary.</p>
+
+  <p>Three facts make linker errors readable:</p>
+  <ul>
+    <li><strong>Internal linkage</strong> — a function or global marked <code>static</code> at file scope (like every HLE implementation) exists only inside its own translation unit. The linker never sees it, which is why two files can both have a <code>static</code> helper with the same name without colliding.</li>
+    <li><strong>The One Definition Rule</strong> — a non-<code>static</code> function defined in a header is defined in every translation unit that includes it, so it must be <code>inline</code>. That is why you see <code>inline</code> on the small helpers in headers like <code>vaContext.h</code>.</li>
+    <li><strong>Unresolved symbols</strong> — "unresolved external symbol" / "undefined reference" means the declaration had no definition in any linked object. Almost always a missing source file in a CMake target, or a function you added a call to but never wrote.</li>
+  </ul>
+
+  <p>Two linker details worth knowing because they exist here. On Windows, the binary is linked with <code>/lldmap:</code> (Linux: <code>-Wl,-Map=</code>) which writes a <em>map file</em> — the full address→symbol table of the final binary. That, plus a PDB, is how a raw address from a crash becomes a function name. And <code>CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON</code> tells the linker to export everything from the shared parts without hand-written <code>__declspec(dllexport)</code> annotations.</p>
+
+  <h4 id="no-exceptions-no-rtti">No exceptions, no RTTI — and what that means</h4>
+  <p>The compiler flags in <code>src/utils.cmake</code> set the tone for the whole codebase:</p>
+
+  <div class="filename">src/utils.cmake — the clang flags</div>
+<pre>set(KYTY_CPP_FLAGS "${KYTY_CPP_FLAGS}
+    -fno-rtti -fno-exceptions
+    -fno-strict-aliasing -fno-omit-frame-pointer -Wall
+    -fcolor-diagnostics ...")</pre>
+
+  <p>Two consequences ripple through everything:</p>
+  <ul>
+    <li><strong>No <code>try</code>/<code>catch</code>, no <code>dynamic_cast</code>, no <code>typeid</code>.</strong> That is not an accident or a style choice — they would not compile. The project's error strategy (covered next) is explicit <code>EXIT</code>s and return codes instead. Exceptions are also disabled because guest code crashes must not be recoverable as if they were host errors.</li>
+    <li><strong><code>-fno-omit-frame-pointer</code> is the reason the crash logs can walk the stack.</strong> Every function keeps its frame pointer, so the debugger (and the emulator's own crash handler) can walk up the call stack without debug info.</li>
+  </ul>
+
+  <h4 id="how-the-project-fails-exit">How the project fails: <code>EXIT</code> and <code>EXIT_IF</code></h4>
+  <p>There is no exception to throw, so a fatal condition is spelled with a macro that prints a report and kills the process:</p>
+
+  <div class="filename">src/common/assert.h — abridged</div>
+<pre>#define EXIT(...)                                                     \
+    do {                                                              \
+        ((void)(Common::DbgExitHandler(__FILE__, __LINE__,            \
+                ::fmt::sprintf(__VA_ARGS__)) &&                       \
+               (EXIT_HALT(), 1)));                                    \
+    } while (0)
+
+#define EXIT_IF(x) ((void)((x) && Common::DbgExitIfHandler(#x, __FILE__, __LINE__) != 0 \
+                           && (EXIT_HALT(), 1) != 0))</pre>
+
+  <p><code>DbgExitHandler</code> builds a fatal report — a <code>--- Build ---</code> line, a host stack trace, and the file:line plus message — writes it through the logging system, triggers <code>Subsystems::EmergencyShutdownActive()</code>, and exits with status <code>321</code>. A few notes:</p>
+  <ul>
+    <li><code>__FILE__</code> and <code>__LINE__</code> are compiler-provided strings — the "where" is automatic. That is also why you see <code>__func__</code> in <code>PRINT_NAME</code>: the same family of built-ins.</li>
+    <li><code>EXIT_IF(x)</code> compiles to nothing when built with <code>KYTY_FINAL</code> — a release-with-asserts-off switch, exactly like <code>NDEBUG</code> disabling <code>assert</code>.</li>
+    <li>The <code>do { } while(0)</code> wrapper is the canonical way to make a multi-statement macro safe to use in an <code>if</code> body without braces — one of the reasons macros survive in this codebase.</li>
+  </ul>
+
+  <h4 id="reading-a-crash-log">Reading a crash log</h4>
+  <p>Guest code runs natively, so when the game hits a bad pointer the host OS delivers an exception to the <em>emulator process</em>, and <code>KytyExceptionHandler</code> (in <code>runtimeLinker.cpp</code>) writes a forensic dump before dying. Read it in order, and every block has a job:</p>
+
+  <div class="filename">the shape of the dump — annotated</div>
+<pre>kyty_exception_handler: 0x0000000009006436_4e   <i>the host address that faulted</i>
+exception module: D:\Games\Example\eboot.bin   <i>which module owns it</i>
+code-32: 48 8b 5c 24 50 48 8b ...              <i>the 32 bytes around the fault, so you can</i>
+                                               <i>decode the instruction that died</i>
+exception: type=AccessViolation, av_type=Write, av_addr=0000000900_64364e,
+           native_code=00000000_c0000005     <i>read / write / execute, and the address</i>
+regs: rax=... rbx=... rcx=... rdx=...        <i>every register, because the instruction's</i>
+regs: rsi=... rdi=... rbp=... rsp=...        <i>operands live there</i>
+stack: [00]=... [01]=...                     <i>the first words of the stack</i>
+guest rax[0]: addr=..., off=..., module=...  <i>each register treated as a pointer into a</i>
+                                             <i>loaded game module, dumped and tagged</i>
+Stack trace [thread = 1]:                    <i>the guest's call stack, each frame with its</i>
+[0] 00000009006a_1234, off=00000000000012ab, eboot.bin   <i>module offset — the cause, not the symptom</i></pre>
+
+  <p>Three habits make this fast to read:</p>
+  <ul>
+    <li><strong>The faulting address is usually a symptom.</strong> <code>av_addr</code> is where the write went — often a null, a stale pointer, or a mis-read argument. The <em>cause</em> is in the <code>Stack trace</code>, which names the module and offset of every caller. Translate the module+offset with the map file or a disassembler.</li>
+    <li><strong>The <code>code-32</code> bytes are the instruction.</strong> If you can decode them (objdump, a hex-to-instruction tool, Zydis is in-tree), you know exactly which machine instruction died and which register it needed.</li>
+    <li><strong>The emulator tells you when it is its own fault.</strong> A write to the special <code>g_invalid_memory</code> address prints <code>(Unpatched object)</code> — a known bug class in the patching layer, not a game bug. And on Windows, the <code>--redzone</code> flag (from <a href="t-cpp-asm.html">topic C2</a>) is how you opt into protecting the guest's System V red zone.</li>
+  </ul>
+
+  <p>This is the same output the bug-report template asks you to attach. When a game misbehaves, the log — not the screen — is the evidence.</p>
+
+  <h4 id="diagnostics-flags">Diagnostics flags</h4>
+  <p>All of these come from <code>--help</code> in <code>src/main.cpp</code>. The three that matter for reading the project are covered in <a href="t-debugging.html">topic 18</a>; here is the full useful set:</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Flag</th><th>What it produces</th></tr></thead>
+      <tbody>
+        <tr><td><code>--printf-direction File --printf-output-file _kyty.txt</code></td><td>Everything the emulator logs — unresolved imports, unimplemented calls, errors. The default starting point.</td></tr>
+        <tr><td><code>--command-buffer-dump true</code></td><td>Raw PM4 command buffers to disk, feedable to the <a href="playground.html">Playground decoder</a>.</td></tr>
+        <tr><td><code>--shader-log-direction File --shader-log-folder _Shaders</code></td><td>Input ISA, IR and emitted SPIR-V for every shader translated.</td></tr>
+        <tr><td><code>--vulkan-validation true</code></td><td>The Vulkan validation layers — host-side correctness checking.</td></tr>
+        <tr><td><code>--graphics-debug-dump true</code></td><td>Debug dumps of the graphics state at key points.</td></tr>
+        <tr><td><code>--rd</code></td><td>RenderDoc capture hook for frame-level GPU debugging.</td></tr>
+        <tr><td><code>--redzone</code> (Windows)</td><td>Protect the guest SysV red zone — opt-in, see topic C2.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4 id="the-tests">The tests</h4>
+  <p>Tests are gtest-based and registered with CTest. Fifteen executables, each deliberately small — the interesting bit is that each compiles <em>only the sources it needs</em>:</p>
+
+  <div class="filename">src/CMakeLists.txt — one focused test</div>
+<pre>add_executable(bit_array_tests EXCLUDE_FROM_ALL
+    "${KYTY_TESTS_DIR}/BitArrayTests.cpp"
+)
+target_include_directories(bit_array_tests PRIVATE ${inc_headers})
+
+add_executable(memory_tracker_tests EXCLUDE_FROM_ALL
+    "${KYTY_TESTS_DIR}/MemoryTrackerTests.cpp"
+    "${KYTY_SOURCE_DIR}/graphics/host_gpu/pageManager.cpp"
+    "${KYTY_SOURCE_DIR}/graphics/host_gpu/memoryTracker.cpp"
+)</pre>
+
+  <p><code>EXCLUDE_FROM_ALL</code> means nothing builds until you ask — you build them all with one target, then run everything with <code>ctest</code>:</p>
+
+  <div class="filename">build and run the whole suite</div>
+<pre>cmake --build _Build/windows --target kyty_tests
+ctest --test-dir _Build/windows --output-on-failure</pre>
+
+  <p>Some tests are one binary with many modes — <code>shader_recompiler_compute_tests</code> takes <code>--scheduler-only</code>, <code>--gpu-tiler-only</code>, <code>--texture-cache-image-views</code>, and friends so one heavy build covers many subsystems. When you add a change (like an HLE function), the README asks for a test "where practical"; these focused executables are the pattern to copy.</p>
+
+  <h4 id="coming-from-typescript-the-build">Coming from TypeScript — the build mapping</h4>
+  <div class="tw">
+    <table>
+      <thead><tr><th>JS / TS world</th><th>Here</th></tr></thead>
+      <tbody>
+        <tr><td><code>package.json</code></td><td><code>CMakeLists.txt</code> — the manifest that says what builds and what it needs</td></tr>
+        <tr><td><code>npm install</code> + lockfile</td><td><code>git submodule update --init --recursive</code> — pinned commits in <code>3rdparty/</code></td></tr>
+        <tr><td><code>npm run build</code></td><td><code>cmake --build _Build/windows --target launcher</code></td></tr>
+        <tr><td>TypeScript compiler (<code>tsc</code>)</td><td>Clang — one file at a time, emitting object files</td></tr>
+        <tr><td>Bundler (webpack/rollup)</td><td>the linker (lld) — joining all the objects into one binary and resolving every symbol</td></tr>
+        <tr><td>Source maps</td><td>the PDB / <code>.map</code> file — turning addresses back into names</td></tr>
+        <tr><td><code>tsc --noEmit</code>, ESLint</td><td><code>clang-tidy</code> and <code>include-what-you-use</code> (opt-in CMake options)</td></tr>
+        <tr><td>Jest / Vitest</td><td>gtest + CTest (<code>ctest --test-dir _Build/windows</code>)</td></tr>
+        <tr><td>Babel / plugins</td><td>CMake custom commands — e.g. <code>glslangValidator</code> + <code>embed_spirv.cmake</code> running during the build</td></tr>
+        <tr><td>Pre-commit hooks</td><td>a <code>pre-commit</code> hook running <code>clang-format</code> on staged files</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout h">
+    <span class="lbl">The one mental shift</span>
+    <p>In JS nothing checks whether the function you called actually exists until runtime. Here the linker checks it <em>before the program ever runs</em>, and <code>static_assert</code> checks facts about the types themselves <em>during compilation</em>. The price is that errors appear earlier and louder; the payoff is that "it builds" genuinely means something.</p>
+  </div>
+
+  <div class="learn">
+    <div class="lh">Learn more · building and debugging C++</div>
+    <ul>
+      <li><span class="kind spec">Reference</span><div><a href="https://cmake.org/cmake/help/latest/">CMake documentation</a><span class="d">The full reference for <code>add_executable</code>, <code>target_link_libraries</code>, <code>file(GLOB)</code> and everything this project's CMake uses. <a href="https://cliutils.gitlab.io/modern-cmake/">Modern CMake</a> is a friendlier in-depth guide.</span></div></li>
+      <li><span class="kind">Book</span><div><a href="https://www.agner.org/optimize/">Linkers &amp; Loaders, John R. Levine</a><span class="d">The classic on what actually happens between object files and a running binary — symbol resolution, relocations, and why the map file exists.</span></div></li>
+      <li><span class="kind code">Tool</span><div><a href="https://lld.llvm.org/">LLVM linker (lld) docs</a><span class="d">The linker this project uses. The <code>-Map</code>/<code>-lldmap</code> flag and what the output means are documented here.</span></div></li>
+      <li><span class="kind">Guide</span><div><a href="https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/getting-started-with-windbg">WinDbg / gdb stack walking</a><span class="d">The general skill of reading a register dump and walking a stack — the crash log this page walks through is that skill in miniature.</span></div></li>
+      <li><span class="kind code">Reference</span><div><a href="https://en.cppreference.com/w/cpp/language/translation_phases">cppreference — the compilation model</a><span class="d">Translation units, ODR, internal vs external linkage — the rules behind the linker errors, in spec form.</span></div></li>
+    </ul>
+  </div>
+    </div>
+  </section>
+
+  <section class="band band-watch">
+    <div class="band-h"><span class="band-t">Watch</span></div>
+    <p class="band-why">
+      The whole pipeline, from three commands to a running emulator — including the part where the build compiles GPU shaders into the binary.
+    </p>
+    <div data-viz="buildflow"></div>
+  </section>
+  <section class="band band-try">
+    <div class="band-h"><span class="band-t">Try</span></div>
+    <p class="band-why">
+      The fastest way to learn a toolchain is to break it on purpose, once.
+    </p>
+
+    <div class="callout k">
+      <span class="lbl">A ten-minute lab</span>
+      <p>Take any file in <code>src/libs/</code> and temporarily add <code>EXIT_IF(true)</code> to a function the game calls. Rebuild, run, and read the fatal report that comes out: the <code>--- Build ---</code> label, the host stack trace, and the <code>file:line</code> of your edit. Then add <code>LOGF("x %llu\n", (unsigned long long)1)</code> somewhere reachable and watch it appear in <code>_kyty.txt</code> under <code>--printf-direction File</code>. Restore, rebuild, and you have done the whole debug loop end to end.</p>
+    </div>
+  </section>
+  <section class="band band-do">
+    <div class="band-h"><span class="band-t">Do</span></div>
+    <p class="band-why">
+      These checkpoints are the README's own contribution requirements, unpacked.
+    </p>
+
+    <div class="check">
+      <p class="check-h">Checkpoint</p>
+      <ul class="check-list">
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Run the three build commands from the README and watch where it takes longest (first configure, then shader embedding, then link).</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Find the line in <code>CMakeLists.txt</code> that rejects MSVC, and the <code>find_program</code> that fails if <code>glslangValidator</code> is missing. Both are <code>message(FATAL_ERROR)</code> — the "fail early" pattern.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Run <code>cmake --build _Build/windows --target kyty_tests</code> then <code>ctest --test-dir _Build/windows --output-on-failure</code>. Note which tests take a <code>--*-only</code> flag.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Trigger an <code>EXIT</code> on purpose (see the Try band) and identify the four parts of the fatal report: build label, stack trace, message, file:line.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Cause a linker error on purpose — call a function you never defined — and read the message: which translation unit is the caller, and what is the missing symbol?</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>On a real run's crash log, label each block from the Read band: faulting address, owner module, code-32, av_type, registers, guest stack trace with module offsets.</label>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+</main>
+
+<script src="assets/topics.js?v=23" defer></script>
+<script src="assets/search-index.js?v=23" defer></script>
+<script src="assets/app.js?v=23" defer></script>
+<script src="assets/viz.js?v=23" defer></script>
+<script src="assets/atlas.js?v=23" defer></script>
+<script src="assets/lab.js?v=23" defer></script>
+<script src="assets/figs.js?v=23" defer></script>
+<script src="assets/figures.js?v=23" defer></script>
+<script src="assets/highlight.js?v=23" defer></script>
+<script src="assets/tutor.js?v=23" defer></script>
+</body>
+</html>

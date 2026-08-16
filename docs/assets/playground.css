@@ -10,6 +10,14 @@
   color: var(--p-ink);
 }
 
+.pg-wrap a {
+  color: var(--p-accent);
+  text-underline-offset: 2px;
+  text-decoration-color: color-mix(in srgb, var(--p-accent) 45%, transparent);
+}
+.pg-wrap a:hover { text-decoration-color: currentColor; }
+.pg-wrap a:visited { color: var(--p-accent); }
+
 .pg-hero { margin-bottom: 40px; }
 .pg-eyebrow {
   font-family: var(--p-mono);
@@ -382,3 +390,30 @@
   .pg-tool { padding: 18px 16px 16px; border-radius: 12px; }
   .pg-sel { min-width: 100%; }
 }
+
+/* ---- Appendix · C++ primer tools ---- */
+.pg-sec-h {
+  font-size: 13px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--p-ink-3);
+  margin: 0;
+}
+.pg-badge.b-appx { color: var(--p-accent); }
+
+/* struct layout lab */
+.ly-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
+.ly-row .pg-sel { flex: 1; }
+.ly-row .pg-btn { padding: 2px 8px; }
+.ly-wrap { margin: 12px 0 4px; }
+.ly-strip, .ly-scale { display: flex; gap: 2px; flex-wrap: wrap; }
+.ly-byte { width: 12px; height: 16px; border-radius: 2px; background: var(--c-guest); flex: 0 0 12px; }
+.ly-byte.m2 { background: var(--c-host); }
+.ly-byte.pad { background: transparent; outline: 1px dashed var(--p-rule); }
+.ly-off { width: 12px; flex: 0 0 12px; font: 9px/16px var(--mono, monospace); color: var(--p-ink-3); text-align: center; }
+.pg-check { margin-right: 6px; }
+
+/* jit patch calculator */
+.pg-bits { font-family: var(--mono, monospace); color: var(--p-ink-3); }
+.pg-bits.oper { color: var(--p-ink); background: var(--p-surface-2); border-radius: 2px; padding: 0 3px; }
+.pg-big code b { color: var(--c-kyty); }

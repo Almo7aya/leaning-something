@@ -311,4 +311,100 @@
     body.insertBefore(wrap, body.firstChild);
     return drv;
   });
+
+  /* ============================================================
+     C1 · Appendix — one LIB_FUNC, expanded
+     ============================================================ */
+  V.register("cppmacros", function (host) {
+    var body = frame(host, "One LIB_FUNC, expanded", "macro → record → table → call",
+      "The one line that registers an HLE function is a macro that becomes a database record, which the runtime linker later matches against a NID the game imports. Same trick, three stages.");
+
+    var wrap = el("div", "atl-reloc");
+    wrap.innerHTML = '<div class="atl-code" data-r="mac"></div>';
+    var out = wrap.querySelector('[data-r="mac"]');
+
+    var STEPS = [
+      ['LIB_FUNC("0GnN4QCgIfs", ContentExport::ContentExportInit2)',
+       "the one line in the LIB_DEFINE block — an encoded id and a function pointer"],
+      ["#define LIB_FUNC(n, f) LIB_ADD(n, f, Loader::SymbolType::Func)",
+       "LIB_FUNC is a thin wrapper that forwards to LIB_ADD and tags the symbol as a function"],
+      ['Loader::SymbolResolve sr{};  sr.name = n;  sr.library = "ContentExport";  sr.module = "ContentExport";',
+       "inside LIB_ADD the preprocessor splices g_library, g_module and the versions in from the surrounding LIB_VERSION"],
+      ['const char* dbg_name = "" #f;   // "ContentExportInit2"',
+       "the # operator stringifies the token — a function name turned into a log label, no reflection involved"],
+      ["s->Add(sr, reinterpret_cast<uint64_t>(f), dbg_name);",
+       "the function pointer is stored as a plain integer in the symbol database, keyed by nid + library + version + module"],
+      ["game import resolves → map lookup → jump straight into your C++",
+       "no interpreter: resolution is a load-time lookup, and the guest then calls the function directly, arguments already in the right registers"]
+    ];
+
+    var CAPS = [
+      "This is the entire registration mechanism for HLE, and it is four macros long. Every module in <code>src/libs/</code> reduces to rows like this one.",
+      "Each guest-callable function is registered against an encoded id. The <code>LIB_FUNC</code> wrapper adds the <code>SymbolType::Func</code> tag.",
+      "The macro reads the library and module names out of the <code>LIB_VERSION</code> line above it — preprocessor splicing doing what a constant would do in ordinary code.",
+      "The <code>#</code> operator turns a token into a string literal at compile time. That is how logs print function names without any reflection machinery.",
+      "Function pointers are stored as integers. <code>uint64_t</code> is the unit of exchange for every pointer in this codebase.",
+      "When the game's import resolves, the linker looks up the tuple and jumps straight into the C++ function. The System V arguments are already in the registers the function expects."
+    ];
+
+    var drv = driver(body, CAPS, function (i) {
+      out.innerHTML = STEPS.map(function (s, k) {
+        var on = i >= k + 1;
+        return '<div class="atl-ln' + (i === k + 1 ? " hot" : on ? "" : " dimmed") + '">' +
+          "<code>" + s[0] + "</code>" +
+          (on ? '<div class="atl-sub">' + s[1] + "</div>" : "") + "</div>";
+      }).join("");
+    }, 3600);
+
+    body.insertBefore(wrap, body.firstChild);
+    return drv;
+  });
+
+  /* ============================================================
+     C3 · Appendix — the build pipeline
+     ============================================================ */
+  V.register("buildflow", function (host) {
+    var body = frame(host, "From source to a running emulator", "configure → compile → embed → link → run",
+      "Three commands on the surface, five distinct stages underneath — and one of them compiles GPU shaders into the binary during the build.");
+
+    var wrap = el("div", "atl-reloc");
+    wrap.innerHTML = '<div class="atl-code" data-r="build"></div>';
+    var out = wrap.querySelector('[data-r="build"]');
+
+    var STEPS = [
+      ["git submodule update --init --recursive",
+       "dependencies pinned as commits in 3rdparty/: SDL2, FFmpeg, SPIRV-Tools, fmt, gtest, imgui, Zydis, xbyak, LibAtrac9"],
+      ["cmake -S . -B _Build/windows -G Ninja -DCMAKE_CXX_COMPILER=clang-cl …",
+       "configure: checks 64-bit, detects endianness, rejects MSVC, finds glslangValidator, generates cmake_config.h + kytyGitVersion.h. Nothing compiles yet."],
+      ["cmake --build _Build/windows --target launcher",
+       "compile: each .cpp becomes an object file. The source list is a recursive glob over libs, graphics, kernel and loader."],
+      ["glslangValidator -V *.comp  →  embed_spirv.cmake → *_spv.h",
+       "the build compiles the emulator's own GPU shaders to SPIR-V and embeds them as byte arrays in C headers."],
+      ["lld links every object + 3rdparty → kyty_emulator.exe + launcher.exe",
+       "the linker resolves every symbol across all translation units and writes a map file / PDB so crash addresses become names."],
+      ["kyty_emulator.exe --game \"D:\\Games\\Example\" --printf-direction File",
+       "run: prints the build string (Debug, clang-lld-64, ver=0.2.2), boots guest code natively, and logs to _kyty.txt"]
+    ];
+
+    var CAPS = [
+      "This is the whole first-build flow. Web engineers can read it as npm install → configure → build, with a compiler and linker in place of a bundler.",
+      "Configure is pure detection — the equivalent of tsc --noEmit plus environment probing. The two headers it generates are how the source learns which platform, compiler and git commit it is running as.",
+      "The compile stage is one file at a time: a translation unit sees only its own source and includes. Symbol references are resolved later, by the linker.",
+      "The unusual part. The renderer's compute shaders are written in GLSL, compiled to SPIR-V by glslangValidator during the build, and embedded as byte arrays — the same code-as-data trick as the JIT machine code.",
+      "Linking is the bundler step: join every object, resolve every undefined symbol, and lay out one executable. The map file is the source map that turns a crash address back into a function.",
+      "The proof is the first line of output: build type, compiler, linker, version, git hash, date — the exact reproduction conditions of whatever happens next."
+    ];
+
+    var drv = driver(body, CAPS, function (i) {
+      out.innerHTML = STEPS.map(function (s, k) {
+        var on = i >= k + 1;
+        return '<div class="atl-ln' + (i === k + 1 ? " hot" : on ? "" : " dimmed") + '">' +
+          "<code>" + s[0] + "</code>" +
+          (on ? '<div class="atl-sub">' + s[1] + "</div>" : "") + "</div>";
+      }).join("");
+    }, 3600);
+
+    body.insertBefore(wrap, body.firstChild);
+    return drv;
+  });
 })();

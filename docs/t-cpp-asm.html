@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Assembly, the ABI &amp; machine code — KytyPS5</title>
+<meta name="description" content="Why the emulator drops to raw assembly, how to read inline asm, explicit register variables, naked functions and the machine-code buffers in jit.h.">
+<link rel="stylesheet" href="assets/viz.css?v=23">
+<link rel="stylesheet" href="assets/atlas.css?v=23">
+<link rel="stylesheet" href="assets/lab.css?v=23">
+<link rel="stylesheet" href="assets/tutor.css?v=23">
+<link rel="stylesheet" href="assets/app.css?v=23">
+<link rel="stylesheet" href="assets/highlight.css?v=23">
+</head>
+<body>
+
+<main class="topic" data-app-content>
+
+  <p class="topic-eyebrow">Appendix · C2</p>
+  <h1 id="assembly-the-abi-machine-code">Assembly, the ABI &amp; machine code</h1>
+  <p class="topic-deck">
+    Guest code runs natively, so the boundaries between host and guest are crossed in raw assembly. This page teaches you to read the small number of hand-written asm blocks in the tree — and the odder part: structs whose bytes <em>are</em> x86 instructions, generated at runtime.
+  </p>
+
+  <section class="band band-read">
+    <div class="band-h"><span class="band-t">Read</span></div>
+    <div class="prose">
+<p class="deck">C++ cannot express "swap the stack pointer to an address in guest memory and jump". When the emulator needs that kind of control it writes assembly by hand. There are exactly four such boundaries in the tree, and together they cover every asm block you will ever see here.</p>
+
+  <h4 id="where-assembly-appears">Where assembly appears</h4>
+  <p>Four places need exact register and stack control that no compiler construct provides:</p>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Boundary</th><th>What has to happen</th><th>Where</th></tr></thead>
+      <tbody>
+        <tr><td>Guest thread entry</td><td>Jump onto a freshly allocated guest stack — swap <code>rsp</code>/<code>rbp</code> to guest memory, call the entry point, swap back</td><td><code>runtimeLinker.cpp</code></td></tr>
+        <tr><td>Context save / restore</td><td>Dump the CPU state into a struct, and later restore it — a hand-rolled fiber switch</td><td><code>libKernel.cpp</code> — <code>FiberSaveContext</code> / <code>FiberRestoreContext</code></td></tr>
+        <tr><td>Return-address repair</td><td>An unrecoverable stub returns by <em>adjusting the stack</em> and <code>ret</code> — no C++ body at all</td><td><code>runtimeLinker.cpp</code> — <code>RelocateHandlerReturnStub</code></td></tr>
+        <tr><td>Generated thunks</td><td>Import stubs, PLT trampolines and TLS guards emitted as bytes at runtime</td><td><code>loader/jit.h</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4 id="x86-64-in-ten-lines">x86-64 in ten lines</h4>
+  <p>Everything below needs only a handful of registers. A fuller register tour is in <a href="t-calling-conventions.html">topic 03</a>; the abbreviated list:</p>
+<pre>rax rbx rcx rdx        <i>general purpose; rax also carries the return value</i>
+rsi rdi                <i>argument registers (and the "S"/"D" asm constraints)</i>
+rbp rsp                <i>frame pointer / stack pointer — the stack moves toward lower addresses</i>
+r8 r9 r10 r11 r12 r13 r14 r15
+rip                    <i>instruction pointer — you jump with call/jmp, never by writing it</i>
+rflags                 <i>condition flags ("cc" in a clobber list)</i>
+gs                     <i>segment base; on Windows it points at the per-thread TEB</i></pre>
+
+  <p>Two habits to pick up from the tree's comments: <code>call</code> <em>pushes the return address</em> onto the stack, and <code>rsp</code> must stay 16-byte aligned at the point of a <code>call</code> — both rules come back in the JIT section below.</p>
+
+  <h4 id="inline-asm-the-grammar">Inline asm — the grammar</h4>
+  <p>GCC and Clang inline assembly is one statement with four parts:</p>
+
+  <div class="filename">the general form</div>
+<pre>asm volatile( "<i>instructions, one string</i>"
+              : <i>outputs</i>      <i>// "=r"(x)  — write result into x</i>
+              : <i>inputs</i>       <i>// "r"(x)   — read x, any register;  "D"(x) pins rdi, "S"(x) pins rsi</i>
+              : <i>clobbers</i>);   <i>// "cc" flags, "memory", and every register you destroyed</i></pre>
+
+  <p>The rules that make it readable:</p>
+  <ul>
+    <li><code>%%rsp</code> — a real register is written with a doubled <code>%</code>, because a single <code>%</code> starts an operand placeholder. Operands are <code>%0</code>, <code>%1</code>… by position, or <code>%[guest_rsp]</code> by the name given in the constraint.</li>
+    <li><strong>Clobbers are a promise to the compiler.</strong> If your asm writes <code>rcx</code>, the compiler must know — it is <em>caller-saved</em>, so it might be holding live data. Writing <code>"memory"</code> tells the compiler the asm can read or write any memory, which also stops it reordering your asm against other memory accesses (a compiler barrier).</li>
+    <li><code>volatile</code> means "never delete or reorder this". A pure computation could be elided as dead code; a stack switch cannot.</li>
+  </ul>
+
+  <p>Now the real thing. This is the Windows branch of the guest-thread entry from <code>runtimeLinker.cpp</code>, abridged and annotated. The context: <code>guest_rsp</code> points into guest memory, and this block must run the game's entry point <em>on that stack</em>, then come back:</p>
+
+  <div class="filename">src/loader/runtimeLinker.cpp — Windows, annotated</div>
+<pre data-lang="asm">pushq %%r12 / %%r13 / %%r14 / %%r15   <i>save the host callee-saved registers</i>
+movq  %%gs:0x08, %%r14                 <i>read the Windows TEB stack limits...</i>
+movq  %%gs:0x10, %%r15
+xorq  %%rcx, %%rcx
+movq  %%rcx, %%gs:0x08                 <i>...and clear them, because stack probes during the</i>
+movq  %%rcx, %%gs:0x10                 <i>guest run would otherwise check against host bounds</i>
+movq  %%rsp, %%r12                     <i>park the host stack pointer</i>
+movq  %%rbp, %%r13                     <i>and frame pointer</i>
+movq  %[guest_rsp], %%rsp              <i>switch rsp to the guest stack</i>
+movq  %[guest_rbp], %%rbp              <i>and rbp to the guest frame</i>
+callq *%[func]                         <i>jump into the game (arguments already in rdi/rsi)</i>
+movq  %%r13, %%rbp                     <i>restore host rbp</i>
+movq  %%r12, %%rsp                     <i>restore host rsp</i>
+movq  %%r14, %%gs:0x08                 <i>put the TEB stack limits back</i>
+movq  %%r15, %%gs:0x10
+popq  %%r15 / %%r14 / %%r13 / %%r12   <i>restore the callee-saved registers</i></pre>
+
+  <p>Every line maps to a constraint on the right side of the statement. The inputs <code>[guest_rsp] "r"(guest_rsp_reg)</code> and <code>[guest_rbp] "r"(guest_rbp_reg)</code> feed the named <code>%[...]</code> operands; <code>"D"(params)</code> forces <code>rdi</code> and <code>"S"(atexit_func)</code> forces <code>rsi</code>, because that is where the System V caller placed them. The clobber list names every other register the block touches plus <code>"cc"</code> and <code>"memory"</code>.</p>
+
+  <h4 id="explicit-register-variables">Explicit register variables</h4>
+  <p>You can pin a C++ variable to a specific register, so the asm block can rely on it being there. Clang and GCC spell it as a <code>register</code> declaration with an <code>asm</code> name:</p>
+
+  <div class="filename">src/loader/runtimeLinker.cpp — macOS branch</div>
+<pre>register entry_func_t func_reg asm("rbx")      = func;
+register uintptr_t    guest_rsp_reg asm("r14") = guest_rsp;
+register uintptr_t    guest_rbp_reg asm("r15") = guest_rbp;</pre>
+
+  <p>Why bother? The comment right above it explains the exact bug this prevents: on macOS, Clang can allocate a plain <code>"r"</code> input to <code>r12</code>/<code>r13</code> — registers the asm block itself clobbers before consuming the value. Pinning the inputs to <code>rbx</code>/<code>r14</code>/<code>r15</code> (registers the System V guest preserves) makes the hand-off safe.</p>
+
+  <h4 id="naked-functions-and-friends">`naked` functions and friends</h4>
+  <p>Three attributes in this area appear exactly where you would expect them, and each means something specific:</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Attribute</th><th>Means</th><th>Real use</th></tr></thead>
+      <tbody>
+        <tr><td><code>__attribute__((naked))</code></td><td>no prologue or epilogue — the compiler emits only your asm body; you must end in <code>ret</code> yourself</td><td><code>RelocateHandlerReturnStub</code> in <code>runtimeLinker.cpp</code> — the entire function is two instructions</td></tr>
+        <tr><td><code>__attribute__((noinline, returns_twice))</code></td><td>never inline, and the function may return more than once (like <code>setjmp</code>) — it actually returns a second time when a fiber context is restored</td><td><code>FiberSaveContext</code> in <code>libKernel.cpp</code></td></tr>
+        <tr><td><code>__attribute__((noreturn))</code></td><td>"control never reaches the end"</td><td><code>FiberRestoreContext</code> — it ends by jumping into saved code</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Here is the naked stub in full — the whole function is its own epilogue, because its job <em>is</em> stack surgery:</p>
+
+  <div class="filename">src/loader/runtimeLinker.cpp:1284</div>
+<pre>__attribute__((naked)) static KYTY_SYSV_ABI void RelocateHandlerReturnStub() {
+    asm volatile("addq $8, %rsp\n\t"   <i>// drop the saved handler return address</i>
+                 "retq\n");            <i>// return to whoever called the stubbed import</i>
+}</pre>
+
+  <p>And the fiber save, which is the same idea as a <code>setjmp</code>: capture every callee-saved register and both stack pointers into a struct, then return 0 — later <code>FiberRestoreContext</code> loads them back and <code>jmp</code>s to the saved return address, making <code>FiberSaveContext</code> "return" a second time with a different value:</p>
+
+  <div class="filename">src/libs/libKernel.cpp — FiberSaveContext, abridged</div>
+<pre data-lang="asm">movq %[ctx], %%r10       <i>struct pointer into a scratch register</i>
+movq %%rbx, 0(%%r10)     <i>store every callee-saved register at a fixed offset</i>
+movq %%rbp, 8(%%r10)
+movq %%r12, 32(%%r10)
+...
+leaq 8(%%rsp), %%r11     <i>store rsp as it would be after this call returns</i>
+movq (%%rsp), %%r11      <i>and the return address itself</i>
+xorl %%eax, %%eax        <i>return 0</i></pre>
+
+  <h4 id="the-abi-attribute-is-the-glue">The ABI attribute is the C++ glue</h4>
+  <p>The asm blocks above exist because guest code follows the System V ABI and the host build may follow Microsoft x64. The C++ side of that wall is two macros in <code>src/common/abi.h</code> — an attribute applied <em>per function</em>:</p>
+
+  <div class="filename">src/common/abi.h — in full</div>
+<pre>#define KYTY_MS_ABI   __attribute__((ms_abi))
+#define KYTY_SYSV_ABI __attribute__((sysv_abi))</pre>
+
+  <p>Any function the guest can call carries <code>KYTY_SYSV_ABI</code>, so the compiler emits a System V prologue for that one function. The attribute even travels on <em>function pointers</em>, which is how the JIT tells the compiler what convention a generated call must use:</p>
+
+  <div class="filename">src/loader/jit.h — a function pointer with the convention baked in</div>
+<pre>using func_t = KYTY_MS_ABI uint8_t* (*)();
+<i>// "a pointer to a function, called with the Microsoft convention, returning uint8_t*"</i></pre>
+
+  <p>And a pointer can be manufactured from an address with <code>reinterpret_cast</code>, the only sanctioned way to turn a number into something callable:</p>
+
+<pre>auto* func = reinterpret_cast&lt;entry_func_t&gt;(addr);
+func(params, atexit_func);</pre>
+
+  <p>One ABI subtlety worth knowing before the JIT section: under System V, a variadic function reports how many vector registers are in use through the low byte of <code>rax</code>. That is why generated import thunks begin with <code>push rax</code> — the value must survive a call that may itself land in a variadic function. It is also why <code>guestPrintf.cpp</code> implements its own format-string interpreter: a System V argument list cannot be forwarded to a Microsoft-convention <code>vprintf</code>.</p>
+
+  <h4 id="machine-code-as-data">Machine code as data — <code>jit.h</code></h4>
+  <p>The strangest and most instructive file to read is <code>src/loader/jit.h</code>. Its structs are not <em>described by</em> machine code — their member <code>uint8_t code[N]</code> arrays <em>are</em> the machine code. The emulator writes bytes into these buffers at runtime and then calls them.</p>
+
+  <p>Start with the smallest one. A jmp with an index baked in:</p>
+
+  <div class="filename">src/loader/jit.h — JmpWithIndex</div>
+<pre>#pragma pack(1)
+
+struct JmpWithIndex {
+    void SetIndex(uint32_t index) { *reinterpret_cast&lt;uint32_t*&gt;(&amp;code[1]) = index; }
+
+    void SetFunc(void* handler) {
+        auto func_addr = reinterpret_cast&lt;int64_t&gt;(handler);
+        auto rip_addr  = reinterpret_cast&lt;int64_t&gt;(&amp;code[10]);
+        auto offset32  = static_cast&lt;uint32_t&gt;(static_cast&lt;uint64_t&gt;(func_addr - rip_addr) &amp; 0xffffffffu);
+        *reinterpret_cast&lt;uint32_t*&gt;(&amp;code[6]) = offset32;
+    }
+
+    static uint64_t GetSize() { return 16; }
+
+    <i>// 68 00 00 00 00          push     &lt;index&gt;</i>
+    <i>// E9 E0 FF FF FF          jmp      &lt;handler&gt;</i>
+    uint8_t code[16] = {0x68, 0x00, 0x00, 0x00, 0x00, 0xE9, 0x00, 0x00,
+                        0x00, 0x00, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90};
+};</pre>
+
+  <p>Three ideas to extract:</p>
+  <ul>
+    <li><strong>The struct is a template for instructions.</strong> <code>code</code> starts as the two instruction skeletons — <code>0x68</code> is <code>push imm32</code>, <code>0xE9</code> is <code>jmp rel32</code> — with the operands zeroed and trailing <code>0x90</code> (<code>nop</code>) padding to a fixed size. <code>#pragma pack(1)</code> guarantees the struct has no padding, so <code>&amp;code[6]</code> really is the <code>rel32</code> operand.</li>
+    <li><strong>Writing an operand is a cast to a pointer, then a store.</strong> <code>*reinterpret_cast&lt;uint32_t*&gt;(&amp;code[6]) = offset32;</code> says: treat these four bytes as a <code>uint32_t</code> and store into them. No memcpy needed.</li>
+    <li><strong>Relative offsets are computed in C++.</strong> The jmp's displacement is <code>target − address_of_next_instruction</code>. <code>rip_addr = &amp;code[10]</code> is where <code>rip</code> will be after the jmp begins, so <code>offset32 = func_addr − rip_addr</code> is the exact value the CPU expects. The emulator is doing the arithmetic the assembler would do.</li>
+  </ul>
+
+  <p>The next level is constructing objects <em>inside</em> a code buffer — placement new. <code>CallPlt</code> lays a table of <code>JmpWithIndex</code> stubs out at offsets into its own byte array:</p>
+
+  <div class="filename">src/loader/jit.h — CallPlt</div>
+<pre>explicit CallPlt(uint32_t table_size) {
+    for (uint32_t index = 0; index &lt; table_size; index++) {
+        auto* c = new (&amp;code[32] + JmpWithIndex::GetSize() * index) JmpWithIndex;
+        c-&gt;SetIndex(index);
+        c-&gt;SetFunc(this);
+    }
+}</pre>
+
+  <p><code>new (address) Type</code> runs the constructor on memory that already exists instead of allocating — here it initialises each <code>JmpWithIndex</code> at the right offset inside the <code>code</code> buffer, so that by the time the game runs, this struct <em>is</em> a runnable PLT.</p>
+
+  <p>The most elaborate one is <code>SafeCall</code>, a whole function hand-written in bytes, and it shows the two ABI rules from earlier being honoured by hand. Windows requires 32 bytes of shadow space and 16-byte stack alignment at a <code>call</code>:</p>
+
+  <div class="filename">src/loader/jit.h — SafeCall, the disassembly</div>
+<pre data-lang="asm">sub    rsp, 0x80            <i>make room to save every caller-saved register</i>
+pushfq                      <i>preserve the flags</i>
+push   rcx / rdx / r8 / r9 / r10 / r11 / rbx / rdi / rsi
+mov    rbx, rsp
+and    rsp, 0xfffffffffffffff0    <b>align the stack to 16 bytes</b>
+sub    rsp, 0x20                  <b>reserve Win64 shadow space</b>
+movabs rcx, &lt;handler&gt;             <i>the handler pointer is patched in at offset 0x22</i>
+call   rcx
+mov    rsp, rbx                   <i>restore, pop everything back, ret</i></pre>
+
+  <p>Everything you need to read the tree is in that file: <code>#pragma pack(1)</code>, <code>reinterpret_cast</code> writes, relative-offset arithmetic, placement new, and function pointers carrying their own ABI. Read it top to bottom once and the rest of the loader stops being opaque.</p>
+
+  <h4 id="the-red-zone">The red zone — a guest promise that breaks on Windows</h4>
+  <p>System V grants a leaf function 128 bytes <em>below</em> <code>rsp</code> — the red zone — to use freely without adjusting the stack pointer. Guest code was compiled assuming that promise. Windows never made it: a kernel-delivered exception or signal handler will use that exact space, silently overwriting the guest's data.</p>
+  <p>Kyty's answer is <code>src/loader/redZonePatcher.cpp</code>, which reads <code>.eh_frame</code> to find function boundaries, identifies the functions that touch the red zone, and rewrites their memory instructions to route through a trampoline instead. The result struct is refreshingly honest about what it cannot fix:</p>
+
+  <div class="filename">src/loader/redZonePatcher.h</div>
+<pre>struct RedZonePatchResult {
+    uint64_t function_count          = 0;
+    uint64_t red_zone_function_count = 0;
+    uint64_t patched_memory_instruction_count = 0;
+    ...
+    uint64_t unrelocatable_memory_instruction_count = 0;
+};</pre>
+
+  <div class="callout h">
+    <span class="lbl">Reading disassembly without a second monitor</span>
+    <p>The fastest way to check "what did this actually compile to" is <a href="https://godbolt.org/">Compiler Explorer</a>: paste a function, pick <code>x86-64 clang 18</code>, and read the output column. For a <code>KYTY_SYSV_ABI</code> function you will see the first four integer arguments arrive in <code>rdi rsi rdx rcx</code>; drop the attribute and watch them move to <code>rcx rdx r8 r9</code> instead. That visual is the whole calling-convention story in five seconds.</p>
+  </div>
+
+  <div class="learn">
+    <div class="lh">Learn more · assembly and machine code</div>
+    <ul>
+      <li><span class="kind spec">Spec</span><div><a href="https://gcc.gnu.org/onlinedocs/gcc/Extended-Asm.html">GCC — Extended Asm</a><span class="d">The definitive grammar for everything in the inline-asm section: the four-part template, constraints, and clobbers. Clang implements the same syntax.</span></div></li>
+      <li><span class="kind">Reference</span><div><a href="https://www.felixcloutier.com/x86/">Felix Cloutier — x86 instruction reference</a><span class="d">The opcode bytes in <code>jit.h</code> are plain text here. Look up <code>E8</code> (call), <code>E9</code> (jmp) or <code>68</code> (push imm32) to see exactly why the offsets line up the way they do.</span></div></li>
+      <li><span class="kind">Reference</span><div><a href="https://www.agner.org/optimize/">Agner Fog — calling conventions and optimization manuals</a><span class="d">The canonical independent account of the System V and Microsoft x64 ABIs, including register preservation rules and stack alignment.</span></div></li>
+      <li><span class="kind spec">Spec</span><div><a href="https://wiki.osdev.org/System_V_ABI">OSDev Wiki — System V ABI</a><span class="d">A friendlier summary of the same rules, including the red zone and the variadic <code>al</code> rule.</span></div></li>
+      <li><span class="kind">Book</span><div><a href="https://www.agner.org/optimize/">+ <a href="https://asm.sourceforge.net/intro/hello.html">A Tiny Guide to GCC Inline Assembly</a><span class="d">A short tutorial that builds from the empty form to outputs, inputs and clobbers — ideal for the ten-minute version of this topic.</span></div></li>
+    </ul>
+  </div>
+    </div>
+  </section>
+
+  <section class="band band-watch">
+    <div class="band-h"><span class="band-t">Watch</span></div>
+    <p class="band-why">
+      Watch the same six arguments travel under both calling conventions — the mismatch is why the ABI attribute exists — and then watch the red-zone promise break on Windows.
+    </p>
+    <div data-viz="abiflow"></div>
+    <div data-viz="redzone"></div>
+  </section>
+  <section class="band band-try">
+    <div class="band-h"><span class="band-t">Try</span></div>
+    <p class="band-why">
+      Flip the callee's ABI yourself and read the register file the wrong way. This is the exact failure mode of a missing <code>KYTY_SYSV_ABI</code> — no crash, just arguments read from the wrong registers.
+    </p>
+    <div data-viz="cpustep"></div>
+  </section>
+  <section class="band band-do">
+    <div class="band-h"><span class="band-t">Do</span></div>
+    <p class="band-why">
+      All of these end in the same place: reading the asm blocks in the tree until they are boring.
+    </p>
+
+    <div class="check">
+      <p class="check-h">Checkpoint</p>
+      <ul class="check-list">
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Open the Windows branch in <code>runtimeLinker.cpp</code> and annotate every <code>pushq</code>: which registers are being saved, and why are exactly those four chosen?</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Explain why <code>"memory"</code> appears in the clobber list of the stack-switch asm, and what would break if it were omitted.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>In <code>jit.h</code>, hand-compute the relative offset <code>Call9::SetFunc</code> writes: <code>offset32 = func_addr − rip_addr</code> with <code>rip_addr = &amp;code[5]</code>. Why <code>code[5]</code> and not <code>code[1]</code>?</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Find the placement-new expression in <code>CallPlt</code>. Re-explain it in terms of "a constructor running on pre-existing memory".</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Compile this in Compiler Explorer and observe <code>%rsp</code> being read: <code>asm volatile("movq %%rsp, %0" : "=r"(x) : : "memory");</code> — then explain what each of the four parts is doing.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>In <code>libKernel.cpp</code>, explain why <code>FiberSaveContext</code> carries <code>returns_twice</code>: where does the second "return" come from?</label>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+</main>
+
+<script src="assets/topics.js?v=23" defer></script>
+<script src="assets/search-index.js?v=23" defer></script>
+<script src="assets/app.js?v=23" defer></script>
+<script src="assets/viz.js?v=23" defer></script>
+<script src="assets/atlas.js?v=23" defer></script>
+<script src="assets/lab.js?v=23" defer></script>
+<script src="assets/figs.js?v=23" defer></script>
+<script src="assets/figures.js?v=23" defer></script>
+<script src="assets/highlight.js?v=23" defer></script>
+<script src="assets/tutor.js?v=23" defer></script>
+</body>
+</html>
