@@ -47,31 +47,25 @@ uint32_t* KYTY_SYSV_ABI GraphicsCbReleaseMem(CommandBuffer* buf, uint8_t action,
   </div>
 
   <h4 id="submission">Submission</h4>
-  <p>When the buffer is ready the game submits it, and that call reaches <code>Gpu::Submit</code>:</p>
+  <p>When the buffer is ready the game submits it, and that call reaches <code>GuestGpu::Submit</code>:</p>
 
-  <div class="filename">src/graphics/guest_gpu/graphicsRun.h:28</div>
-<pre>void Submit(uint32_t* draw_commands, uint32_t draw_size_dw,
-            uint32_t* constant_commands, uint32_t constant_size_dw,
-            bool trigger_agc_interrupt_on_done = false);
+  <div class="filename">src/graphics/guest_gpu/graphicsRun.h</div>
+<pre><i>// Submitted command memory is borrowed and must remain valid until GPU execution completes.</i>
+void Submit(std::span&lt;const uint32_t&gt; draw_commands,
+            std::span&lt;const uint32_t&gt; constant_commands);
 
-void SubmitCompute(uint32_t queue, uint32_t* commands, uint32_t size_dw,
-                   bool trigger_agc_interrupt_on_done = false);</pre>
+void SubmitCompute(uint32_t queue, std::span&lt;const uint32_t&gt; commands);</pre>
 
   <p>Two buffers, not one — the draw stream and the constant stream, which correspond to the two engines described in <a href="t-pm4.html">topic 14</a>.</p>
 
-  <p>The first thing <code>Submit</code> does is <strong>copy</strong> the buffer:</p>
-<pre>struct OwnedCmdBuffer {
-    explicit OwnedCmdBuffer(const uint32_t* data, uint32_t count) {
-        if (count != 0) m_words.assign(data, data + count);
-    }
-private:
-    std::vector&lt;uint32_t&gt; m_words;
-};</pre>
-  <p>Because on real hardware the GPU reads that memory asynchronously and the game respects a fence before reusing it — but Kyty's command processor runs on its own thread with its own timing, and games in practice start overwriting the buffer sooner than a strict reading would allow. Copying removes an entire class of race.</p>
+  <p><strong>The current implementation does not copy either stream.</strong> A submission stores
+  borrowed <code>std::span</code> views into guest memory. This is closer to the hardware contract:
+  the submitter owns the memory and must keep it unchanged until execution completes. It also
+  makes lifetime bugs visible instead of hiding them behind an emulator-only copy.</p>
 
   <h4 id="the-queue-model">The queue model</h4>
   <div class="filename">src/graphics/guest_gpu/graphicsRun.cpp:79</div>
-<pre>class GpuState {
+<pre>class GuestGpu {
 public:
     static constexpr uint32_t ComputePipeCount     = 7;
     static constexpr uint32_t QueuesPerComputePipe = 8;
@@ -92,14 +86,14 @@ private:
 <pre>struct Submission {
     SubmissionType type     = SubmissionType::Graphics;
     uint32_t       queue_id = 0;
-    OwnedCmdBuffer commands;
-    OwnedCmdBuffer constant_commands;
+    std::span&lt;const uint32_t&gt; commands;
+    std::span&lt;const uint32_t&gt; constant_commands;
     Pm4Execution   command_execution;      <i>// resumable cursor</i>
     Pm4Execution   constant_execution;
-    bool           trigger_agc_interrupt_on_done = false;
     bool           reset_processor  = false;
     bool           started          = false;
     bool           command_complete = false;
+    bool           constant_complete = false;
     bool           blocked          = false;
     uint64_t       flip_request_id  = 0;
 };</pre>
@@ -108,11 +102,10 @@ private:
 
   <h4 id="talking-to-the-gpu-thread">Talking to the GPU thread</h4>
 <pre>void SendCommand(Common::UniqueFunction&lt;void&gt;&amp;&amp; command);        <i>// fire and forget</i>
-void SendCommandSync(Common::UniqueFunction&lt;void&gt;&amp;&amp; command);    <i>// block until done</i>
-void SendCommandSyncWithProcessor(Common::UniqueFunction&lt;void, CommandProcessor&amp;&gt;&amp;&amp; command);</pre>
+void SendCommandSync(Common::UniqueFunction&lt;void&gt;&amp;&amp; command);    <i>// block until done</i></pre>
 
-  <p>All three are re-entrancy aware — if you are already on the GPU thread they run the callable inline rather than deadlocking:</p>
-<pre>void GpuState::SendCommand(Common::UniqueFunction&lt;void&gt;&amp;&amp; command) {
+  <p>Both are re-entrancy aware — if you are already on the GPU thread they run the callable inline rather than deadlocking:</p>
+<pre>void GuestGpu::SendCommand(Common::UniqueFunction&lt;void&gt;&amp;&amp; command) {
     if (<b>IsGpuThread</b>()) { command(); return; }
     Common::LockGuard lock(m_queue_mutex);
     m_commands.push_back(std::move(command));

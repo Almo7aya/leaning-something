@@ -292,22 +292,22 @@ h3::before{content:"▸ ";color:var(--faint)}
   <div class="sh"><span class="sn">05·2</span><h2 id="waves-lanes-and-why-shaders-are-hard">Waves, lanes, and why shaders are hard</h2></div>
   <p class="deck">A GPU does not run one shader invocation at a time. It runs 32 or 64 in lockstep on one instruction stream — which means branching cannot work the way you expect.</p>
   <figure data-viz="wave"></figure>
-  <div class="srcs"><span class="src">src/graphics/shader/recompiler/cfg/ShaderCFG.cpp</span></div>
+  <div class="srcs"><span class="src">src/graphics/shader/recompiler/frontend/cfg/ShaderCFG.cpp</span></div>
 </section>
 
 <section id="gpu-shader">
   <div class="sh"><span class="sn">05·3</span><h2 id="rdna-2-machine-code-becoming-spir-v">RDNA 2 machine code becoming SPIR-V</h2></div>
-  <p class="deck">26,000 lines of real compiler: decoder, control-flow graph, intermediate representation, dataflow analyses, code generator.</p>
+  <p class="deck">About 28,700 lines of compiler: explicit decode/CFG/translation frontends, one typed SSA-capable IR and its passes, then the SPIR-V backend.</p>
   <figure data-viz="shaderflow"></figure>
-  <p>Structurisation is the stage most likely to fail, and failure is a <em>supported outcome</em>. When merge and continue blocks cannot be recovered — genuinely irreducible control flow, or a loop header holding an instruction whose own lowering emits control flow — the recompiler emits the whole shader as a <strong>dispatcher</strong>: one loop around a switch on a program-counter variable, each basic block a case. Slower, universally correct.</p>
-  <div class="srcs"><span class="src">…/ShaderRecompiler.cpp:640</span><span class="src">…/emitter/SpirvEmitter.cpp</span></div>
+  <p>Structurisation failure is a <em>supported outcome</em>. An irreducible graph, or a graph for which merge and continue blocks cannot be recovered, selects the <strong>dispatcher</strong>: one loop around a switch on a program-counter value, each basic block a case. Slower, but explicit and diagnosable.</p>
+  <div class="srcs"><span class="src">…/ShaderRecompiler.cpp:475</span><span class="src">…/frontend/cfg/ShaderCFG.cpp</span><span class="src">…/backend/spirv/spirvEmitterFlow.cpp</span></div>
 </section>
 
 <section id="gpu-srt">
   <div class="sh"><span class="sn">05·4</span><h2 id="finding-the-texture-a-shader-wants">Finding the texture a shader wants</h2></div>
   <p class="deck">On RDNA 2 there are no texture slots. A shader holds its resource descriptors in registers, or loads them from memory itself — so the emulator has to evaluate the shader's own address arithmetic before the shader ever runs.</p>
   <figure data-viz="srtwalk"></figure>
-  <div class="srcs"><span class="src">…/ir/ScalarProvenance.cpp</span><span class="src">…/ir/SrtWalker.cpp</span><span class="src">src/graphics/shader/shader.h:44</span></div>
+  <div class="srcs"><span class="src">…/ir/passes/SsaRewrite.cpp</span><span class="src">…/ir/passes/SrtWalker.cpp</span><span class="src">src/graphics/shader/shader.h:55</span></div>
 </section>
 
 <section id="gpu-tiling">

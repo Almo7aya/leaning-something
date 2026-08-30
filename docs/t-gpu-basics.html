@@ -131,10 +131,10 @@ s_mov_b64     exec, s[0:1]        <i>restore</i></pre>
     <table>
       <thead><tr><th>Vulkan object</th><th>What it is</th><th>Where Kyty creates it</th></tr></thead>
       <tbody>
-        <tr><td><code>VkInstance</code> / <code>VkDevice</code></td><td>The library connection and a logical GPU.</td><td><code>vulkanWindow.cpp</code>, stored in <code>VulkanInstance</code>.</td></tr>
-        <tr><td><code>VkCommandBuffer</code></td><td>A recorded list of GPU commands. Nothing executes until submitted.</td><td><code>CommandScheduler</code> keeps eight in rotation.</td></tr>
+        <tr><td><code>VkInstance</code> / <code>VkDevice</code></td><td>The library connection and a logical GPU.</td><td><code>vulkanWindow.cpp</code>, stored in <code>GraphicContext</code>.</td></tr>
+        <tr><td><code>VkCommandBuffer</code></td><td>A recorded list of GPU commands. Nothing executes until submitted.</td><td><code>CommandScheduler::CommandPool</code> allocates in batches of four and reuses buffers after their timeline tick completes.</td></tr>
         <tr><td><code>VkPipeline</code></td><td>A fully-baked configuration: both shaders plus every fixed-function setting — blend, depth, cull, viewport, attachment formats.</td><td><code>PipelineCache</code>, keyed on shader IDs and a packed state struct.</td></tr>
-        <tr><td><code>VkDescriptorSet</code></td><td>A bundle of resource bindings handed to a pipeline.</td><td><code>DescriptorCache</code>, recycled after the fence signals.</td></tr>
+        <tr><td><code>VkDescriptorSet</code></td><td>A bundle of resource bindings handed to a pipeline.</td><td><code>DescriptorHeap</code>, allocated in batches; its pool retires after the timeline tick completes.</td></tr>
         <tr><td><code>VkImage</code> / <code>VkBuffer</code></td><td>GPU memory with a format and usage.</td><td><code>TextureCache</code>, <code>BufferCache</code>.</td></tr>
         <tr><td><code>VkFence</code> / timeline <code>VkSemaphore</code></td><td>CPU–GPU and GPU–GPU synchronisation. A timeline semaphore carries a monotonically increasing counter.</td><td><code>MasterSemaphore</code>.</td></tr>
       </tbody>

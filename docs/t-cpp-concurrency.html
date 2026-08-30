@@ -139,7 +139,7 @@ n_info.pWaitSemaphoreValues      = submit.wait_ticks.data();
 n_info.signalSemaphoreValueCount = submit.num_signal_semaphores;
 n_info.pSignalSemaphoreValues    = submit.signal_ticks.data();</pre>
 
-  <p>The reason the game and the GPU can overlap is that several submissions are <em>in flight</em> at once, each waiting on the previous one's tick. The <a href="lab.html">Lab's <code>timeline</code> tool</a> is eight command buffers in rotation: a fence per buffer releases retained resources (staging buffers, descriptor sets) only when that buffer's tick passes. If a draw needs a buffer that is still in flight, the CPU blocks on the tick — that back-pressure is how Vulkan throttles the game's frame rate for free.</p>
+  <p>The reason the game and GPU can overlap is that several submissions are <em>in flight</em> at once. Each command buffer carries a monotonic timeline tick; <code>MasterSemaphore</code> reports the latest completed value, and deferred objects are released only after their tick passes. <code>CommandPool</code> starts in batches of four and grows by four when no completed buffer is reusable, instead of rotating through a fixed fence-backed pool.</p>
 
   <h4 id="the-kernel-primitives">The kernel's own synchronisation surface</h4>
   <p>Games don't use atomics and mutexes — they use console APIs, and those sit on top of FreeBSD-style primitives in <code>src/kernel/</code>:</p>
@@ -190,7 +190,7 @@ n_info.pSignalSemaphoreValues    = submit.signal_ticks.data();</pre>
 
     <div class="callout k">
       <span class="lbl">A ten-minute lab</span>
-      <p>Open the <a href="lab.html">Lab's <code>timeline</code> tool</a> and submit until all eight command buffers are in flight, then watch a fence release retained resources. Then find <code>log_count.fetch_add(1, std::memory_order_relaxed)</code> in <code>src/graphics/shader/shader.cpp</code> and change <code>relaxed</code> to nothing — rebuild, run, and confirm it still works. That tiny experiment makes "what the default actually buys you" concrete.</p>
+      <p>Open the <a href="lab.html">Lab's <code>timeline</code> tool</a>, fill the initial four-buffer batch, trigger growth, then advance the completed tick and watch deferred resources release. Then find <code>log_count.fetch_add(1, std::memory_order_relaxed)</code> in <code>src/graphics/shader/shader.cpp</code> and change <code>relaxed</code> to nothing — rebuild, run, and confirm it still works.</p>
     </div>
   </section>
   <section class="band band-do">

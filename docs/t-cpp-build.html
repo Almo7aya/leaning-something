@@ -35,7 +35,7 @@
       <thead><tr><th>Piece</th><th>Choice</th><th>Why</th></tr></thead>
       <tbody>
         <tr><td>Language</td><td>C++20</td><td><code>set(CMAKE_CXX_STANDARD 20)</code> in the root <code>CMakeLists.txt</code> — the <code>consteval</code>/<code>requires</code>/<code>if constexpr</code> from <a href="t-cpp-language.html">topic C1</a> need it.</td></tr>
-        <tr><td>Compiler</td><td>Clang only (MSVC rejected at configure time)</td><td>No other compiler has <code>__attribute__((sysv_abi))</code>, which every HLE function needs. CMake fails with <em>"only Clang and GCC are supported"</em> if you try <code>cl.exe</code>.</td></tr>
+        <tr><td>Compiler</td><td>Clang in documented/CI builds; GCC accepted on POSIX; MSVC rejected</td><td>The project needs <code>__attribute__((sysv_abi))</code>. CMake accepts Clang or GCC, but Windows must use <code>clang-cl</code> and upstream build instructions/CI use Clang.</td></tr>
         <tr><td>Build generator</td><td>Ninja</td><td>Fast, parallel, single command. Configure with <code>-G Ninja</code>.</td></tr>
         <tr><td>Linker</td><td>lld (or <code>lld-link</code> on Windows)</td><td>LLVM's linker; chosen because the compiler is LLVM's. Emits the map file that turns crash addresses into symbols.</td></tr>
         <tr><td>Shaders</td><td><code>glslangValidator</code></td><td>Found at configure time (<code>find_program(... REQUIRED)</code>) and run during the build to turn GLSL into embedded SPIR-V.</td></tr>
@@ -73,12 +73,12 @@ cmake --install _Build/windows --prefix _Build/windows/install</pre>
   <p><strong>Step 3 — build.</strong> Compile and link. Everything after this is the rest of the page.</p>
 
   <h4 id="what-actually-compiles">What actually compiles</h4>
-  <p>The source list is collected with <code>file(GLOB ... CONFIGURE_DEPENDS)</code> — a huge recursive glob over <code>src/libs</code>, <code>src/graphics</code> (through <code>guest_gpu</code>, <code>host_gpu/renderer/cache|image|pipeline</code>, <code>shader/recompiler/cfg|decompiler|emitter|ir</code>, <code>presentation</code>), <code>src/kernel</code>, <code>src/loader</code>, plus <code>main.cpp</code>. The glob is why adding a new <code>.cpp</code> in those directories needs a CMake re-run to be picked up.</p>
+  <p>The source list is collected by explicit <code>file(GLOB ... CONFIGURE_DEPENDS)</code> entries in the root <code>CMakeLists.txt</code>. The shader entries now spell out <code>frontend/cfg</code>, <code>frontend/decode</code>, <code>frontend/translate</code>, <code>ir</code>, <code>ir/opcodes</code>, <code>ir/passes</code> and <code>backend/spirv</code>. Adding a new directory requires a new glob; adding a file to a listed directory triggers a CMake re-run.</p>
 
   <p>Then the genuinely unusual part: the GPU's compute shaders are compiled <em>during the build</em>. A custom CMake command runs <code>glslangValidator</code> on each <code>gpu_tiler_*.comp</code>, and <code>embed_spirv.cmake</code> turns the resulting <code>.spv</code> file into a C header containing the bytes as an array:</p>
 
   <div class="filename">CMakeLists.txt — one embedded shader</div>
-<pre>COMMAND "${KYTY_GLSLANG_VALIDATOR}" -V --target-env vulkan1.0 -Os
+<pre>COMMAND "${KYTY_GLSLANG_VALIDATOR}" -V --target-env vulkan1.3 -Os
         "-I${gpu_tiler_shader_dir}" -o "${shader_spv}" "${shader_source}"
 COMMAND ${CMAKE_COMMAND} -DINPUT=${shader_spv} -DOUTPUT=${shader_header}
         -DSYMBOL=${shader_symbol} -P "${KYTY_SOURCE_DIR}/embed_spirv.cmake"</pre>
@@ -181,7 +181,7 @@ Stack trace [thread = 1]:                    <i>the guest's call stack, each fra
   <h4 id="the-tests">The tests</h4>
   <p>Tests are gtest-based and registered with CTest. Fifteen executables, each deliberately small — the interesting bit is that each compiles <em>only the sources it needs</em>:</p>
 
-  <div class="filename">src/CMakeLists.txt — one focused test</div>
+  <div class="filename">CMakeLists.txt — one focused test</div>
 <pre>add_executable(bit_array_tests EXCLUDE_FROM_ALL
     "${KYTY_TESTS_DIR}/BitArrayTests.cpp"
 )

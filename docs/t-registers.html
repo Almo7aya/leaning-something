@@ -103,7 +103,7 @@ enum class TileMode : uint32_t {
 enum class BlendFactor : uint32_t { kZero = 0, kOne = 1, kSrcColor = 2, ... };
 enum class BufferFormat : uint32_t { kInvalid = 0, k8UNorm = 1, ..., kBc7Srgb = 182 };</pre>
 
-  <p><code>kRectList</code> is worth noting: a three-vertex primitive describing an axis-aligned rectangle, used constantly for full-screen passes. Vulkan has no equivalent, so Kyty either expands it or routes it through an NGG path — which is exactly what the <code>--ngg-rectlist-draw</code> flag selects.</p>
+  <p><code>kRectList</code> is worth noting: a three-vertex primitive describing an axis-aligned rectangle, used constantly for full-screen passes. Vulkan has no direct equivalent; current Kyty handles the required pipeline path automatically and can synthesize tessellation-control/evaluation shaders with <code>BuildRectListShaders()</code>. The former <code>--ngg-rectlist-draw</code> switch no longer exists.</p>
 
   <h4 id="colour-component-remapping">Colour component remapping</h4>
   <p>A neat piece of design worth calling out. The shader exports RGBA, but the render target's channel order may differ. Rather than recompiling for every permutation, Kyty carries a one-byte mapping:</p>
@@ -192,28 +192,28 @@ inline constexpr ColorComponentMapping ColorMappingBgra {0xc6u};   <i>// 2, 1, 0
 s_load_dwordx8  s[12:19], s[8:9], 0x40     <i>// load a T# from that table + 0x40</i>
 image_sample    v[0:3], v[4:5], s[12:19], s[20:23] dmask:0xf</pre>
 
-  <p>To bind a Vulkan descriptor, Kyty must determine <em>which texture</em> <code>s[12:19]</code> will hold — and that requires evaluating the shader's own address arithmetic before the shader ever runs. Three components cooperate:</p>
+  <p>To bind a Vulkan descriptor, Kyty must determine <em>which texture</em> <code>s[12:19]</code> will hold — and that requires evaluating the shader's own address arithmetic before the shader ever runs. Current code does this through three layers:</p>
 
   <div class="stack">
-    <div class="layer k"><span class="nm">1 · ScalarProvenance</span><span class="chip kyty">kyty</span><span class="ds">A dataflow analysis over scalar registers. For every scalar value it records an origin: a user-data slot, a constant, an arithmetic combination of known values, a <code>ReadConst</code> (a memory load), a phi node — or unknown. 34 KB, with a 52 KB test file.</span></div>
+    <div class="layer k"><span class="nm">1 · Typed SSA values</span><span class="chip kyty">kyty</span><span class="ds"><code>TranslateProgram</code> creates typed values; <code>RewriteToSsa</code> and simplification expose where descriptor-address inputs came from. The old separate <code>ScalarProvenance</code> IR has been removed.</span></div>
     <div class="arrow">↓</div>
-    <div class="layer k"><span class="nm">2 · BuildSrtPlan</span><span class="chip kyty">kyty</span><span class="ds">Turns provenance into a <em>recipe</em>: the list of memory reads needed to recover each descriptor, expressed relative to user data. Constant offsets get compact flat-buffer slots; genuinely dynamic offsets stay explicit and are never given a fake slot.</span></div>
+    <div class="layer k"><span class="nm">2 · BuildSrtPlan</span><span class="chip kyty">kyty</span><span class="ds">Walks those values and records descriptor-table reads. Constant offsets get flattened slots; genuinely dynamic reads stay explicit.</span></div>
     <div class="arrow">↓ at draw time, every draw</div>
     <div class="layer k"><span class="nm">3 · MaterializeResources</span><span class="chip kyty">kyty</span><span class="ds">Executes the recipe against the <em>current</em> user data and guest memory, producing a concrete <code>ResourceSnapshot</code>: this exact address, this format, this size.</span></div>
   </div>
 
-  <p>The data structures are small and readable:</p>
-  <div class="filename">src/graphics/shader/recompiler/ir/ShaderIR.h:562</div>
+  <p>The plan is stored directly on <code>IR::Program</code>:</p>
+  <div class="filename">src/graphics/shader/recompiler/ir/ShaderIR.h:477</div>
 <pre>struct SrtRead {
-    uint32_t value       = 0;   <i>// which scalar value this read produces</i>
+    Value    value;             <i>// typed value that performs the read</i>
     uint32_t flat_offset = 0;   <i>// slot in the flattened buffer</i>
     uint32_t use_pc      = 0;   <i>// where it was used, for diagnostics</i>
 };
 
-struct SrtPlan {
-    std::vector&lt;SrtRead&gt;  reads;
-    std::vector&lt;uint32_t&gt; dynamic_reads;     <i>// offsets not known at compile time</i>
-    std::vector&lt;uint32_t&gt; dynamic_sources;
+struct Program {
+    std::vector&lt;SrtRead&gt; srt_reads;
+    std::vector&lt;Value&gt;   dynamic_reads;
+    bool                  srt_plan_complete;
 };
 
 struct DescriptorValue {
@@ -222,16 +222,18 @@ struct DescriptorValue {
 };</pre>
 
   <h4 id="why-compilation-and-binding-are-separate">Why compilation and binding are separate</h4>
-  <p>The consequence of this design is important: <strong>the SPIR-V module and its plan are compiled once and cached; the plan is re-executed on every draw.</strong> One compiled shader serves many draws with different textures bound.</p>
+  <p>The consequence is important: <strong>the immutable native program/plan can be reused while a fresh resource snapshot is resolved from current user data.</strong> The pipeline cache then reuses a matching specialized permutation when one already exists.</p>
 
-  <div class="filename">src/graphics/shader/shader.h:44</div>
+  <div class="filename">src/graphics/shader/shader.h:55</div>
 <pre><i>// Resolves an immutable native shader plan against current user data. The prior stage is</i>
 <i>// preserved if any ReadConst, snapshot, or specialization check fails.</i>
 bool <b>ShaderMaterializeStageRuntime</b>(std::shared_ptr&lt;const IR::Program&gt; program,
                                    std::span&lt;const uint32_t&gt; user_data, uint64_t shader_base,
-                                   ShaderStageRuntime&amp; stage, std::string* error);</pre>
+                                   ShaderStageRuntime&amp; stage, std::string* error,
+                                   ShaderSpecializationMemoryReader reader = nullptr,
+                                   void* reader_data = nullptr);</pre>
 
-  <p>Read that comment carefully. If a descriptor read fails — a null pointer, an unmapped address — Kyty keeps the <em>previous</em> stage rather than binding garbage. A failed read produces a stale frame, not corruption or a device loss. That is a deliberate robustness choice, and it is why glitches in this emulator often look like a lagging texture rather than a crash.</p>
+  <p>Read that comment carefully. <code>MaterializeResources()</code> builds a temporary snapshot and validates its specialization first; only then does the function replace <code>stage</code>. Any failure therefore leaves the prior stage intact.</p>
     </div>
   </section>
 

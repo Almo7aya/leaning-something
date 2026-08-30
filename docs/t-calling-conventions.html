@@ -101,7 +101,7 @@ ret</pre>
 
   <div class="callout h">
     <span class="lbl">Why the build refuses MSVC</span>
-    <p>Microsoft's compiler has no <code>sysv_abi</code> attribute. There is no way to write this code in MSVC, so <code>src/CMakeLists.txt</code> rejects <code>cl.exe</code> at configure time and requires <code>clang-cl</code>. This is the single most common first-time build failure.</p>
+    <p>Microsoft's compiler has no <code>sysv_abi</code> attribute. There is no way to write this code in MSVC, so the root <code>CMakeLists.txt</code> rejects <code>cl.exe</code> and the supported Windows build uses <code>clang-cl</code>. The POSIX branches also recognise GCC, although the documented and CI builds use Clang.</p>
   </div>
 
   <h4 id="one-more-x86-64-detail-variadic-functions">One more x86-64 detail: variadic functions</h4>

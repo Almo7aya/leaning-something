@@ -130,7 +130,7 @@ static int <b>KYTY_SYSV_ABI</b> ContentExportInit2(const ContentExportInitParam2
       <tbody>
         <tr>
           <td><strong>Graphics driver (AGC)</strong></td>
-          <td><code>agc.cpp</code> 141 KB<br><code>libGraphicsDriver.cpp</code> 14 KB<br><code>agcRegisterDefaults.inc</code> 215 KB</td>
+          <td><code>agc.cpp</code> 155 KB<br><code>libAgcDriver.cpp</code> 8 KB<br><code>agcRegisterDefaults.inc</code> 218 KB</td>
           <td>Hundreds of command-buffer builder functions, plus a generated table of the register values the real driver writes at context reset. Games only set registers they change, so the defaults must match the hardware exactly or state leaks between draws. Covered in <a href="t-pm4.html">topic 14</a>.</td>
         </tr>
         <tr>
@@ -181,7 +181,7 @@ static int <b>KYTY_SYSV_ABI</b> ContentExportInit2(const ContentExportInitParam2
         <tr>
           <td><strong>Input</strong></td>
           <td><code>libPad.cpp</code> 12 KB<br><code>controller.cpp</code> 13 KB</td>
-          <td>DualSense state reporting, mapped from SDL2 events.</td>
+          <td>DualSense state, customizable keyboard/mouse mapping, and SDL rumble forwarding.</td>
         </tr>
         <tr>
           <td><strong>Guest <code>printf</code></strong></td>

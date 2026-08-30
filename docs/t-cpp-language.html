@@ -101,7 +101,7 @@ static consteval Callback ShutdownCallback() {
 
   <p><strong>1. Function templates that deduce their own sizes.</strong> In <code>OpcodeTable.h</code>, the array size is captured by passing the array by reference — <code>const Entry (&amp;table)[N]</code> — so <code>FindOpcode</code> works for any table without the caller saying how long it is:</p>
 
-  <div class="filename">src/graphics/shader/recompiler/decompiler/OpcodeTable.h</div>
+  <div class="filename">src/graphics/shader/recompiler/frontend/decode/OpcodeTable.h</div>
 <pre>template &lt;typename Entry, size_t N&gt;
 constexpr const Entry* FindOpcode(const Entry (&amp;table)[N], uint32_t encoding) {
     for (const auto&amp; entry: table) {

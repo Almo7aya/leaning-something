@@ -520,7 +520,7 @@
 
     var CAPS = [
       "57 queues: one graphics, plus seven compute pipes of eight queues each. All idle.",
-      "The game submits a graphics command buffer. Kyty <b>copies</b> it first — games reuse that memory sooner than a strict reading of the fence protocol allows — then enqueues it.",
+      "The game submits a graphics command buffer. <code>GuestGpu</code> now <b>borrows</b> it as a <code>std::span</code> and enqueues that view; the caller must keep the guest memory valid until execution completes.",
       "Compute work arrives on several pipes at once. This is asynchronous compute: physics, culling and post-processing running alongside the graphics stream.",
       "<b>The graphics queue hits a <code>WAIT_REG_MEM</code></b> whose condition is not yet true. On real hardware the command processor spins.",
       "Kyty returns <code>Pm4ProcessResult::Blocked</code> and <b>suspends the submission</b>, keeping its buffer-stack cursor intact. The compute queues keep running — a busy-wait here would starve them.",
@@ -574,8 +574,8 @@
     var CAPS = [
       "A shader receives up to 64 dwords in its first scalar registers, written by <code>SET_SH_REG</code> packets. Inside those dwords the game may place inline descriptors, plain constants, or <b>pointers to tables</b> — in any arrangement it likes.",
       "In the machine code you see the shader loading a pointer out of its own user data, then loading a 256-bit descriptor from that table. Tables may point at further tables, to arbitrary depth.",
-      "<b>ScalarProvenance</b> works out, for every scalar value, where it came from: a user-data slot, a constant, an arithmetic combination, a memory load, or unknown. 34 KB of analysis with a 52 KB test file.",
-      "<b>BuildSrtPlan</b> turns that provenance into a recipe — the list of memory reads needed to recover each descriptor, expressed relative to user data. Constant offsets get compact slots; genuinely dynamic offsets stay explicit and are never given a fake slot.",
+      "<b>TranslateProgram + RewriteToSsa</b> create a typed value graph that exposes how descriptor addresses depend on user data, constants, arithmetic and memory reads. The old separate scalar-provenance representation is gone.",
+      "<b>BuildSrtPlan</b> walks those values and records the reads needed to recover each descriptor. Constant offsets get flattened slots; genuinely dynamic reads stay explicit.",
       "<b>MaterializeResources</b> executes the recipe against the <em>current</em> user data and guest memory, producing concrete descriptors: this address, this format, these dimensions, this tiling mode.",
       "Which finally becomes a Vulkan image view. And if any read fails — a null pointer, an unmapped address — <code>ShaderMaterializeStageRuntime</code> keeps the <em>previous</em> stage rather than binding garbage. A failed descriptor read produces a stale frame, not corruption."
     ];

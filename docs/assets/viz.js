@@ -149,7 +149,7 @@
       { t: "Game / engine", sub: "calls AGC", side: "g" },
       { t: "AGC builders", sub: "agc.cpp writes dwords", side: "k" },
       { t: "Command buffer", sub: "in guest memory", side: "g" },
-      { t: "Gpu::Submit", sub: "copy + enqueue", side: "k" },
+      { t: "GuestGpu::Submit", sub: "borrow + enqueue", side: "k" },
       { t: "Command processor", sub: "parse PM4", side: "k" },
       { t: "HW registers", sub: "state accumulates", side: "k" },
       { t: "Draw", sub: "shaders + pipeline", side: "h" },
@@ -571,7 +571,7 @@
     var CAPS = [
       "<code>main()</code> brings up the core and thread subsystems, parses the command line, then initialises the remaining nine subsystems in dependency order.",
       "Still on the main thread: mount <code>/app0</code>, register every HLE NID, and load <code>eboot.bin</code> into guest memory. Nothing has executed yet — not even module initialisers.",
-      "<code>Execute()</code> spawns the <b>guest thread</b>. It preloads adjacent modules, resolves every relocation, applies any game patches, then runs module initialisers.",
+      "<code>Execute()</code> spawns the <b>guest thread</b>. It preloads adjacent modules, resolves relocations, validates/applies an optional ETAHen-style cheat plan, then runs module initialisers.",
       "Meanwhile the original main thread enters <code>WindowRun()</code> and <b>never returns</b>. It owns the SDL window and pumps input for the rest of the process's life. The GPU thread has also been created by now.",
       "The guest thread calls the game's entry point on a guest stack. From here the CPU is executing the game's own code natively — the emulator is purely reactive.",
       "As the game submits command buffers, the <b>GPU thread</b> picks them up: parse PM4, update registers, translate draws into Vulkan, flip. Three threads, three completely different jobs."
@@ -603,7 +603,7 @@
       { t: "Machine code", sub: "64-bit words", side: "g" },
       { t: "Instructions", sub: "typed + operands", side: "k" },
       { t: "CFG", sub: "blocks + dominators", side: "k" },
-      { t: "IR", sub: "several hundred ops", side: "k" },
+      { t: "Typed SSA IR", sub: "values + passes", side: "k" },
       { t: "SPIR-V", sub: "structured, typed", side: "h" }
     ];
     var bw = 130, bh = 50, gap = 27, x = 16, y = 20;
@@ -624,15 +624,15 @@
       ["0x0A00_0304  0xD1C2_0008 …", "just bits — no types, no structure, no function boundaries"],
       ["VOP2 VMulF32  dst v4  src0 v0  src1 v3", "opcode and operands recovered, with every modifier bit"],
       ["block 3: preds [2]  succ [4,7]  loop_header", "control flow as a graph — but branching is still mask arithmetic"],
-      ["MulF32 v4, v0, v3     ; pc 0x18", "machine-close IR: deliberately not an optimising representation"],
+      ["%r = MulF32 %a, %b     ; pc 0x18", "typed value IR after explicit translation and SSA rewriting"],
       ["%r = OpFMul %float %a %b", "typed, structured, capability-declared — what Vulkan accepts"]
     ];
     var CAPS = [
       "<b>The input is a blob of bits</b> found at some address in guest memory. There are no types, no variables, no function boundaries — just instruction words operating on 106 scalar and 256 vector registers.",
       "<b>Decode.</b> Each word is matched to an encoding family (SOP, VOP, SMEM, MUBUF, MIMG, FLAT, DS, EXP) and unpacked into a typed instruction with its operands and its considerable pile of modifier bits.",
       "<b>Build the control-flow graph</b>, then try to <em>structurise</em> it: compute the merge and continue blocks SPIR-V requires. This is the stage most likely to fail, and failure is a supported outcome — the dispatcher fallback emits one loop around a switch on a program counter.",
-      "<b>Lower to IR.</b> Close to the machine on purpose; this is a translator, not an optimiser. Staying close keeps the mapping auditable when a shader renders incorrectly.",
-      "<b>Emit SPIR-V.</b> The largest stage, about 516 KB of emitter. Declare types and capabilities, then lower every IR instruction — including everything the hardware got for free, like bounds-checked buffer access and image format conversion."
+      "<b>Translate to one typed IR.</b> Explicit opcode-category dispatchers build values, then SSA rewriting, propagation, identity removal and dead-code elimination prepare them for resource analysis and emission.",
+      "<b>Emit SPIR-V.</b> The current backend is about 360 KB across 15 files. It declares types and capabilities, then lowers flow, ALU, memory and image instructions — including safety work the hardware got for free."
     ];
 
     body.insertBefore(s, body.firstChild);

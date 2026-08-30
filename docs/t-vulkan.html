@@ -28,19 +28,21 @@
 <p class="deck">The host side. Its central job is caching: turning "this guest address range, in this format, used this way" into "this Vulkan object" — and knowing when that answer stops being true.</p>
 
   <h4 id="device-setup">Device setup</h4>
-  <div class="filename">src/graphics/host_gpu/vulkanInstance.h</div>
+  <div class="filename">src/graphics/host_gpu/graphicContext.h</div>
 <pre>inline constexpr uint32_t VULKAN_TARGET_API_VERSION = <b>VK_API_VERSION_1_3</b>;
 
-struct VulkanInstance {
+struct GraphicContext {
     vk::Instance       instance;
     vk::PhysicalDevice physical_device;
     vk::Device         device;
     VmaAllocator       allocator;
     bool     memory_budget_ext_enabled;
     bool     rt_extensions_enabled;
-    bool     <b>subgroup_size_control_enabled</b>;
+    bool     <b>compute_subgroup_size_control_enabled</b>;
+    bool     compute_wave64_supported;
     bool     sample_rate_shading_enabled;
     uint32_t subgroup_size, min_subgroup_size, max_subgroup_size;
+    uint32_t max_push_descriptors;
     vk::ShaderStageFlags required_subgroup_size_stages;
     Common::Mutex queue_mutex;
     uint32_t      queue_family;
@@ -58,16 +60,17 @@ struct VulkanInstance {
     return it-&gt;second;
 }</pre>
 
-  <h4 id="the-five-caches">The five caches</h4>
+  <h4 id="the-five-caches">Resource managers and caches</h4>
   <div class="tw">
     <table>
       <thead><tr><th>Cache</th><th>Keyed by</th><th>Notes</th></tr></thead>
       <tbody>
-        <tr><td><code>TextureCache</code> 71 KB</td><td>address + format + extent + binding type</td><td>The most complex object in the project. Aliasing, depth/stencil pairing, mip expansion, upload, download, garbage collection.</td></tr>
-        <tr><td><code>BufferCache</code> 49 KB</td><td>guest address range</td><td>Vertex, index, uniform and storage buffers, with a page-table index from addresses to buffer IDs.</td></tr>
-        <tr><td><code>PipelineCache</code> 11 KB</td><td>shader IDs + full static state + attachment formats</td><td>The key is compared as raw bytes.</td></tr>
-        <tr><td><code>DescriptorCache</code> 12 KB</td><td>binding layout</td><td>Allocates and recycles sets; returned to the pool only after the owning fence signals.</td></tr>
+        <tr><td><code>TextureCache</code> 75 KB</td><td>address + format + extent + binding type</td><td>Aliasing, depth/stencil pairing, mip expansion, upload, download and LRU collection. It is owned with the buffer cache by <code>GpuResourceManager</code>.</td></tr>
+        <tr><td><code>BufferCache</code> 32 KB</td><td>guest address range</td><td>Page-indexed vertex, index, uniform and storage buffers, batched uploads/downloads, LRU collection and the BDA fault path.</td></tr>
+        <tr><td><code>PipelineCache</code> 23 KB</td><td>shader IDs + full static state + attachment formats</td><td>Owns in-process program/pipeline maps and a per-game Vulkan driver cache saved to disk.</td></tr>
+        <tr><td><code>DescriptorHeap</code> 3 KB</td><td>descriptor-set layout</td><td>Allocates sets in batches of 32 and retires whole Vulkan descriptor pools against timeline ticks.</td></tr>
         <tr><td><code>SamplerCache</code> 7 KB</td><td>the guest S#</td><td>Small and simple by comparison.</td></tr>
+        <tr><td><code>FaultManager</code> 8 KB</td><td>faulted BDA page ranges</td><td>Nested in <code>BufferCache</code>; processes RDNA2 FLAT/BDA misses through a GPU fault buffer and page table.</td></tr>
       </tbody>
     </table>
   </div>
@@ -105,12 +108,15 @@ static_assert(sizeof(PipelineStaticParameters) == /* an explicit sum of every me
 
   <p>The packing and the size assertion exist because the hash walks the struct byte by byte. Padding bytes would be uninitialised, so identical states could hash differently — producing a slow, silent pipeline explosion. The <code>static_assert</code> makes any accidental padding a build error.</p>
 
+  <p><code>PipelineCache</code> now has two levels. Kyty's maps avoid rebuilding a program or
+  pipeline during one run; a per-game <code>VkPipelineCache</code> is also loaded and saved so the
+  driver can reuse its own compiled data on the next run. The driver cache improves creation
+  time but does not replace Kyty's exact C++ keys.</p>
+
   <h4 id="command-submission">Command submission</h4>
-  <div class="filename">…/renderer/commandScheduler.h:32</div>
+  <div class="filename">…/renderer/commandScheduler.h</div>
 <pre>class CommandScheduler {
 public:
-    static constexpr int <b>BufferCount = 8</b>;
-
     void Begin(HW::Context&amp;, HW::UserConfig&amp;, HW::Shader&amp;);
     void BeginRendering(const RenderState&amp;);
     void Flush();
@@ -121,15 +127,21 @@ public:
     ...
 private:
     <b>MasterSemaphore</b> m_master;              <i>// timeline semaphore, monotonic tick</i>
-    std::array&lt;std::unique_ptr&lt;RenderCommandBuffer&gt;, BufferCount&gt; m_buffers;
+    class CommandPool {
+        static constexpr size_t <b>GrowStep = 4</b>;
+        std::vector&lt;vk::CommandBuffer&gt; m_buffers;
+        std::vector&lt;uint64_t&gt;          m_ticks;
+    } m_command_pool;
+    CommandBuffer m_command;
     std::queue&lt;PendingOperation&gt; m_pending_operations, m_priority_operations;
     std::jthread m_priority_thread;
 };</pre>
 
-  <p>Eight command buffers in rotation, each with a fence, plus a timeline semaphore providing a monotonically increasing tick. Anything that must outlive a submission is registered against the current buffer:</p>
-<pre>void RetireBufferAfterFence(std::unique_ptr&lt;VulkanBuffer&gt; buffer);
-void RetainResourceUntilFence(std::shared_ptr&lt;void&gt; resource);
-void RecycleDescriptorAfterFence(VulkanDescriptorSet&amp; set);</pre>
+  <p>There is no fixed eight-buffer ring and no per-command-buffer fence now. The pool
+  searches for a buffer whose recorded tick is no newer than the GPU's known completed tick;
+  if none is free, it allocates four more. Every queue submission signals
+  <code>MasterSemaphore</code> with the next monotonic tick. Deferred destruction records the
+  current tick and runs only after <code>MasterSemaphore::IsFree</code> says the GPU passed it.</p>
 
   <p>The separate priority thread exists because some deferred work — a readback the guest is blocking on — cannot wait for the normal drain without deadlocking.</p>
 
@@ -178,7 +190,7 @@ Common::LeastRecentlyUsedCache&lt;ImageId, uint64_t&gt; m_lru_cache;</pre>
   <div class="learn">
     <div class="lh">Learn more · the Vulkan side</div>
     <ul>
-      <li><span class="kind">Tutorial</span><div><a href="https://vkguide.dev/">Vulkan Guide</a><span class="d">Its chapters on descriptor sets, pipelines and the render loop map almost one-to-one onto <code>DescriptorCache</code>, <code>PipelineCache</code> and <code>CommandScheduler</code>. The fastest way to understand why those classes are shaped as they are.</span></div></li>
+      <li><span class="kind">Tutorial</span><div><a href="https://vkguide.dev/">Vulkan Guide</a><span class="d">Its chapters on descriptor sets, pipelines and the render loop map onto <code>DescriptorHeap</code>, <code>PipelineCache</code> and <code>CommandScheduler</code>. The fastest way to understand why those classes are shaped as they are.</span></div></li>
       <li><span class="kind spec">Docs</span><div><a href="https://docs.vulkan.org/guide/latest/synchronization.html">Khronos Vulkan Guide — Synchronization</a><span class="d">Fences, semaphores, events and pipeline barriers. This is the part of Vulkan most easily got subtly wrong, and it is exactly what <code>MasterSemaphore</code> and the fence-retention helpers are managing. Khronos also has <a href="https://www.khronos.org/blog/understanding-vulkan-synchronization">Understanding Vulkan Synchronization</a> as a gentler introduction.</span></div></li>
       <li><span class="kind code">Code</span><div><a href="https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator">VulkanMemoryAllocator</a><span class="d">The allocator Kyty links. Its documentation explains why raw <code>vkAllocateMemory</code> is unusable directly and what the sub-allocation strategies cost.</span></div></li>
     </ul>

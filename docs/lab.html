@@ -264,7 +264,7 @@ section{padding-top:var(--s8);scroll-margin-top:var(--s4)}
       <li>Switch to <strong>nested if</strong> and watch a second saved mask appear in the scalar registers. This is the nesting the structuriser has to recover as merge blocks.</li>
     </ul>
   </div>
-  <div class="srcs"><span class="src">…/recompiler/cfg/ShaderCFG.cpp</span><span class="src">…/emitter/spirvEmitterControlFlow.cpp</span></div>
+  <div class="srcs"><span class="src">…/recompiler/frontend/cfg/ShaderCFG.cpp</span><span class="src">…/backend/spirv/spirvEmitterFlow.cpp</span></div>
 </section>
 
 <section id="t-isa2spirv">
@@ -280,7 +280,7 @@ section{padding-top:var(--s8);scroll-margin-top:var(--s4)}
       <li>Toggle <strong>neg</strong>, <strong>abs</strong> and <strong>clamp</strong> and watch extra SPIR-V appear. RDNA&nbsp;2 folds these into the encoding; SPIR-V needs them spelled out.</li>
     </ul>
   </div>
-  <div class="srcs"><span class="src">…/decompiler/ShaderDecoder.h</span><span class="src">…/emitter/spirvEmitterAluOps.cpp</span></div>
+  <div class="srcs"><span class="src">…/frontend/decode/ShaderDecoder.h</span><span class="src">…/frontend/translate/Vector.cpp</span><span class="src">…/backend/spirv/spirvEmitterAlu.cpp</span></div>
 </section>
 
 <!-- ============================== GPU -->
@@ -301,15 +301,15 @@ section{padding-top:var(--s8);scroll-margin-top:var(--s4)}
 </section>
 
 <section id="t-timeline">
-  <div class="sh"><span class="sn">05·2</span><h2 id="fences-and-resource-lifetime">Fences and resource lifetime</h2></div>
-  <p class="deck">Why a staging buffer cannot be freed when the draw is recorded, and what happens when all eight command buffers are in flight.</p>
+  <div class="sh"><span class="sn">05·2</span><h2 id="fences-and-resource-lifetime">Timeline ticks and resource lifetime</h2></div>
+  <p class="deck">Why a staging buffer cannot be freed when a draw is recorded, how timeline ticks prove completion, and how the command pool grows when every reusable buffer is still in flight.</p>
   <figure data-viz="timeline"></figure>
   <div class="try">
     <span class="lbl">Try this</span>
     <ul>
-      <li>Record a couple of draws, submit, and repeat until you have used all eight buffers without completing any. The status line tells you the scheduler would now <strong>block</strong> — that is back-pressure from the GPU.</li>
+      <li>Fill the initial four-buffer batch without completing any work. The next commit grows the pool by four instead of blocking on a per-buffer fence.</li>
       <li>Complete the oldest and watch its retained resources release. They could not have been freed earlier: the GPU was still reading them.</li>
-      <li>Notice the tick only ever increases. That monotonic counter is what a timeline semaphore gives you, and it is how Kyty orders work across queues.</li>
+      <li>Notice the tick only ever increases. That monotonic counter is what the timeline semaphore gives Kyty for reuse and deferred-lifetime decisions.</li>
     </ul>
   </div>
   <div class="srcs"><span class="src">…/renderer/commandScheduler.h</span><span class="src">…/renderer/masterSemaphore.h</span></div>

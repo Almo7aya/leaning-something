@@ -1335,7 +1335,7 @@
   /* ============================================================
      D. C++ primer — RDNA2 shader ISA decoder
      A partial decoder transcribed from the tree's own dispatch
-     (src/graphics/shader/recompiler/decompiler/ShaderDecoder.cpp)
+     (src/graphics/shader/recompiler/frontend/decode/ShaderDecoder.cpp)
      and the opcode tables in ScalarAluOps.cpp / VectorAluOps.cpp /
      MemoryOps.cpp / ExportOps.cpp. Covers the common encodings;
      rare encodings are reported with their family + raw fields.

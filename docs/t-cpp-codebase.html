@@ -50,7 +50,7 @@ tests/                        <i>focused gtest executables — topic C3</i></pre
       <tbody>
         <tr><td><code>graphics/guest_gpu/</code></td><td>how the <em>guest</em> sees the GPU — formats, the PM4 command processor, registers</td><td><code>command_processor/</code>, <code>gpu_defs.h</code>, <code>graphicsRun.cpp</code> (the GPU thread, topic C4)</td></tr>
         <tr><td><code>graphics/host_gpu/</code></td><td>the <em>host</em> Vulkan renderer — context, pipeline cache, image/buffer caches, memory tracking</td><td><code>renderer/context.cpp</code>, <code>renderer/cache/</code>, <code>vulkanCommon.h</code>, <code>pageManager.cpp</code></td></tr>
-        <tr><td><code>graphics/shader/</code></td><td>RDNA2 → SPIR-V: decode, control-flow, IR, emit</td><td><code>recompiler/{decompiler,cfg,ir,emitter}/</code>, <code>shader.cpp</code> (the compile pipeline)</td></tr>
+        <tr><td><code>graphics/shader/</code></td><td>RDNA2 → typed IR → SPIR-V</td><td><code>recompiler/frontend/{decode,cfg,translate}/</code>, <code>recompiler/ir/</code>, <code>recompiler/backend/spirv/</code>, and <code>ShaderRecompiler.cpp</code> (the compile pipeline)</td></tr>
         <tr><td><code>graphics/presentation/</code></td><td>the window and swapchain — the actual frames on screen</td><td><code>presentation/window/</code></td></tr>
       </tbody>
     </table>
@@ -89,7 +89,7 @@ tests/                        <i>focused gtest executables — topic C3</i></pre
         <tr><td><code>magic_enum</code></td><td>enum → string, string → enum at compile time</td><td><code>Common::EnumName</code> (crash logs!), <code>--shader-optimization-type</code> parsing</td></tr>
         <tr><td><code>xxHash</code></td><td>fast, non-cryptographic hashing</td><td>shader and cache keys</td></tr>
         <tr><td><code>stb</code></td><td>single-header image decode</td><td><code>libPngDec</code></td></tr>
-        <tr><td><code>nlohmann_json</code></td><td>JSON parsing</td><td><code>param.json</code>, <code>libJson2</code>, game patches</td></tr>
+        <tr><td><code>nlohmann_json</code></td><td>JSON parsing</td><td><code>param.json</code>, <code>libJson2</code>, ETAHen/GoldHEN-style cheats</td></tr>
         <tr><td><code>Zydis</code> (fetched)</td><td>x86-64 disassembler</td><td><code>redZonePatcher.cpp</code> decodes guest instructions with it</td></tr>
         <tr><td><code>xbyak</code> (fetched)</td><td>x86-64 assembler</td><td><code>redZonePatcher.cpp</code> generates patch/trampoline code</td></tr>
         <tr><td><code>LibAtrac9</code></td><td>the console's ATRAC9 audio codec</td><td>AJM decode jobs</td></tr>

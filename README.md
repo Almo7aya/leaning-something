@@ -1,7 +1,8 @@
 # Learning KytyPS5
 
 Unofficial learning material for the [KytyPS5](https://github.com/KytyPS5/KytyPS5)
-PlayStation 5 emulator, written by reading the source tree at **v0.2.2**.
+PlayStation 5 emulator. The source-specific material was last checked against
+**`main` at `9992ab18` (2026-08-30), project version 0.2.2**.
 
 **Read it online → [almo7aya.dev/leaning-something](https://almo7aya.dev/leaning-something/)**
 
@@ -40,7 +41,7 @@ a real answer, and every one can be made to fail in the way the emulator would f
 | **wavelab** | A working RDNA 2 interpreter — step an `if` across 64 lanes and watch `EXEC` do the branching |
 | **isa2spirv** | Pick an instruction and toggle its modifiers; see bits, decoded struct, IR and emitted SPIR-V side by side |
 | **pm4build** | Append packets and run the buffer; draw without a render target and read the error you get |
-| **timeline** | Submit until all eight command buffers are in flight, then watch fences release retained resources |
+| **timeline** | Submit work against a monotonic GPU timeline, then watch completed ticks release retained resources |
 | **pipekey** | Toggle pipeline state and watch the packed key, the hash, and the cache multiply |
 
 Verified by an automated suite that drives every tool in headless Chrome and asserts on
@@ -169,11 +170,23 @@ To add an animation anywhere, drop in `<figure data-viz="NAME"></figure>` and li
 
 ---
 
+## Upstream snapshot
+
+KytyPS5 changes quickly. This revision of the learning material includes the current
+shader pipeline (`frontend/decode` → `frontend/cfg` → `frontend/translate` → typed
+SSA IR passes → `backend/spirv`), Vulkan 1.3, timeline-based command-buffer reuse,
+the descriptor heap and GPU fault manager, current Windows/Linux/macOS build paths,
+etaHEN cheats, launcher configuration, keyboard/mouse DualSense mapping, and the
+expanded focused-test suite.
+
+Use `git -C KytyPS5 rev-parse HEAD` when following the exercises against a local
+checkout. If it is newer than `9992ab18`, search by type or function name rather
+than trusting a line number.
+
 ## Caveats
 
-- **Line references drift.** Everything points at KytyPS5 `v0.2.2`. The prose stays
-  accurate far longer than the line numbers — treat a reference as "look for this
-  function", not "go to this line".
+- **Line references drift.** The checked snapshot is `9992ab18`; treat a reference
+  as "look for this function", not "go to this line".
 - **These are unofficial.** A reading of the source, not maintainer-authored
   documentation. Where a document and the code disagree, the code is right.
 - **Outbound links need a connection.** The documents work offline; the

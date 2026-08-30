@@ -439,7 +439,7 @@ details[open] summary { border-bottom: 1px solid var(--rule); }
 <header class="hero" id="intro">
   <div class="eyebrow">A guided reading of the source</div>
   <h1 id="anatomy-of-a-playstation-5-emulator">Anatomy of a PlayStation&nbsp;5 emulator</h1>
-  <p class="lede">KytyPS5 takes a program compiled for a games console — a machine with its own operating system, its own graphics API, and its own idea of what memory looks like — and persuades it to run on a Windows or Linux PC. This page walks the whole path, from <code>main()</code> to a triangle on screen, and explains why each piece exists.</p>
+  <p class="lede">KytyPS5 takes a program compiled for a games console — a machine with its own operating system, its own graphics API, and its own idea of what memory looks like — and persuades it to run on a Windows, Linux or x86-64 macOS host. This page walks the whole path, from <code>main()</code> to a triangle on screen, and explains why each piece exists.</p>
 
   <div class="tape" id="tape">
     <div class="tape-head">
@@ -509,7 +509,7 @@ details[open] summary { border-bottom: 1px solid var(--rule); }
 <pre>#define <b>KYTY_MS_ABI</b>   __attribute__((ms_abi))
 #define <b>KYTY_SYSV_ABI</b> __attribute__((sysv_abi))</pre>
         <p>This is also why the build refuses MSVC's <code>cl.exe</code> and requires <code>clang-cl</code> — MSVC has no such attribute. There is a second gap too: PS5 code reads thread-local storage through the <code>fs</code> segment register, which Windows reserves for itself. That one is solved by rewriting the guest's instruction bytes; see §04.</p>
-        <div class="srcs"><span class="src">src/common/abi.h</span><span class="src">src/CMakeLists.txt</span></div>
+        <div class="srcs"><span class="src">src/common/abi.h</span><span class="src">CMakeLists.txt</span></div>
       </div>
 
       <div class="tabpane" id="x-mem" role="tabpanel" hidden>
@@ -578,7 +578,7 @@ details[open] summary { border-bottom: 1px solid var(--rule); }
 
   <div class="callout kyty">
     <span class="lbl">Reading tip</span>
-    <p>The repository's CMake root is <code>src/</code>, not the repository root. <code>cmake -S src -B _Build/windows</code>. This surprises almost everyone the first time.</p>
+    <p>The repository root is now the CMake source root: configure with <code>cmake -S . -B _Build/windows</code>. Older notes that use <code>-S src</code> predate the top-level build reorganisation.</p>
   </div>
 </section>
 
@@ -604,15 +604,18 @@ details[open] summary { border-bottom: 1px solid var(--rule); }
   <figure data-viz="threads"></figure>
 
   <h3 id="the-subsystem-framework">The subsystem framework</h3>
-  <p>Kyty does not initialise its parts in a hard-coded order. Instead each major component registers itself as a <code>Subsystem</code> with a list of dependencies, and a topological sort decides the order:</p>
+  <p>Kyty now uses an explicit lifecycle stack. Each component publishes a <code>Lifecycle</code> type with initialize and optional shutdown/emergency-shutdown callbacks; <code>Emulator::Init()</code> calls them in the required order:</p>
 
-<pre>slist-&gt;Add(<b>graphics</b>, {core, log, pthread, memory, config, profiler, controller});
-slist-&gt;Add(<b>audio</b>,    {core, log, pthread, memory});
-slist-&gt;Add(<b>pthread</b>,  {core, log, timer});
-slist-&gt;InitAll(true);</pre>
+<pre>subsystems.Initialize&lt;Config::Lifecycle&gt;();
+subsystems.Initialize&lt;Log::Lifecycle&gt;();
+subsystems.Initialize&lt;LibKernel::PthreadLifecycle&gt;();
+subsystems.Initialize&lt;LibKernel::Memory::Lifecycle&gt;();
+subsystems.Initialize&lt;Controller::Lifecycle&gt;();
+subsystems.Initialize&lt;Audio::Lifecycle&gt;();
+subsystems.Initialize&lt;<b>Graphics::Lifecycle</b>&gt;();</pre>
 
-  <p>Every subsystem must supply four methods: <code>Id()</code>, <code>Init()</code>, <code>Destroy()</code> and <code>UnexpectedShutdown()</code>. That last one matters — when the guest crashes, Kyty needs to tear the Vulkan device down cleanly even though the normal shutdown path was never reached.</p>
-  <div class="srcs"><span class="src">src/common/subsystems.h:67</span><span class="src">src/emulator.cpp:108</span></div>
+  <p>After each successful initialization, <code>Subsystems</code> records its callbacks. Normal destruction and <code>EmergencyShutdownActive()</code> both walk the stack in reverse, so partial startup is safe and graphics shuts down before the services it uses.</p>
+  <div class="srcs"><span class="src">src/common/subsystems.h:18</span><span class="src">src/common/subsystems.cpp:19</span><span class="src">src/emulator.cpp:126</span></div>
 
   <h3 id="two-threads-own-the-process">Two threads own the process</h3>
   <p>Note what <code>Execute()</code> does: it spawns a thread for the guest, then the <em>main</em> thread runs the window event loop forever. This inversion is deliberate. Windowing systems on macOS and Windows insist that window and input handling happen on the process's first thread, so the game gets a thread of its own instead.</p>
@@ -771,7 +774,7 @@ while (expanded_size &lt; 768 * 1024) {
         <div id="band-detail"></div>
       </div>
     </div>
-    <div class="fig-note"><p>macOS shifts these ranges (<code>HOST_USER_MIN</code> becomes <code>0x7000000000</code>) and pins them with linker flags — <code>-segaddr SYSTEM_RESERVED,0x7ffffc000 -segaddr USER_AREA,0x7000000000</code> — so the dynamic loader can never place a system library where the guest needs to allocate. <span class="src">src/CMakeLists.txt:323</span></p></div>
+    <div class="fig-note"><p>macOS shifts these ranges (<code>HOST_USER_MIN</code> becomes <code>0x7000000000</code>) and pins them with linker flags — <code>-segaddr SYSTEM_RESERVED,0x7ffffc000 -segaddr USER_AREA,0x7000000000</code> — so the dynamic loader can never place a system library where the guest needs to allocate. <span class="src">CMakeLists.txt:385</span></p></div>
   </div>
 
   <h3 id="direct-flexible-and-pooled-memory">Direct, flexible, and pooled memory</h3>
@@ -887,7 +890,7 @@ LIB_DEFINE(InitContentExport_1) {
     <table>
       <thead><tr><th>Area</th><th>Files</th><th>Notes</th></tr></thead>
       <tbody>
-        <tr><td>Graphics driver (AGC)</td><td><code>agc.cpp</code> · <code>libGraphicsDriver.cpp</code></td><td>140&nbsp;KB plus a 215&nbsp;KB table of hardware register default values — the values the real driver writes at context reset, needed because games only set the registers they change.</td></tr>
+        <tr><td>Graphics driver (AGC)</td><td><code>agc.cpp</code> · <code>libAgcDriver.cpp</code></td><td>Command builders plus a 218&nbsp;KB table of hardware register default values — the values the real driver writes at context reset, needed because games only set the registers they change. The current library registers AGC versions through 13.</td></tr>
         <tr><td>Kernel surface</td><td><code>libKernel.cpp</code></td><td>113&nbsp;KB: the parts of <code>libkernel</code> not big enough to earn their own file in <code>src/kernel/</code>.</td></tr>
         <tr><td>Networking</td><td><code>libNet.cpp</code> · <code>network.cpp</code></td><td>224&nbsp;KB combined — sockets, resolvers, SSL/HTTP shims, and the NP (PlayStation Network) surface stubbed enough to keep games running offline.</td></tr>
         <tr><td>Audio</td><td><code>audio.cpp</code> · <code>libAudio.cpp</code> · <code>libAudio2.cpp</code> · <code>ajm.cpp</code></td><td>Output mixing plus AJM, the console's hardware audio-decode block: ATRAC9 (via LibAtrac9), AAC and MP3 (via FFmpeg).</td></tr>
@@ -917,9 +920,9 @@ LIB_DEFINE(InitContentExport_1) {
   <div class="stack">
     <div class="layer g"><span class="nm">Game engine</span><span class="chip guest">guest</span><span class="ds">Calls the AGC ("Gen5") graphics API — <code>GraphicsCbDispatch</code>, <code>GraphicsCbSetShRegistersDirect</code>, <code>GraphicsCbReleaseMem</code> and hundreds more.</span></div>
     <div class="arrow">↓ these are pure builders</div>
-    <div class="layer k"><span class="nm">agc.cpp · libGraphicsDriver.cpp</span><span class="chip kyty">kyty</span><span class="ds">Each AGC call <em>writes dwords into the game's own command buffer</em>. Kyty reimplements them to produce byte-identical PM4 to the real driver, because the game may inspect and patch the buffer afterwards.</span></div>
+    <div class="layer k"><span class="nm">agc.cpp · libAgcDriver.cpp</span><span class="chip kyty">kyty</span><span class="ds">Each AGC call <em>writes dwords into the game's own command buffer</em>. Kyty reimplements them to produce byte-identical PM4 to the real driver, because the game may inspect and patch the buffer afterwards.</span></div>
     <div class="arrow">↓ submit</div>
-    <div class="layer k"><span class="nm">Gpu::Submit()</span><span class="chip kyty">kyty</span><span class="ds">Copies the buffer (games reuse their memory immediately) and pushes a <code>Submission</code> onto one of 57 queues: 1 graphics + 7 compute pipes × 8 queues each.</span></div>
+    <div class="layer k"><span class="nm">GuestGpu::Submit()</span><span class="chip kyty">kyty</span><span class="ds">Borrows the guest command memory as a <code>std::span</code> and pushes a <code>Submission</code> onto one of 57 queues: 1 graphics + 7 compute pipes × 8 queues each. The caller must keep the stream alive until execution completes.</span></div>
     <div class="arrow">↓ handed to the GPU thread</div>
     <div class="layer k"><span class="nm">CommandProcessor::Process()</span><span class="chip kyty">kyty</span><span class="ds">Walks the packet stream. Register-write packets update <code>HW::Context</code>, <code>HW::UserConfig</code> and <code>HW::Shader</code>. Action packets — draw, dispatch, flip, fence — call into the renderer.</span></div>
     <div class="arrow">↓ draw arrives</div>
@@ -987,7 +990,7 @@ gpu_tiler_depth.comp          gpu_tiler_promote_d16.comp</pre>
 <section id="shader">
   <div class="sec-head"><span class="sec-num">09</span><h2 id="graphics-ii-the-shader-recompiler">Graphics II — the shader recompiler</h2></div>
 
-  <p class="deck">26,000 lines whose job is: given a blob of RDNA&nbsp;2 machine code found at some address in guest memory, produce an equivalent SPIR-V module that Vulkan will accept. This is a compiler, complete with a control-flow graph, an SSA-ish IR, and optimisation passes.</p>
+  <p class="deck">About 28,700 lines across 80 files turn RDNA&nbsp;2 machine code into SPIR-V. Current <code>main</code> has an explicit <code>frontend/decode</code> → <code>frontend/cfg</code> → <code>frontend/translate</code> → typed SSA IR → <code>backend/spirv</code> architecture.</p>
 
   <figure data-viz="wave"></figure>
 
@@ -995,7 +998,7 @@ gpu_tiler_depth.comp          gpu_tiler_promote_d16.comp</pre>
 
   <h3 id="why-it-is-hard">Why it is hard</h3>
   <ul>
-    <li><strong>The input is machine code, not source.</strong> No types, no structure, no function boundaries — just 64-bit instruction words operating on 256 scalar and 256 vector registers.</li>
+    <li><strong>The input is machine code, not source.</strong> There are no source variables or functions, only packed instructions and scalar/vector registers.</li>
     <li><strong>GPU control flow is unstructured.</strong> RDNA&nbsp;2 uses an execution mask: a 64-bit register where each bit enables one lane. Branches manipulate this mask. SPIR-V, by contrast, demands <em>structured</em> control flow — every branch needs a declared merge block, every loop a header and a continue target.</li>
     <li><strong>Resources are opaque.</strong> A texture is a 256-bit "T# descriptor" the shader loads out of memory at runtime. To emit a Vulkan descriptor binding, the compiler must trace backwards to work out <em>where</em> that descriptor came from.</li>
     <li><strong>Wave size differs.</strong> RDNA&nbsp;2 shaders assume waves of 32 or 64 lanes and use cross-lane instructions. Host GPUs have their own subgroup sizes.</li>
@@ -1007,7 +1010,7 @@ gpu_tiler_depth.comp          gpu_tiler_promote_d16.comp</pre>
       <div class="pipe" id="pipe" role="tablist"></div>
       <div class="step-panel" id="pipe-panel"></div>
     </div>
-    <div class="fig-note"><p>Every stage logs <code>phase begin</code> / <code>phase end</code> with elapsed milliseconds and a shader hash, so a slow or failing compile can be located in the log without a debugger. <span class="src">src/graphics/shader/recompiler/ShaderRecompiler.cpp:640</span></p></div>
+    <div class="fig-note"><p><code>TryRecompile()</code> is the reading map. Its outer phases log elapsed milliseconds and a shader hash, while the source shows the exact SSA, resource, binding, requirement-analysis, and emission order. <span class="src">src/graphics/shader/recompiler/ShaderRecompiler.cpp:475</span></p></div>
   </div>
 
   <h3 id="sharps-user-data-and-shader-resource-tables">Sharps, user data, and shader resource tables</h3>
@@ -1017,26 +1020,26 @@ gpu_tiler_depth.comp          gpu_tiler_promote_d16.comp</pre>
     <li>An inline <strong>V# / T# / S#</strong> descriptor — "sharp" in AMD's terminology: a buffer, image or sampler descriptor stored directly in registers.</li>
     <li>A <strong>pointer</strong> to a table in memory holding descriptors, which the shader loads with <code>s_load_dword</code>. Tables may nest arbitrarily deep. This is the <em>shader resource table</em>, or SRT.</li>
   </ul>
-  <p>So to know which Vulkan image to bind, Kyty must evaluate the shader's own address arithmetic. Three components cooperate:</p>
+  <p>So to know which Vulkan image to bind, Kyty must evaluate the shader's own address arithmetic. Current code follows typed IR values directly; the old standalone <code>ScalarProvenance</code> representation has been removed:</p>
 
   <div class="stack">
-    <div class="layer k"><span class="nm">ScalarProvenance</span><span class="chip kyty">kyty</span><span class="ds">A dataflow analysis over scalar registers. For every scalar value it records where it came from — a user-data slot, a constant, an arithmetic combination, or "unknown." 34&nbsp;KB, with a 52&nbsp;KB test file.</span></div>
+    <div class="layer k"><span class="nm">Typed SSA values</span><span class="chip kyty">kyty</span><span class="ds"><code>TranslateProgram</code> creates explicit value dependencies, then <code>RewriteToSsa</code> and simplification make descriptor-address calculations traceable without a second IR.</span></div>
     <div class="arrow">↓</div>
-    <div class="layer k"><span class="nm">SrtWalker / BuildSrtPlan</span><span class="chip kyty">kyty</span><span class="ds">Turns provenance into a <em>plan</em>: a list of memory reads to perform, relative to user data, to recover each descriptor. Constant offsets get compact slots; genuinely dynamic offsets stay explicit.</span></div>
+    <div class="layer k"><span class="nm">SrtWalker / BuildSrtPlan</span><span class="chip kyty">kyty</span><span class="ds">Walks those values and builds a plan for descriptor-table reads. Constant offsets get flattened slots; genuinely dynamic reads stay explicit.</span></div>
     <div class="arrow">↓ at draw time</div>
     <div class="layer k"><span class="nm">MaterializeResources</span><span class="chip kyty">kyty</span><span class="ds">Executes the plan against the <em>current</em> user data and guest memory, producing a concrete <code>ResourceSnapshot</code> — this exact texture, this exact buffer, this size and format.</span></div>
   </div>
 
-  <p>The important consequence: <strong>compilation is split from binding.</strong> The SPIR-V module and its plan are compiled once and cached; the plan is re-evaluated on every draw against fresh user data. <code>ShaderMaterializeStageRuntime()</code> does this and — importantly — keeps the previous stage intact if any read fails, rather than drawing with garbage.</p>
-  <div class="srcs"><span class="src">…/ir/ScalarProvenance.cpp</span><span class="src">…/ir/SrtWalker.cpp</span><span class="src">…/ir/ResourceMaterialization.cpp</span><span class="src">src/graphics/shader/shader.h:44</span></div>
+  <p>The important consequence is still the split between reusable shader analysis and concrete binding state. The caller may provide a <code>ResourceSnapshot</code>, or <code>MaterializeResources()</code> evaluates the plan against current user data and guest memory before <code>SpecializeResources()</code>.</p>
+  <div class="srcs"><span class="src">…/ir/passes/SrtWalker.cpp</span><span class="src">…/ir/passes/ResourceMaterialization.cpp</span><span class="src">…/ir/passes/ResourceTracking.cpp</span></div>
 
   <h3 id="when-the-control-flow-cannot-be-structured">When the control flow cannot be structured</h3>
   <p>Some shaders have genuinely irreducible control flow — loops with multiple entry points, computed jumps through a code table. SPIR-V cannot express these directly. Rather than failing, the recompiler falls back to a <strong>dispatcher</strong>: the whole shader becomes one loop around a switch on a program-counter variable, with each basic block as a case. Slower, but universally correct.</p>
-  <p>The same fallback triggers for a subtler reason. If a loop header block contains an instruction whose SPIR-V lowering itself emits control flow — a buffer load with bounds checking, an atomic, an export — then the emitted loop header would be split into several SPIR-V blocks, which the specification forbids. <code>NeedsDispatcherForStructuredLoopHeader()</code> detects that case ahead of time.</p>
-  <div class="srcs"><span class="src">…/ShaderRecompiler.cpp:109</span><span class="src">…/cfg/ShaderCFG.cpp</span></div>
+  <p><code>BuildGraph()</code> selects the fallback for irreducible graphs; a later <code>Structurize()</code> failure also falls back after restoring the unstructured graph. The reason and failing graph facts are logged rather than hidden.</p>
+  <div class="srcs"><span class="src">…/ShaderRecompiler.cpp:519</span><span class="src">…/frontend/cfg/ShaderCFG.cpp</span><span class="src">…/backend/spirv/spirvEmitterFlow.cpp</span></div>
 
   <h3 id="where-the-test-weight-is">Where the test weight is</h3>
-  <p><code>tests/ShaderRecompilerComputeTests.cpp</code> is 800&nbsp;KB — the largest file in the repository by a wide margin, larger than the recompiler it tests. Together with <code>shaderCfgTests.cpp</code> (370&nbsp;KB), <code>ResourceTrackingTests.cpp</code> (91&nbsp;KB) and <code>ScalarProvenanceTests.cpp</code> (52&nbsp;KB), the shader compiler carries roughly 45% of all test code. That ratio is the correct one: a miscompiled shader produces wrong pixels with no crash and no log line.</p>
+  <p><code>ShaderRecompilerComputeTests.cpp</code> is now about 1.13&nbsp;MB and <code>shaderCfgTests.cpp</code> about 595&nbsp;KB. Focused resource, scalar-tracing, stage-runtime, and vertex-metadata tests complement them. That weight is appropriate: a miscompiled shader can produce wrong pixels with no crash or useful log line.</p>
 </section>
 
 <!-- ============================================================ 10 -->
@@ -1045,26 +1048,27 @@ gpu_tiler_depth.comp          gpu_tiler_promote_d16.comp</pre>
 
   <p class="deck">The host side. Its central task is caching: turning "this guest address range, in this format" into "this Vulkan object," and knowing when that answer stops being true.</p>
 
-  <h3 id="five-caches">Five caches</h3>
+  <h3 id="five-caches">Resource managers and caches</h3>
   <div class="tw">
     <table>
       <thead><tr><th>Cache</th><th>Keyed by</th><th>Notes</th></tr></thead>
       <tbody>
-        <tr><td><code>TextureCache</code></td><td>guest address + format + extent + binding type</td><td>71&nbsp;KB, the most complex. Handles aliasing (two images overlapping in memory), depth/stencil pairing, mip expansion, upload, download, and garbage collection under memory pressure at 1.5&nbsp;GB and 3&nbsp;GB thresholds.</td></tr>
+        <tr><td><code>TextureCache</code></td><td>guest address + format + extent + binding type</td><td>Handles aliasing, depth/stencil pairing, mip expansion, upload, download and LRU collection.</td></tr>
         <tr><td><code>BufferCache</code></td><td>guest address range</td><td>Vertex, index, uniform and storage buffers, with a page-table index mapping addresses to buffer IDs.</td></tr>
-        <tr><td><code>PipelineCache</code></td><td>shader IDs + full static pipeline state</td><td>The key is a packed, byte-comparable struct of every non-dynamic pipeline field — blend factors, depth compare, cull mode, viewport, sample count — plus attachment formats.</td></tr>
-        <tr><td><code>DescriptorCache</code></td><td>binding layout</td><td>Allocates and recycles descriptor sets; sets are returned to the pool only after the fence for their command buffer signals.</td></tr>
+        <tr><td><code>PipelineCache</code></td><td>shader IDs + full static pipeline state</td><td>Kyty's packed keys serve the current run; a per-game Vulkan driver cache is persisted across runs.</td></tr>
+        <tr><td><code>DescriptorHeap</code></td><td>binding layout</td><td>Allocates sets in batches of 32; descriptor pools retire only after their timeline tick completes.</td></tr>
         <tr><td><code>SamplerCache</code></td><td>the guest S# descriptor</td><td>Small and simple by comparison.</td></tr>
+        <tr><td><code>FaultManager</code></td><td>faulted BDA ranges</td><td>Feeds RDNA2 FLAT/BDA misses back through a GPU fault buffer and the buffer cache's page table.</td></tr>
       </tbody>
     </table>
   </div>
 
   <h3 id="command-submission">Command submission</h3>
-  <p><code>CommandScheduler</code> keeps eight command buffers in rotation, each with its own fence, plus a Vulkan <strong>timeline semaphore</strong> (<code>MasterSemaphore</code>) providing a monotonically increasing tick. Anything that must outlive a submission — a staging buffer, a descriptor set, a shared image — is registered against the current buffer and released only when its fence signals:</p>
-
-<pre>void RetireBufferAfterFence(std::unique_ptr&lt;VulkanBuffer&gt; buffer);
-void RetainResourceUntilFence(std::shared_ptr&lt;void&gt; resource);
-void RecycleDescriptorAfterFence(VulkanDescriptorSet&amp; set);</pre>
+  <p><code>CommandScheduler</code> now uses a growable command pool and a Vulkan
+  <strong>timeline semaphore</strong> (<code>MasterSemaphore</code>). It reuses a command buffer when
+  the GPU's known tick has passed that buffer's last submission, or allocates four more
+  if none is free. Deferred destruction and descriptor-pool retirement are tied directly
+  to timeline ticks; there is no fixed eight-buffer ring or per-buffer fence.</p>
 
   <p>There is also a separate priority-operation thread. Some deferred work — a readback the guest is blocking on — cannot wait for the normal drain, so it runs on its own thread with its own tick.</p>
   <div class="srcs"><span class="src">…/renderer/commandScheduler.h</span><span class="src">…/renderer/masterSemaphore.h</span></div>
@@ -1081,8 +1085,8 @@ void RecycleDescriptorAfterFence(VulkanDescriptorSet&amp; set);</pre>
 
   <h3 id="vertex-fetch-has-no-fixed-function-equivalent">Vertex fetch has no fixed-function equivalent</h3>
   <p>On RDNA&nbsp;2 there is no vertex-input state in hardware. Instead the driver compiles a small <em>fetch shader</em> that reads vertex attributes from buffers and leaves them in registers, and the real vertex shader is called with those registers already populated. Games may supply this fetch shader externally, or embed it in the vertex shader's prologue.</p>
-  <p>Kyty detects both cases. <code>DetectEmbeddedVertexFetch()</code> analyses the decoded prologue to work out which registers hold attribute tables, buffer tables and indices, then <code>RewriteEmbeddedVertexFetches()</code> replaces those loads with real SPIR-V vertex inputs — so Vulkan's ordinary vertex-input state can be used instead.</p>
-  <div class="srcs"><span class="src">…/ShaderRecompiler.cpp:744</span><span class="src">src/graphics/shader/shader.h:67</span></div>
+  <p>For the embedded case, <code>DetectEmbeddedVertexFetch()</code> analyses decoded instructions before IR construction and produces a <code>Frontend::EmbeddedFetchPlan</code>. That plan is supplied to <code>TranslateProgram()</code>, which emits the vertex-input behavior directly; the old later rewrite pass no longer exists.</p>
+  <div class="srcs"><span class="src">…/ShaderRecompiler.cpp:239</span><span class="src">…/frontend/translate/Translate.h</span></div>
 
   <h3 id="diagnostics-built-into-the-renderer">Diagnostics built into the renderer</h3>
   <div class="tw">
@@ -1122,7 +1126,7 @@ void RecycleDescriptorAfterFence(VulkanDescriptorSet&amp; set);</pre>
   <p>Two distinct paths. <code>sceAudioOut</code> is straightforward mixing and output, running on its own thread and fed by the guest in fixed-size blocks. <strong>AJM</strong> is not: it models a hardware decode block, where the guest submits a batch of "jobs" describing input and output buffers and codec parameters. Kyty parses the job format and routes each to LibAtrac9 (Sony's ATRAC9 codec) or FFmpeg (AAC, MP3).</p>
 
   <h3 id="input">Input</h3>
-  <p>SDL2 supplies gamepad and keyboard events on the main thread; <code>controller.cpp</code> maps them onto the DualSense button bit-mask and analogue axes, which <code>libPad.cpp</code> then reports through <code>scePadReadState</code>. Touchpad and motion are present in the data structures. Keyboard fallbacks let you play without a pad.</p>
+  <p>SDL2 supplies gamepad, keyboard, and mouse events on the main thread. <code>libs/controller.cpp</code> maps controllers onto the DualSense button mask and analogue axes; <code>presentation/window/hostInput.cpp</code> applies default PC controls or repeatable <code>--keymap Control=Input</code> bindings, including mouse buttons and mouse-to-right-stick mode. <code>libPad.cpp</code> reports the assembled state through <code>scePadReadState</code>, while <code>PadSetVibration()</code> forwards the two motor strengths to <code>SDL_GameControllerRumble()</code>.</p>
   <div class="srcs"><span class="src">src/graphics/presentation/window/window.cpp</span><span class="src">src/libs/controller.cpp</span><span class="src">src/libs/libPad.cpp</span></div>
 </section>
 
@@ -1131,7 +1135,7 @@ void RecycleDescriptorAfterFence(VulkanDescriptorSet&amp; set);</pre>
   <div class="sec-head"><span class="sec-num">12</span><h2 id="build-dependencies-and-tooling">Build, dependencies and tooling</h2></div>
 
   <h3 id="toolchain">Toolchain</h3>
-  <p>CMake ≥ 3.12 driving Ninja, with <strong>Clang only</strong>. MSVC's <code>cl.exe</code> is rejected at configure time because the project depends on <code>__attribute__((sysv_abi))</code>. On Windows that means <code>clang-cl</code> from the Visual Studio "C++ Clang tools" component. Qt&nbsp;6 (Concurrent, Network, Widgets) is required for the launcher.</p>
+  <p>CMake ≥ 3.12 drives Ninja. The documented and CI builds use <strong>Clang</strong>; CMake also recognises GCC on POSIX. MSVC's <code>cl.exe</code> is rejected because the project depends on <code>__attribute__((sysv_abi))</code>, so Windows uses <code>clang-cl</code>. Qt&nbsp;6 (Concurrent, Network, Widgets) is required for the launcher.</p>
 
 <pre>cmake -S <b>src</b> -B _Build/windows -G Ninja -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl \
@@ -1148,7 +1152,7 @@ cmake --install _Build/windows --prefix _Build/windows/install</pre>
         <tr><td><code>SPIRV-Headers</code> · <code>SPIRV-Tools</code></td><td>Emitting, validating and optimising the recompiler's output (<code>--shader-optimization-type</code>).</td></tr>
         <tr><td><code>SDL2</code></td><td>Window, input, and the Vulkan surface. Statically linked.</td></tr>
         <tr><td><code>ffmpeg-core</code> · <code>LibAtrac9</code></td><td>Video and audio decoding for AVPlayer and AJM.</td></tr>
-        <tr><td><code>fmt</code> · <code>spdlog</code> · <code>nlohmann_json</code> · <code>magic_enum</code></td><td>Formatting, logging, JSON (<code>param.json</code>, game patches), enum reflection for CLI parsing.</td></tr>
+        <tr><td><code>fmt</code> · <code>spdlog</code> · <code>nlohmann_json</code> · <code>magic_enum</code></td><td>Formatting, logging, JSON (<code>param.json</code>, ETAHen/GoldHEN-style cheats), enum reflection for CLI parsing.</td></tr>
         <tr><td><code>xxHash</code></td><td>Fast hashing for shader and pipeline cache keys.</td></tr>
         <tr><td><code>tracy</code></td><td>Frame profiler, enabled with <code>--profiler-direction Network</code>.</td></tr>
         <tr><td><code>stb</code> · <code>cpuinfo</code> · <code>winpthread</code></td><td>Image decode, CPU feature detection, pthread support on Windows.</td></tr>
@@ -1159,8 +1163,8 @@ cmake --install _Build/windows --prefix _Build/windows/install</pre>
   <h3 id="tests">Tests</h3>
   <p>Each test file builds as its own standalone executable (all <code>EXCLUDE_FROM_ALL</code>, so a normal build skips them). They cluster in two places, which is exactly where silent corruption lives:</p>
   <ul>
-    <li><strong>Shader compiler</strong> — <code>ShaderRecompilerComputeTests</code>, <code>shaderCfgTests</code>, <code>ResourceTrackingTests</code>, <code>ScalarProvenanceTests</code>, <code>ShaderStageRuntimeTests</code>, <code>ShaderVertexMetadataTests</code>.</li>
-    <li><strong>Memory and resource lifetime</strong> — <code>VirtualMemoryAllocationTests</code>, <code>MemoryTrackerTests</code>, <code>PageManagerTests</code>, <code>ImagePageTableTests</code>, <code>ResourceMutexTests</code>, <code>EventQueueLifetimeTests</code>.</li>
+    <li><strong>Shader compiler</strong> — <code>ShaderRecompilerComputeTests</code>, <code>shaderCfgTests</code>, <code>ResourceTrackingTests</code>, the legacy-named <code>ScalarProvenanceTests</code> (now typed-IR/SRT tracing), <code>ShaderStageRuntimeTests</code>, and <code>ShaderVertexMetadataTests</code>.</li>
+    <li><strong>Memory, synchronization, and lifetime</strong> — <code>VirtualMemoryAllocationTests</code>, <code>MemoryTrackerTests</code>, <code>PageManagerTests</code>, <code>ImagePageTableTests</code>, <code>SyncOnAddressTests</code>, and <code>EventQueueLifetimeTests</code>.</li>
   </ul>
   <p>Note the pattern in <code>memory.h</code>: test hooks are compiled in behind <code>KYTY_VIRTUAL_MEMORY_ALLOCATION_TESTS</code> — <code>TestFailNextPhysicalMemoryUnmap()</code>, <code>TestFailGuestBackingStoreUnmapAfter(n)</code>. Failure injection, so the error paths in the allocator are actually exercised.</p>
 
@@ -1367,32 +1371,32 @@ cmake --install _Build/windows --prefix _Build/windows/install</pre>
   /* ---------------------------------------------------------- boot sequence */
   var BOOT = [
     {
-      t: "Core subsystems",
-      h: "SubsystemsList: core + threads",
-      b: "<p>Before anything is parsed, <code>main()</code> registers the two subsystems that everything else depends on — the common runtime and the thread manager — and initialises them. If either fails the process exits immediately with the failing subsystem's name.</p>",
-      w: "Argument parsing itself needs working string, file and logging primitives, so this cannot wait until after the command line is read.",
-      s: "src/main.cpp:242"
+      t: "Host bootstrap",
+      h: "VirtualMemory::Init + InitializeThreads",
+      b: "<p>Before parsing arguments, <code>main()</code> installs the host virtual-memory machinery and records the process's initial thread. These are direct bootstrap calls, not entries in the emulator lifecycle stack.</p>",
+      w: "Later memory, exception and window-thread code assumes this process-wide host state already exists.",
+      s: "src/main.cpp:327"
     },
     {
       t: "Parse arguments",
       h: "ParseArgs → RunOptions",
       b: "<p>Every flag maps onto a field of <code>Config::ConfigOptions</code>. Enum-valued flags such as <code>--shader-log-direction</code> are parsed with <code>magic_enum</code>, so the accepted strings are literally the enumerator names. <code>--game</code> accepts either a directory (then <code>/app0/eboot.bin</code> is used) or a single ELF file.</p>",
-      w: "There is exactly one source of configuration — the command line. The Qt launcher does not share state with the emulator; it just builds this command line.",
-      s: "src/main.cpp:106"
+      w: "The emulator receives one argument-driven runtime object. The Qt launcher persists global and per-title profiles, then turns the selected settings into this command line.",
+      s: "src/main.cpp:141"
     },
     {
       t: "Config &amp; log",
       h: "Config, then Log, then param.json",
       b: "<p>Configuration initialises first, then logging (which depends on it), and only then is <code>sce_sys/param.json</code> read. If it declares a flexible-memory budget, <code>SetFlexibleMemorySize()</code> is called <em>before</em> the memory subsystem starts.</p>",
       w: "The memory manager sizes its pools at init time. A budget applied afterwards would be ignored, so the ordering is load-bearing rather than stylistic.",
-      s: "src/emulator.cpp:108"
+      s: "src/emulator.cpp:126"
     },
     {
-      t: "All subsystems",
-      h: "Dependency-ordered InitAll",
-      b: "<p>Audio, controller, file system, graphics, memory, network, profiler, pthread and timer are added with explicit dependency lists and initialised in topological order. Graphics depends on six others.</p>",
-      w: "Explicit dependencies mean a new subsystem cannot silently be initialised too early — a class of bug that is otherwise very hard to see.",
-      s: "src/emulator.cpp:141"
+      t: "Lifecycle stack",
+      h: "Explicit Initialize&lt;Lifecycle&gt; order",
+      b: "<p><code>Emulator::Init()</code> spells out timer, pthread, profiler, network, memory, file-system, controller, audio and graphics startup in the required order. Each successful lifecycle contributes shutdown callbacks to a stack.</p>",
+      w: "Normal and emergency teardown walk the active callbacks in reverse, so ownership follows the visible initialization order without a separate dependency graph.",
+      s: "src/emulator.cpp:142"
     },
     {
       t: "Mount points",
@@ -1439,7 +1443,7 @@ cmake --install _Build/windows --prefix _Build/windows/install</pre>
     {
       t: "Run",
       h: "StartAllModules → RunEntry",
-      b: "<p>Optional JSON game patches are applied to guest memory, module initialisers run in dependency order, then <code>RunEntry()</code> switches to the guest stack and calls the entry point with <code>argc=1, argv[0]=\"KytyEmu\"</code> and an at-exit handler.</p>",
+      b: "<p>After relocation, an optional ETAHen/GoldHEN-style cheat JSON is validated against title ID, version and process, then applied (with later module writes kept pending). Module initialisers run next, and <code>RunEntry()</code> switches to the guest stack.</p>",
       w: "From this instruction on, the CPU is executing the game's own code natively. Everything the emulator does afterwards is reactive — it responds to calls, to page faults, and to command buffers.",
       s: "src/loader/runtimeLinker.cpp:1612"
     }
@@ -1478,7 +1482,7 @@ cmake --install _Build/windows --prefix _Build/windows/install</pre>
     {
       c: "h", a: "0xFC00000000 and above", n: "Host high memory", sz: "—", ttl: "Host high memory",
       d: "<p>Outside the guest's world. On Linux the emulator binary is linked with <code>--image-base=0x100000000000</code>, and on macOS with <code>-image_base 0x700000000000</code>, deliberately placing the emulator's own code far above anything the guest can allocate.</p><p>This matters more than it sounds: it guarantees a guest pointer and a host pointer can never be confused by their value alone, which makes a whole class of bug detectable by inspection.</p>",
-      s: "src/CMakeLists.txt:95"
+      s: "CMakeLists.txt:126"
     }
   ];
 
@@ -1589,70 +1593,70 @@ cmake --install _Build/windows --prefix _Build/windows/install</pre>
   /* ---------------------------------------------------------- shader pipeline */
   var PIPE = [
     {
-      t: "Decode", h: "DecodeProgram — RDNA 2 words → instruction list",
-      b: "<p>Walk the code blob, decode each instruction from its encoding class (SOP1, SOP2, SOPP, VOP1, VOP2, VOP3, VOPC, SMEM, MUBUF, MTBUF, MIMG, FLAT, DS, EXP) and record opcode, operands, literal constants and program counter.</p><p>This is the point at which the AMD ISA manual is not optional: operand encodings are dense and there is no way to guess them.</p>",
+      t: "Decode", h: "DecodeProgram — RDNA 2 words → typed instructions",
+      b: "<p>Decode the variable-length instruction families and record typed opcodes, operands, modifiers, raw words and program counters.</p><p>The rest of the compiler never needs to reinterpret packed machine words.</p>",
       w: "Everything downstream works on a typed instruction list, not on raw bits. The decoder is also where an unrecognised instruction produces a clean, locatable error.",
-      s: "…/decompiler/ShaderDecoder.cpp"
+      s: "…/frontend/decode/ShaderDecoder.cpp"
     },
     {
       t: "Build CFG", h: "BuildGraph — basic blocks, dominators, loops",
       b: "<p>Split the instruction list at branch targets and branch instructions, wire up predecessors and successors, then compute dominators, post-dominators, back edges, natural loops and strongly connected components.</p><p>Branch conditions are typed: <code>SccZero</code>, <code>VccNonZero</code>, <code>ExecZero</code> and so on — GPU branches test hardware condition registers, not general values.</p>",
       w: "Reducibility is decided here. If a strongly connected component has more than one entry point, the graph is irreducible and the structured path is abandoned before it is attempted.",
-      s: "…/cfg/ShaderCFG.cpp"
+      s: "…/frontend/cfg/ShaderCFG.cpp"
     },
     {
       t: "Structurize", h: "Structurize — find merge and continue blocks",
       b: "<p>SPIR-V requires every conditional branch to declare a merge block and every loop to declare both a merge and a continue block. This pass computes them, using the nearest common post-dominator for selections and loop-exit analysis for loops.</p><p>If it cannot find a valid structure, the graph reverts to its unstructured form, is flagged <code>unsupported</code>, and a dispatcher-based emission is used instead.</p>",
       w: "This is where GPU control flow, which is mask manipulation, becomes something a structured IR can express. It is the single most failure-prone stage, so failure is a documented fallback rather than an error.",
-      s: "…/cfg/ShaderCFG.cpp"
+      s: "…/frontend/cfg/ShaderCFG.cpp"
     },
     {
-      t: "Lower to IR", h: "LowerProgram — machine ops → IR opcodes",
-      b: "<p>Translate each decoded instruction into one or more IR instructions from a set of several hundred opcodes: <code>IAddU32</code>, <code>BitFieldExtractU32</code>, <code>CompareLtF32</code>, <code>BufferLoadDword</code>, <code>ImageSample</code>, <code>Export</code>, and so on. Register operands become IR values.</p><p>The wave size and lane-mask mode are attached to the program here, because they change what several instructions mean.</p>",
-      w: "The IR is deliberately close to the machine — this is a translator, not an optimising compiler. Staying close keeps the mapping auditable when a shader renders incorrectly.",
-      s: "…/ir/ShaderIR.cpp"
+      t: "Translate", h: "TranslateProgram — decoded ops → typed value IR",
+      b: "<p>Explicit scalar, vector, memory, LDS and export dispatchers translate each decoded opcode directly into the current typed IR.</p><p>The old second IR was removed.</p>",
+      w: "The decoder owns binary layout while the translation categories own instruction semantics, making both sides easier to test.",
+      s: "…/frontend/translate/Translate.cpp"
     },
     {
-      t: "Provenance", h: "BuildScalarProvenance — where did this scalar come from?",
-      b: "<p>A backwards dataflow analysis over scalar registers. For every scalar value, record whether it is a constant, a user-data slot, an arithmetic combination of known values, or unknown.</p>",
-      w: "Descriptors are loaded from addresses the shader computes. Without knowing how those addresses were built, there is no way to know which resource to bind — this analysis is what makes descriptor recovery possible at all.",
-      s: "…/ir/ScalarProvenance.cpp"
+      t: "SSA + simplify", h: "RewriteToSsa, propagate, remove identities, eliminate dead code",
+      b: "<p>Make register and control-flow value dependencies explicit, fold constants, eliminate identities and discard dead instructions.</p>",
+      w: "Current SRT analysis traces this value graph directly; the old separate scalar-provenance structure no longer exists.",
+      s: "…/ir/passes/SsaRewrite.cpp"
     },
     {
       t: "SRT plan", h: "BuildSrtPlan — a recipe for reading descriptor tables",
-      b: "<p>Collect every reachable <code>ReadConst</code> — the shader reading its own resource table — and turn it into a plan. Constant offsets are assigned compact flat-buffer slots; genuinely dynamic offsets stay explicit and are never given a fake slot.</p>",
+      b: "<p>Walk typed values, collect reachable resource-table reads and turn them into a plan. Constant offsets receive flattened slots while dynamic reads remain explicit.</p>",
       w: "Separating the plan from its execution is what allows one compiled shader to be reused across draws with different resources bound.",
-      s: "…/ir/SrtWalker.cpp"
+      s: "…/ir/passes/SrtWalker.cpp"
     },
     {
-      t: "Track resources", h: "PatchSrtReads + TrackResources",
-      b: "<p>Rewrite descriptor reads to reference the plan, then classify every resource the shader uses: buffers (read-only, writable, formatted), images (sampled, storage, their dimensionality and format), and samplers.</p>",
+      t: "Track resources", h: "TrackResources — classify descriptor uses",
+      b: "<p>Classify buffers, images, samplers and sampled pairs, including access, dimensions, formats, aliases and descriptor sources.</p>",
       w: "This produces the list from which the Vulkan descriptor set layout is generated. Get the classification wrong and the pipeline fails validation, or worse, silently reads the wrong memory.",
-      s: "…/ir/ResourceTracking.cpp"
+      s: "…/ir/passes/ResourceTracking.cpp"
     },
     {
       t: "Materialize", h: "MaterializeResources + SpecializeResources",
-      b: "<p>Run the plan against actual user data and actual guest memory to obtain concrete descriptors, then specialise the IR against what was found — a buffer whose stride is now known, an image whose format is now known, can be emitted more directly.</p>",
+      b: "<p>Use a supplied snapshot or run the plan against current user data and guest memory, then specialise the IR with concrete resource facts.</p>",
       w: "Specialisation is why the shader ID includes resource information: two draws with differently-shaped resources need different SPIR-V, so they must not collide in the pipeline cache.",
-      s: "…/ir/ResourceMaterialization.cpp"
+      s: "…/ir/passes/ResourceMaterialization.cpp"
     },
     {
-      t: "Bindings", h: "CollectShaderInfo + AllocateBindings",
-      b: "<p>Gather stage-specific facts — which vertex attributes are read, which pixel interpolators, workgroup size for compute — then assign descriptor set numbers, binding indices and push-constant offsets (up to 32 dwords).</p>",
+      t: "Layout", h: "CollectShaderInfo + AllocateBindings",
+      b: "<p>Gather stage inputs and outputs, allocate resource and emulator-support bindings, and compute push-constant placement.</p>",
       w: "The renderer needs the exact same layout when it writes descriptor sets at draw time, so this allocation is stored alongside the SPIR-V rather than recomputed.",
-      s: "…/ir/BindingLayout.cpp"
+      s: "…/ir/passes/BindingLayout.cpp"
     },
     {
-      t: "Optimise", h: "EliminateReadLane",
-      b: "<p><code>v_readlane</code> and <code>v_readfirstlane</code> read one lane of a vector register into a scalar. These map poorly onto SPIR-V subgroup operations. Where the value is provably uniform, the pass rewrites the read into a direct use and drops the cross-lane operation.</p>",
-      w: "Subgroup operations are the least portable part of SPIR-V. Every one that can be removed is one fewer host-driver difference to debug.",
-      s: "…/ir/ReadLaneElimination.cpp"
+      t: "Requirements", h: "AnalyzeProgramRequirements",
+      b: "<p>Record every subgroup, derivative, image, LDS, scratch and pixel-mask capability the module needs.</p>",
+      w: "The backend enters emission with an explicit capability contract.",
+      s: "…/backend/spirv/spirvEmitterAnalysis.cpp"
     },
     {
       t: "Emit SPIR-V", h: "Spirv::EmitProgram",
-      b: "<p>The largest stage: about 516&nbsp;KB across a dozen files. Declares types, capabilities, entry point, interface variables and descriptors, then emits every IR instruction as SPIR-V — including all the lowering the machine gets for free, such as bounds-checked buffer access and image-format conversion.</p><p>Optionally validated with <code>spirv-val</code> and optimised with <code>spirv-opt</code> before it reaches the driver.</p>",
+      b: "<p>The roughly 360&nbsp;KB backend declares types, capabilities, interfaces and descriptors, then lowers typed IR through flow, ALU, memory and image emitters.</p>",
       w: "SPIR-V is stricter than machine code in every respect: types must be declared, control flow must be structured, capabilities must be requested. This stage is where all that bookkeeping happens.",
-      s: "…/emitter/SpirvEmitter.cpp"
+      s: "…/backend/spirv/SpirvEmitter.cpp"
     }
   ];
 

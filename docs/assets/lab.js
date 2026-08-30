@@ -1594,22 +1594,22 @@
   });
 
   /* ============================================================
-     10 · timeline — fences, ticks and resource lifetime
+     10 · timeline — pooled command buffers, ticks and lifetime
      ============================================================ */
   reg("timeline", function (host) {
     var body = frame(host,
-      "Command buffers, fences and resource lifetime",
+      "Command-pool reuse and resource lifetime",
       "submit work · complete it on the GPU",
-      "Eight command buffers in rotation, each with a fence, plus a timeline semaphore giving a monotonically increasing tick. Anything that must outlive a submission is registered against its buffer and released only when that fence signals — which is why a staging buffer or a descriptor set cannot simply be freed when the draw is recorded.");
+      "The current scheduler has a growable command pool and one timeline semaphore. A buffer can be reset and reused when its last tick is complete; if every allocated buffer is busy, the pool grows by four. Deferred resources and descriptor pools carry ticks too, so they are released only after the GPU passes the submission that used them.");
 
-    var SLOTS = 8;
-    var slots = [], tick = 0, seq = 0, cur = 0;
+    var GROW = 4;
+    var slots = [], tick = 0, gpuTick = 0, cur = 0;
     function reset() {
-      slots = []; tick = 0; seq = 0; cur = 0;
-      for (var i = 0; i < SLOTS; i++) slots.push({ state: "free", tick: 0, res: 0 });
+      slots = []; tick = 0; gpuTick = 0; cur = 0;
+      for (var i = 0; i < GROW; i++) slots.push({ state: "free", tick: 0, res: 0 });
       slots[0].state = "recording";
       lines = [];
-      log("Scheduler idle. Buffer 0 is open for recording; the semaphore has not ticked yet.");
+      log("CommandPool allocated its first four buffers. Buffer 0 is recording; the timeline is zero.");
       render();
     }
 
@@ -1622,9 +1622,9 @@
     var st = status(row);
 
     var head = h("div", "lab-ctl");
-    head.appendChild(h("span", "lab-lb", "semaphore tick"));
+    head.appendChild(h("span", "lab-lb", "GPU tick / submitted tick"));
     var tickEl = h("span", "lab-tick", "0"); head.appendChild(tickEl);
-    head.appendChild(h("span", "lab-lb", "resources awaiting a fence"));
+    head.appendChild(h("span", "lab-lb", "resources awaiting a tick"));
     var resEl = h("span", "lab-tick", "0"); head.appendChild(resEl);
     body.appendChild(head);
 
@@ -1643,30 +1643,32 @@
           "<span>" + (s.tick ? "waits for tick " + s.tick : "&nbsp;") + "</span>" +
           '<span class="res">' + (s.res ? s.res + " held" : "&nbsp;") + "</span></div>";
       }).join("");
-      tickEl.textContent = tick;
+      tickEl.textContent = gpuTick + " / " + tick;
       resEl.textContent = slots.reduce(function (a, s) { return a + (s.state === "inflight" ? s.res : 0); }, 0);
       var inflight = slots.filter(function (s) { return s.state === "inflight"; }).length;
-      st.className = "lab-status" + (inflight >= SLOTS - 1 ? " err" : "");
-      st.textContent = inflight >= SLOTS - 1
-        ? "every buffer is in flight — the next submit must block until a fence signals"
-        : inflight + " in flight · recording into buffer " + cur;
+      st.className = "lab-status";
+      st.textContent = slots.length + " allocated · " + inflight + " in flight · recording into buffer " + cur;
     }
 
     recBtn.addEventListener("click", function () {
       if (slots[cur].state !== "recording") { log("No buffer is recording — submit or reset first."); return; }
       slots[cur].res++;
-      log("Recorded a draw into buffer " + cur + ". Its staging buffer and descriptor set are now retained against this buffer's fence.");
+      log("Recorded a draw into buffer " + cur + ". Its temporary resource is deferred against the current timeline tick.");
       render();
     });
     subBtn.addEventListener("click", function () {
       if (slots[cur].state !== "recording") { log("Nothing to submit."); return; }
-      tick++; seq++;
+      tick++;
       slots[cur].state = "inflight"; slots[cur].tick = tick;
       log("Submitted buffer " + cur + ". Timeline semaphore will reach " + tick + " when the GPU finishes it.");
       var next = -1;
-      for (var k = 1; k <= SLOTS; k++) { var c = (cur + k) % SLOTS; if (slots[c].state === "free" || slots[c].state === "retired") { next = c; break; } }
-      if (next < 0) { log("All eight buffers are in flight — CommandScheduler would block here waiting on a fence."); }
-      else { cur = next; slots[cur] = { state: "recording", tick: 0, res: 0 }; }
+      for (var k = 1; k <= slots.length; k++) { var c = (cur + k) % slots.length; if (slots[c].state === "free" || slots[c].state === "retired") { next = c; break; } }
+      if (next < 0) {
+        next = slots.length;
+        for (var n = 0; n < GROW; n++) slots.push({ state: "free", tick: 0, res: 0 });
+        log("No completed buffer was reusable, so CommandPool grew by four instead of waiting.");
+      }
+      cur = next; slots[cur] = { state: "recording", tick: 0, res: 0 };
       render();
     });
     cmpBtn.addEventListener("click", function () {
@@ -1674,30 +1676,29 @@
       slots.forEach(function (s, i) { if (s.state === "inflight" && s.tick < best) { best = s.tick; oldest = i; } });
       if (oldest < 0) { log("Nothing in flight."); return; }
       var freed = slots[oldest].res;
+      gpuTick = best;
       slots[oldest].state = "retired"; slots[oldest].res = 0;
-      log("Fence for buffer " + oldest + " signalled at tick " + best + ". Released " + freed +
-          " retained resource" + (freed === 1 ? "" : "s") + " — buffers retired, descriptor sets recycled.");
+      log("The GPU timeline reached " + best + ". Released " + freed +
+          " deferred resource" + (freed === 1 ? "" : "s") + "; buffer " + oldest + " is reusable.");
       render();
     });
     rstBtn.addEventListener("click", reset);
     reset();
 
     demoRunner(row, [
-      { say: "Eight command buffers, one recording, nothing in flight, semaphore at zero.",
+      { say: "The command pool starts with four buffers, one recording, and a timeline at zero.",
         run: reset, ms: 2800 },
-      { say: "Record two draws into buffer 0. Each retains a staging buffer and a descriptor set against that buffer's fence.",
+      { say: "Record two draws into buffer 0. Each leaves temporary state that must survive its submission tick.",
         run: function () { recBtn.click(); recBtn.click(); }, ms: 3400 },
       { say: "Submit it. The semaphore will reach tick 1 when the GPU finishes — and <b>those resources cannot be freed until then</b>, because the GPU is still reading them.",
         run: function () { subBtn.click(); }, ms: 4200 },
-      { say: "Keep going. Record and submit until the rotation is nearly used up.",
-        run: function () { for (var k = 0; k < 5; k++) { recBtn.click(); subBtn.click(); } }, ms: 3800 },
-      { say: "Two more, and every one of the eight is in flight.",
-        run: function () { recBtn.click(); subBtn.click(); recBtn.click(); subBtn.click(); }, ms: 3600 },
-      { say: "<b>Now the scheduler would block.</b> There is no free buffer to record into, so the CPU has to wait for a fence — this is back-pressure from the GPU, and it is how a game gets paced.",
-        ms: 4600 },
-      { say: "The GPU finishes the oldest. Its fence signals, and its retained resources are released all at once.",
+      { say: "Submit two more. The fourth original buffer is now recording, and none of the first three has completed.",
+        run: function () { for (var k = 0; k < 2; k++) { recBtn.click(); subBtn.click(); } }, ms: 3800 },
+      { say: "Submit that last original buffer. With no reusable buffer, the pool <b>grows by four</b>; it does not wait on a per-buffer fence.",
+        run: function () { recBtn.click(); subBtn.click(); }, ms: 4200 },
+      { say: "The GPU completes the oldest tick. Its deferred resources are released and that command buffer becomes reusable.",
         run: function () { cmpBtn.click(); }, ms: 4000 },
-      { say: "Complete two more and the rotation frees up. Note the tick only ever increases — that monotonic counter is what a timeline semaphore gives you.",
+      { say: "Complete two more. The GPU tick only increases, and future commits prefer buffers whose recorded tick is no newer than that completed value.",
         run: function () { cmpBtn.click(); cmpBtn.click(); }, ms: 4000 }
     ]);
   });

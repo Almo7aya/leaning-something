@@ -43,7 +43,7 @@ subsystems.Initialize&lt;Libs::Controller::Lifecycle&gt;();
 subsystems.Initialize&lt;Libs::Audio::Lifecycle&gt;();
 subsystems.Initialize&lt;Libs::Graphics::Lifecycle&gt;();</pre>
 
-  <p>Read it as a dependency graph: config first (everything reads it), logging second (everything writes it), then the timer, the pthread layer (so threads exist), the profiler, then the subsystems that need an address space — network, memory, files — then the ones that sit on top: input, audio, and finally graphics. Each <code>Lifecycle</code> is the <code>static constexpr auto initialize</code> pattern from <a href="t-cpp-language.html">topic C1</a>.</p>
+  <p>Read the explicit sequence as the dependency contract: config first (everything reads it), logging second (everything writes it), then timer, pthread, profiler, network, memory, files, input, audio and finally graphics. Each <code>Lifecycle</code> supplies a name and <code>static constexpr</code> callbacks; successful shutdown and emergency-shutdown callbacks are recorded and later invoked in reverse order. This pattern is introduced in <a href="t-cpp-language.html">topic C1</a>.</p>
 
   <h4 id="audio">Audio — the busiest non-GPU thread</h4>
   <p>Three files, roughly 150 KB, one job: turn what the game hands the <em>port</em> API into samples on the output. The console's audio surface has two halves:</p>
@@ -72,7 +72,7 @@ int KYTY_SYSV_ABI SslTerm(int ssl_ctx_id);
   <p>The craft is in the <em>return values</em>: a login call must return "signed in as a guest" or "no session", not an error the game treats as fatal.</p>
 
   <h4 id="input">Input — SDL events become DualSense state</h4>
-  <p><code>libPad.cpp</code> (12 KB) + <code>controller.cpp</code> (13 KB) is the smallest library and a clean example of the mapping pattern: SDL's event loop runs on the main thread (in <code>WindowRun</code>), and the emulator turns controller events into the <code>padData.h</code> structure a game's <code>padReadState</code> returns. If you want to see one subsystem end to end, this is the shortest one.</p>
+  <p><code>libPad.cpp</code>, <code>libs/controller.cpp</code>, and <code>presentation/window/hostInput.cpp</code> form a clean mapping example. SDL's event loop runs on the main thread; controller, keyboard, and mouse input become the <code>padData.h</code> state returned to the game. Repeatable <code>--keymap Control=Input</code> arguments customize PC controls, and guest vibration commands travel back to the physical controller through SDL rumble.</p>
 
   <h4 id="the-file-sandbox">The file sandbox — guest paths, host files</h4>
   <p>The game believes it lives on a console with <code>/app0</code>, <code>/download0</code>, <code>/temp0</code> and <code>/savedata0</code>. The emulator synthesises that tree from host directories at boot:</p>

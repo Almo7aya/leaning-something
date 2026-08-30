@@ -33,10 +33,15 @@
       <thead><tr><th>Flag</th><th>Default</th><th>Effect</th></tr></thead>
       <tbody>
         <tr><td><code>--game &lt;dir|elf&gt;</code></td><td>—</td><td>A game directory (uses <code>/app0/eboot.bin</code>) or a single ELF.</td></tr>
-        <tr><td><code>--game-patch &lt;json&gt;</code></td><td>—</td><td>A validated patch plan applied to guest memory before the entry point.</td></tr>
+        <tr><td><code>--game-patch &lt;json&gt;</code></td><td>—</td><td>An ETAHen cheat file.</td></tr>
         <tr><td><code>--screen-width</code> / <code>--screen-height</code></td><td>1280 / 720</td><td>Window size.</td></tr>
+        <tr><td><code>--user-name</code> / <code>--user-id</code></td><td>Kyty / 1000</td><td>Local console user identity.</td></tr>
+        <tr><td><code>--present-mode</code></td><td>Fifo</td><td><code>Fifo</code>, <code>Mailbox</code>, or <code>Immediate</code>.</td></tr>
+        <tr><td><code>--fullscreen</code></td><td>false</td><td>Borderless desktop fullscreen.</td></tr>
         <tr><td><code>--vblank-frequency &lt;n&gt;</code></td><td>60</td><td>Virtual vertical-blank rate. Changing it changes game speed for engines that pace off vblank.</td></tr>
+        <tr><td><code>--console-language &lt;0-29&gt;</code></td><td>1</td><td>Console language; 1 is English (US).</td></tr>
         <tr><td><code>--vulkan-validation</code></td><td>false</td><td>Vulkan validation layers.</td></tr>
+        <tr><td><code>--gpu-assisted-validation</code></td><td>false</td><td>Very slow GPU-side shader-access bounds checking; implies Vulkan validation.</td></tr>
         <tr><td><code>--shader-validation</code></td><td>false</td><td>Runs every emitted module through <code>spirv-val</code> before the driver sees it.</td></tr>
         <tr><td><code>--shader-optimization-type</code></td><td>None</td><td><code>None</code>, <code>Size</code> or <code>Performance</code> — passes to <code>spirv-opt</code>.</td></tr>
         <tr><td><code>--shader-log-direction</code></td><td>Silent</td><td><code>Silent</code>, <code>Console</code> or <code>File</code>. Dumps decoded RDNA 2, the CFG and the IR per shader.</td></tr>
@@ -44,12 +49,14 @@
         <tr><td><code>--command-buffer-dump</code></td><td>false</td><td>Decoded PM4 listing of every submitted buffer.</td></tr>
         <tr><td><code>--command-buffer-dump-folder</code></td><td><code>_Buffers</code></td><td>Where those land.</td></tr>
         <tr><td><code>--graphics-debug-dump</code></td><td>false</td><td>Additional graphics dumps, including textures into <code>_Textures</code>.</td></tr>
-        <tr><td><code>--printf-direction</code></td><td>Console</td><td><code>Silent</code>, <code>Console</code> or <code>File</code> — this is the main log.</td></tr>
-        <tr><td><code>--printf-output-file</code></td><td><code>_kyty.txt</code></td><td>Where the main log goes when directed to a file.</td></tr>
+        <tr><td><code>--printf-direction</code></td><td>Silent</td><td><code>Silent</code>, <code>Console</code> or <code>File</code> for the emulator logger; it also gates guest printf and several debug dumps.</td></tr>
+        <tr><td><code>--printf-output-file</code></td><td><code>_kyty.txt</code></td><td>Logger/guest-printf target when the direction is <code>File</code>.</td></tr>
         <tr><td><code>--profiler-direction</code></td><td>None</td><td><code>None</code> or <code>Network</code> — streams to a Tracy client.</td></tr>
         <tr><td><code>--spirv-debug-printf</code></td><td>false</td><td>Enables <code>printf</code> from inside shaders.</td></tr>
-        <tr><td><code>--ngg-rectlist-draw</code></td><td>true</td><td>Draw rect-list auto draws through the NGG four-vertex path.</td></tr>
         <tr><td><code>--readback-linear-images</code></td><td>false</td><td>Read back writable linear images on submit — a coherency workaround.</td></tr>
+        <tr><td><code>--playgo-hack</code></td><td>false</td><td>Use the supplied PlayGo stub fallback.</td></tr>
+        <tr><td><code>--redzone</code></td><td>false</td><td>Windows only: protect the guest SysV red zone.</td></tr>
+        <tr><td><code>--keymap &lt;Control=Input&gt;</code></td><td>empty</td><td>DualSense mapping; repeat the flag for multiple mappings.</td></tr>
         <tr><td><code>--rd</code></td><td>off</td><td>Loads the RenderDoc API for frame capture.</td></tr>
       </tbody>
     </table>
@@ -137,16 +144,16 @@ event_queue_lifetime_tests     shader_stage_runtime_tests   shader_vertex_metada
     <table>
       <thead><tr><th class="num">Size</th><th>Test file</th><th>Covers</th></tr></thead>
       <tbody>
-        <tr><td class="num">800 KB</td><td><code>ShaderRecompilerComputeTests.cpp</code></td><td>End-to-end compute-shader recompilation. The largest file in the repository.</td></tr>
-        <tr><td class="num">370 KB</td><td><code>shaderCfgTests.cpp</code></td><td>Control-flow graph construction and structurisation, including the irreducible cases.</td></tr>
-        <tr><td class="num">106 KB</td><td><code>VirtualMemoryAllocationTests.cpp</code></td><td>The guest allocator, including deliberately injected failures.</td></tr>
-        <tr><td class="num">91 KB</td><td><code>ResourceTrackingTests.cpp</code></td><td>Classification of buffers, images and samplers from IR.</td></tr>
-        <tr><td class="num">52 KB</td><td><code>ScalarProvenanceTests.cpp</code></td><td>The scalar dataflow analysis that makes descriptor recovery possible.</td></tr>
+        <tr><td class="num">1.13 MB</td><td><code>ShaderRecompilerComputeTests.cpp</code></td><td>End-to-end compute-shader recompilation. The largest test file.</td></tr>
+        <tr><td class="num">595 KB</td><td><code>shaderCfgTests.cpp</code></td><td>CFG construction and structurisation, including irreducible cases.</td></tr>
+        <tr><td class="num">126 KB</td><td><code>VirtualMemoryAllocationTests.cpp</code></td><td>The guest allocator, including deliberately injected failures.</td></tr>
+        <tr><td class="num">65 KB</td><td><code>ResourceTrackingTests.cpp</code></td><td>SRT planning, materialization, resource classification, shader info, and bindings.</td></tr>
+        <tr><td class="num">34 KB</td><td><code>MemoryTrackerTests.cpp</code></td><td>Dirty tracking, upload/download ranges, and invariants.</td></tr>
+        <tr><td class="num">25 KB</td><td><code>PageManagerTests.cpp</code></td><td>Watch and page-protection semantics in isolation.</td></tr>
+        <tr><td class="num">21 KB</td><td><code>ScalarProvenanceTests.cpp</code></td><td>SRT planning and typed-IR value tracing; the filename is retained from the older architecture.</td></tr>
         <tr><td class="num">19 KB</td><td><code>EventQueueLifetimeTests.cpp</code></td><td>Destroying a queue while threads block on it or events are being delivered.</td></tr>
-        <tr><td class="num">16 KB</td><td><code>MemoryTrackerTests.cpp</code></td><td>Dirty tracking, upload and download ranges, invariant enforcement.</td></tr>
-        <tr><td class="num">13 KB</td><td><code>PageManagerTests.cpp</code></td><td>Watch semantics in isolation.</td></tr>
-        <tr><td class="num">8 KB</td><td><code>ResourceMutexTests.cpp</code></td><td>The renderer's resource lock.</td></tr>
-        <tr><td class="num">7 KB</td><td><code>ImagePageTableTests.cpp</code></td><td>The multi-level page table mapping addresses to image IDs.</td></tr>
+        <tr><td class="num">11.5 KB</td><td><code>ImeDialogTests.cpp</code></td><td>IME dialog lifecycle and result handling.</td></tr>
+        <tr><td class="num">9.3 KB</td><td><code>SyncOnAddressTests.cpp</code></td><td>Address-based synchronization behavior.</td></tr>
       </tbody>
     </table>
   </div>

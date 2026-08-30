@@ -104,7 +104,7 @@
 
     <div class="callout k">
       <span class="lbl">A ten-minute lab</span>
-      <p>Open the Lab's <code>timeline</code> tool and submit until all eight command buffers are in flight, then watch fences release retained resources — that is the overlap from Choice three rendered as a diagram. Then run a title twice with <code>--shader-log-direction File</code> and compare the second run's log: the first run's "cache miss" lines are gone.</p>
+      <p>Open the Lab's <code>timeline</code> tool, fill the initial command-buffer batch, trigger growth, then advance the completed timeline tick and watch deferred resources release. Then run a title twice with <code>--shader-log-direction File</code> and compare the second run's log, including the persisted Vulkan driver pipeline-cache behavior.</p>
     </div>
   </section>
   <section class="band band-do">

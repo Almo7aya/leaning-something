@@ -299,8 +299,8 @@ section.app { padding-top:var(--s8); scroll-margin-top:var(--s4); }
   <div class="app-head"><span class="app-num">B</span><h2 id="commands-you-will-type-constantly">Commands you will type constantly</h2></div>
 
   <h3 style="margin-top:0" id="configure-and-build">Configure and build</h3>
-<pre><i># from an x64 Native Tools prompt — note: source root is src/, not the repo root</i>
-cmake -S <b>src</b> -B _Build/windows -G Ninja -DCMAKE_BUILD_TYPE=Release ^
+<pre><i># from an x64 Native Tools prompt; run at the repository root</i>
+cmake -S <b>.</b> -B _Build/windows -G Ninja -DCMAKE_BUILD_TYPE=Release ^
       -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl ^
       -DCMAKE_PREFIX_PATH="C:/Qt/6.x.x/msvc2022_64"
 
@@ -326,7 +326,7 @@ kyty_emulator.exe --game "..." --command-buffer-dump true ^
     <table>
       <thead><tr><th>Path</th><th>Written by</th><th>Note</th></tr></thead>
       <tbody>
-        <tr><td><code>_kyty.txt</code></td><td><code>--printf-direction File</code></td><td>Default is <code>Console</code>, so redirect it to a file before a long session.</td></tr>
+        <tr><td><code>_kyty.txt</code></td><td><code>--printf-direction File</code></td><td>Default is <code>Silent</code>, so enable the file sink before a diagnostic session.</td></tr>
         <tr><td><code>_Shaders/</code></td><td><code>--shader-log-direction File</code></td><td>Decoded RDNA&nbsp;2, CFG and IR per shader.</td></tr>
         <tr><td><code>_Buffers/</code></td><td><code>--command-buffer-dump true</code></td><td>Decoded PM4 listings.</td></tr>
         <tr><td><code>_Textures/</code></td><td><code>--graphics-debug-dump true</code></td><td>Cleared on every start by <code>ClearDebugTextureFolder()</code>.</td></tr>
@@ -371,7 +371,7 @@ event_queue_lifetime_tests   shader_stage_runtime_tests shader_vertex_metadata_t
     <li><code>CpOp*</code> — a command-processor <em>operation</em>, i.e. a handler for one PM4 opcode.</li>
     <li><code>IT_*</code> — PM4 opcodes ("<strong>i</strong>ndirect-buffer <strong>t</strong>ype"). <code>R_*</code> — Sony's sub-selectors carried in <code>IT_NOP</code> packets.</li>
     <li><code>V#</code> <code>T#</code> <code>S#</code> — buffer, image and sampler descriptors. In code, "sharp".</li>
-    <li><code>Gen5</code> — the AGC graphics API. Appears everywhere in <code>agc.cpp</code> and <code>libGraphicsDriver.cpp</code>.</li>
+    <li><code>Agc</code> / <code>Gen5</code> — the current and legacy names around the PS5 graphics API. Start in <code>agc.cpp</code> and <code>libAgcDriver.cpp</code>.</li>
   </ul>
 
   <div class="callout k">
@@ -400,19 +400,19 @@ event_queue_lifetime_tests   shader_stage_runtime_tests shader_vertex_metadata_t
       goal: "Before any reading: a debug-capable binary, a title that boots far enough to log, and a log file you can grep. Everything after this assumes you can re-run and observe.",
       reading: [
         ["README.md", "The build section is authoritative and platform-specific. Read the whole thing once."],
-        ["src/CMakeLists.txt", "Skim only. Find the two executables and the list of test targets near the bottom."],
+        ["CMakeLists.txt", "Skim the source globs, generated Vulkan 1.3 shaders, emulator target and focused test targets."],
         ["src/main.cpp:40", "PrintUsage() — the complete list of runtime flags, in one function."]
       ],
       tasks: [
-        ["Build <code>kyty_emulator</code> with clang-cl (Windows) or clang (Linux).", "MSVC is rejected at configure time — the project needs <code>__attribute__((sysv_abi))</code>. If CMake complains about the compiler, that is why."],
+        ["Build <code>kyty_emulator</code> with clang-cl (Windows) or Clang (Linux/macOS).", "MSVC is rejected at configure time because the project needs <code>__attribute__((sysv_abi))</code>. CMake also recognises GCC on POSIX, but upstream instructions and CI use Clang."],
         ["Run <code>kyty_emulator --help</code> and read every flag.", "Roughly a third of them exist purely for debugging. Knowing they exist is most of the value of this level."],
-        ["Boot a title and capture a log to a file.", "<code>--printf-direction File --printf-output-file _kyty.txt</code>. The default is Console, which you will lose."],
+        ["Boot a title and capture a log to a file.", "<code>--printf-direction File --printf-output-file _kyty.txt</code>. The current default is Silent."],
         ["Find these four things in your log: the mount lines, a module's <code>base_vaddr</code>, the <code>--- Execute: Main ---</code> banner, and the first shader compile.", "They mark the four phases of start-up. If your log is missing the banner, the game never reached its entry point."],
         ["Make a trivial source change, rebuild, and confirm it appears.", "A <code>LOGF</code> in <code>Emulator::Run</code> is enough. You want to know the edit-build-run loop works before you need it."]
       ],
       checks: [
         ["Why does the build reject <code>cl.exe</code>?", "<p>Guest code uses the System&nbsp;V AMD64 calling convention; the emulator on Windows uses the Microsoft convention. Every guest-callable function is marked <code>KYTY_SYSV_ABI</code>, which expands to <code>__attribute__((sysv_abi))</code> — a Clang/GCC extension MSVC does not have.</p><p><span class=\"src\">src/common/abi.h</span></p>"],
-        ["The CMake source directory is not the repository root. What is it?", "<p><code>src/</code>. <code>cmake -S src -B _Build/&lt;platform&gt;</code>. This trips up nearly everyone once.</p>"]
+        ["What is the current CMake source directory?", "<p>The repository root: <code>cmake -S . -B _Build/&lt;platform&gt;</code>. Commands using <code>-S src</code> belong to the previous build layout.</p>"]
       ],
       out: "Re-run the emulator with any combination of flags and find things in its output. That is the base capability everything else builds on."
     },
@@ -423,22 +423,22 @@ event_queue_lifetime_tests   shader_stage_runtime_tests shader_vertex_metadata_t
       title: "The shape of the whole program",
       goal: "Understand the top level end to end. These are small files and you can genuinely finish them in one sitting — resist every temptation to follow a call into the graphics or loader code.",
       reading: [
-        ["src/main.cpp", "285 lines. Argument parsing, then two subsystems, then <code>Run()</code>."],
+        ["src/main.cpp", "352 lines. Host virtual-memory/thread bootstrap, argument parsing, then <code>Run()</code>."],
         ["src/emulator.h", "23 lines. <code>RunOptions</code> is the entire input to the emulator."],
-        ["src/emulator.cpp", "215 lines. <code>Init</code>, mounts, <code>LoadElf</code>, <code>Execute</code>. This file is the spine."],
-        ["src/common/subsystems.h", "The dependency-ordered init framework and the four macros that define a subsystem."],
+        ["src/emulator.cpp", "220 lines. <code>Init</code>, mounts, <code>LoadElf</code>, <code>Execute</code>. This file is the spine."],
+        ["src/common/subsystems.h", "The lifecycle callback stack: typed initialization plus reverse normal/emergency teardown."],
         ["src/common/emulatorConfig.h", "Every configurable value and its default, in one struct."]
       ],
       tasks: [
-        ["Draw the subsystem dependency graph by hand from <code>emulator.cpp:141–149</code>.", "Nine subsystems. Note that graphics depends on six others, and that config and log are initialised in two separate earlier passes."],
+        ["Write down the lifecycle order from <code>emulator.cpp:130–151</code>, then reverse it.", "Config and log start first; nine more lifecycles follow. The reversed list is the teardown order recorded by <code>Common::Subsystems</code>."],
         ["Add a new command-line flag end to end.", "Parse it in <code>ParseArgs</code>, add a field to <code>ConfigOptions</code>, add a getter in <code>emulatorConfig.cpp</code>, print it somewhere. The smallest real change you can make to this codebase — do it now while the files are small."],
         ["Annotate <code>Execute()</code> with which thread runs each line.", "Two threads leave that function: a spawned guest thread and the original main thread inside <code>WindowRun()</code>."],
         ["Find out what <code>KytyClose</code> does and when it runs.", "Registered with <code>atexit</code>. Note the interaction with <code>std::quick_exit(0)</code> at the end of <code>Execute</code> — decide for yourself whether it actually runs on the normal path."]
       ],
       checks: [
         ["Why does the window event loop run on the main thread, with the game on a spawned thread?", "<p>Windowing systems on macOS and Windows require window creation and event pumping on the process's first thread. Rather than marshalling, Kyty gives the guest its own thread. A side benefit: a hung game does not freeze the window.</p><p><span class=\"src\">src/emulator.cpp:171</span></p>"],
-        ["Why must <code>Config</code> and <code>Log</code> initialise in separate passes before the other subsystems?", "<p>Logging depends on configuration (direction, output file), and every other subsystem logs during its own init. So the order is: config → <code>InitAll</code> → load config values → log → <code>InitAll</code> → everything else → <code>InitAll</code>.</p><p><span class=\"src\">src/emulator.cpp:126–151</span></p>"],
-        ["Where does the flexible-memory budget come from, and why is it applied where it is?", "<p>From <code>sce_sys/param.json</code>, via <code>SystemContentGetFlexibleMemorySize()</code>. It is applied <em>before</em> the memory subsystem is added to the list, because the memory manager sizes its pools during <code>Init</code> and would ignore a later change.</p><p><span class=\"src\">src/emulator.cpp:133–139</span></p>"]
+        ["Why must <code>Config</code> and <code>Log</code> initialise before the other lifecycles?", "<p>Logging reads configuration (direction and output file), and later components log during initialization. The explicit order is config → load values → log → the remaining <code>Initialize&lt;Lifecycle&gt;()</code> calls.</p><p><span class=\"src\">src/emulator.cpp:126–151</span></p>"],
+        ["Where does the flexible-memory budget come from, and why is it applied where it is?", "<p>From <code>sce_sys/param.json</code>, via <code>SystemContentGetFlexibleMemorySize()</code>. It is applied <em>before</em> <code>Memory::Lifecycle</code> is initialized, because the memory manager sizes its pools during <code>Initialize</code> and would ignore a later change.</p><p><span class=\"src\">src/emulator.cpp:133–147</span></p>"]
       ],
       out: "Navigate the top level without a map, and add configuration. You now know where every major component is started."
     },
@@ -519,7 +519,7 @@ event_queue_lifetime_tests   shader_stage_runtime_tests shader_vertex_metadata_t
         ["Breakpoint all six functions in the chain and record what each one adds.", "<code>CpOpDrawIndexAuto</code> → <code>DrawIndexAuto</code> → <code>DrawAuto</code> → <code>PrepareDrawRenderState</code> → <code>ExecutePreparedDraw</code> → <code>CreateGraphicsPipeline</code>. Write down the state that exists after each step."],
         ["Count the <code>SET_CONTEXT_REG</code> packets preceding your draw, then find where two of them land in <code>HW::Context</code>.", "Look up the register offset in <code>g_hw_ctx_func</code> and read the handler. This is how all GPU state arrives."],
         ["Find the pipeline cache key for your draw.", "<code>GraphicsPipelineKey</code> in <code>pipelineCache.h</code>: rendering state, both shader IDs, and a byte-comparable struct of every static parameter. Understand why each part must be in the key."],
-        ["Work out why <code>Gpu::Submit</code> copies the command buffer instead of referencing it.", "Read <code>OwnedCmdBuffer</code>. Then consider what the game does with that memory immediately after submitting."]
+        ["Trace the lifetime contract of a submitted command buffer.", "Read the borrowed <code>std::span</code> fields in <code>GuestGpu::Submission</code>, then follow an AGC submit through <code>Done()</code>. Identify which side must keep the guest memory valid and when it may reuse it."]
       ],
       checks: [
         ["How many queues does the GPU state machine have, and why that number?", "<p>57: one graphics queue plus seven compute pipes of eight queues each. It mirrors the hardware's queue topology, which games rely on for asynchronous compute — work submitted to different queues must be able to progress independently.</p><p><span class=\"src\">src/graphics/guest_gpu/graphicsRun.cpp:81–84</span></p>"],
@@ -537,10 +537,11 @@ event_queue_lifetime_tests   shader_stage_runtime_tests shader_vertex_metadata_t
       reading: [
         ["AMD RDNA 2 ISA reference, document 70648", "Not in the repo. The README names it explicitly as the primary reference for this code."],
         ["…/recompiler/ShaderRecompiler.cpp:640", "<code>TryRecompile</code> — the whole pipeline in one function, with per-phase logging."],
-        ["…/decompiler/ShaderDecoder.h", "Instruction representation and encoding classes."],
-        ["…/cfg/ShaderCFG.h", "Blocks, terminators, back edges, natural loops, failure kinds."],
+        ["…/frontend/decode/ShaderDecoder.h", "Instruction representation and encoding classes."],
+        ["…/frontend/cfg/ShaderCFG.h", "Blocks, terminators, back edges, natural loops, failure kinds."],
+        ["…/frontend/translate/Translate.cpp", "Program setup and the explicit opcode-translation dispatchers."],
         ["…/ir/ShaderIR.h", "The opcode enumeration. Skim it — the length itself is informative."],
-        ["…/ir/SrtWalker.h", "The descriptor-recovery contract. Short header, dense ideas."],
+        ["…/ir/passes/SrtWalker.h", "The descriptor-recovery contract. Short header, dense ideas."],
         ["src/graphics/shader/shader.h:44", "<code>ShaderMaterializeStageRuntime</code> — the compile/bind split."]
       ],
       tasks: [
@@ -548,8 +549,8 @@ event_queue_lifetime_tests   shader_stage_runtime_tests shader_vertex_metadata_t
         ["Map five decoded instructions to their IR opcodes by hand.", "Pick a mix: a scalar ALU op, a vector ALU op, a compare, a buffer load, and the export at the end."],
         ["Read the phase timings in the log and find the slowest stage.", "Each phase logs <code>phase begin</code> / <code>phase end</code> with elapsed milliseconds and the shader hash. Compare a cold compile against a cache hit."],
         ["Find a shader that used the dispatcher fallback, and work out why.", "Grep the log for <code>dispatcher fallback used</code>. The reason is printed: either an irreducible CFG, a structurisation failure, or a loop header containing an instruction whose lowering emits control flow."],
-        ["Trace one texture from T# to a bound Vulkan image.", "Follow <code>BuildScalarProvenance</code> → <code>BuildSrtPlan</code> → <code>MaterializeResources</code> → <code>ResolveTexture</code>. This is the hardest single trace in the codebase and worth the effort."],
-        ["Run the shader test suites and make one fail on purpose.", "<code>scalar_provenance_tests</code> and <code>resource_tracking_tests</code>. Change something small in the pass and watch which assertions catch it — the tests are a better specification than the comments."]
+        ["Trace one texture from T# to a bound Vulkan image.", "Follow a typed value through <code>RewriteToSsa</code> → <code>BuildSrtPlan</code> → <code>MaterializeResources</code> → <code>ResolveTexture</code>. This is the hardest single trace in the codebase and worth the effort."],
+        ["Run the shader test suites and make one fail on purpose.", "Use the focused scalar-tracing and resource-tracking tests. Change something small in an IR pass and watch which assertions catch it — the tests are a better specification than the comments."]
       ],
       checks: [
         ["Why can't RDNA 2 branching map directly onto SPIR-V control flow?", "<p>GPU branches manipulate a 64-bit EXEC mask that enables or disables individual lanes; control flow is data, not structure. SPIR-V requires <em>structured</em> control flow — every conditional branch declares a merge block, every loop declares a merge and a continue target. Recovering that structure from mask manipulation is what the CFG and structurisation passes do, and it is the stage most likely to fail.</p>"],
