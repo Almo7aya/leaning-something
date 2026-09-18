@@ -91,6 +91,7 @@ docs/                          served by GitHub Pages
 ├─ index.html                  landing page and progress
 ├─ t-*.html                    the topic pages (20 topics + C1–C9 + glossary)
 ├─ lifetime / machine / system-explorer / browser-emulator / advanced-emulator .html   whole-system simulations
+├─ loadlink.html               step-by-step diagram: load, resolve NIDs, link, run
 ├─ playground.html             decode your own command buffers, modules and logs
 ├─ lab / atlas / course / tour / path / examples .html            the long-form documents
 ├─ kytyps5-*.html              redirects from the old file names

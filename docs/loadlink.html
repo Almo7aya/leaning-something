@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How a game loads &amp; links — KytyPS5</title>
+<meta name="description" content="A detailed, step-by-step diagram of loading a PS5 game: unwrapping the SELF, mapping segments, resolving NIDs into the GOT, standing up threads, and how the running game calls the HLE libraries through the GOT.">
+<link rel="stylesheet" href="assets/tutor.css?v=26">
+<link rel="stylesheet" href="assets/app.css?v=26">
+<link rel="stylesheet" href="assets/highlight.css?v=26">
+<link rel="stylesheet" href="assets/loadlink.css?v=1">
+</head>
+<body>
+
+<main class="topic" data-app-content style="max-width:1360px">
+
+  <p class="topic-eyebrow">The whole thing · load &amp; link</p>
+  <h1 id="how-a-game-loads-and-links">How a game loads &amp; links</h1>
+  <p class="topic-deck">
+    One diagram for the whole loading path: from the emulator opening <code>eboot.bin</code>, through
+    mapping its segments, resolving every imported <b>NID</b> into the <b>GOT</b>, standing up the
+    threads — to the running game reaching back through the GOT to call the console's libraries.
+  </p>
+  <p class="band-why" style="max-width:82ch">
+    The seven boxes stay on screen the whole way. The <b>module on disk</b> is on the left; the
+    <b>runtime linker</b> drives everything; the <b>guest address space</b>, <b>GOT</b> and
+    <b>HLE libraries</b> fill in as it works; the <b>threads</b> and the <b>running game</b> come
+    alive at the end. Step it with <kbd>Prev</kbd>/<kbd>Next</kbd> (or ← →), press <b>Play</b>, or
+    click a box to jump to where it first matters.
+  </p>
+
+  <div class="ll" id="loadlink"></div>
+
+  <!-- ---------------------------------------------------------- -->
+  <section class="band band-read" style="margin-top:48px">
+    <div class="band-h"><span class="band-t">The three things that make it work</span></div>
+    <div class="prose">
+      <p><b>A NID is a name the game can carry without carrying the string.</b> The PS5 module
+      imports <code>sceKernelAllocateDirectMemory</code> as an 11-character hash of the name plus a
+      per-library suffix. The loader hashes the same way to build its lookup table, so a lookup is a
+      hash-map hit, not a string compare — and the shipped binary never contains the readable name.</p>
+
+      <p><b>The GOT is the entire indirection.</b> The game's code doesn't know where
+      <code>sceKernelAllocateDirectMemory</code> lives; it only knows <em>which GOT slot</em> holds its
+      address. The linker fills that slot once, at load, with the address of KytyPS5's hand-written
+      C++ function. From then on the game's <code>call [GOT+n]</code> jumps straight into native code
+      with zero per-call overhead — which is why guest code can run at full speed while still being
+      &ldquo;emulated.&rdquo;</p>
+
+      <p><b>A guest thread is a host thread.</b> There is no scheduler to emulate. The main thread the
+      loader creates is a real <code>pthread</code> with the guest's stack and a TLS block; the
+      emulator's own GPU-submit and audio threads run alongside it. The only sleight of hand is the
+      <code>fs:[0]</code> → <code>Jit::Call9</code> patch that makes the guest's thread-local access
+      work on your CPU.</p>
+    </div>
+  </section>
+
+  <section class="band band-do">
+    <div class="band-h"><span class="band-t">Read the real thing</span></div>
+    <div class="prose">
+      <p>Every box maps to code in the tree:</p>
+      <div class="tw">
+        <table>
+          <thead><tr><th>Step</th><th>Where it lives in KytyPS5</th></tr></thead>
+          <tbody>
+            <tr><td>Open + unwrap SELF → ELF</td><td><code>loader/self.cpp</code>, <code>loader/elf.cpp</code></td></tr>
+            <tr><td>Reserve + map + protect</td><td><code>kernel/memory.cpp</code>, <code>common/virtualMemory.h</code></td></tr>
+            <tr><td>Dynamic tables, relocations, NID resolution</td><td><code>loader/runtimeLinker.cpp</code>, <code>loader/symbolDatabase.cpp</code></td></tr>
+            <tr><td>Provide the HLE libraries</td><td><code>libs/libs.cpp</code> (<code>Libs::InitAll</code>) and each <code>libs/*.cpp</code></td></tr>
+            <tr><td>TLS patch</td><td><code>Jit::Call9</code> in <code>loader/runtimeLinker.cpp</code></td></tr>
+            <tr><td>Threads</td><td><code>kernel/pthread.cpp</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="margin-top:14px">Related topics: <a href="t-elf-and-self.html">ELF, SELF and Sony's format</a> ·
+      <a href="t-mapping.html">Mapping a program into memory</a> ·
+      <a href="t-nids.html">NIDs and the runtime linker</a> ·
+      <a href="t-threads.html">Threads and TLS</a> ·
+      <a href="t-hle.html">HLE libraries</a>. Drive the same boundary live in the
+      <a href="advanced-emulator.html">Intro machine</a>.</p>
+    </div>
+  </section>
+
+</main>
+
+<script src="assets/topics.js?v=26" defer></script>
+<script src="assets/search-index.js?v=26" defer></script>
+<script src="assets/highlight.js?v=26" defer></script>
+<script src="assets/app.js?v=26" defer></script>
+<script src="assets/loadlink.js?v=1" defer></script>
+<script src="assets/tutor.js?v=26" defer></script>
+</body>
+</html>

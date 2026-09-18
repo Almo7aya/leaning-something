@@ -23,6 +23,9 @@ window.KYTY_TOPICS = [
   { id: "machine", n: "★", title: "The machine, running", ready: true, file: "machine.html",
     blurb: "A live simulation you can perturb while it runs." },
 
+  { id: "loadlink", n: "◇", title: "How a game loads & links", ready: true, file: "loadlink.html",
+    blurb: "One diagram, step by step: SELF → ELF → map → resolve NIDs into the GOT → threads → the game calling the libraries." },
+
   { part: "Foundations" },
   { id: "what-an-emulator-is", n: "01", title: "What an emulator is", ready: true,
     file: "t-what-an-emulator-is.html",
