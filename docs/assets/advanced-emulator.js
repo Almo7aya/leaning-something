@@ -258,7 +258,7 @@
     this.game = null; this.stars = []; this.fire = null;
     this.vk = [];                              // host Vulkan event log
     this.disk = {};                            // L2: on-disk VkPipelineCache (hash → 1)
-    this.diskBytes = 0;
+    this.diskBytes = 0; this.diskEnabled = false;   // L2 off by default
     this.draws = [];                           // current frame's draw list (multi-draw)
     this.focusKey = null; this.shTab = 0;      // recompiler UI: expanded shader + tab
     this.vblank = 0;                           // present count
@@ -288,7 +288,7 @@
     this.vklog("vkCreateInstance", "VK_API_VERSION_1_3");
     this.vklog("vkCreateDevice", "AMD RDNA host GPU + VMA");
     this.vklog("vkCreateSwapchainKHR", "2 images · VIDEO_OUT_0");
-    this.vklog("vkCreatePipelineCache", diskN ? "loaded " + diskN + " pipelines from disk" : "empty — first run", diskN ? "gpu" : "");
+    this.vklog("vkCreatePipelineCache", !this.diskEnabled ? "disk cache disabled" : diskN ? "loaded " + diskN + " pipelines from disk" : "empty — first run", (this.diskEnabled && diskN) ? "gpu" : "");
     this.log("boot", "reserve 512 KB guest space", "ok");
 
     var rlen = this.code[0].length * 8, mlen = this.code[1].length * 8;
@@ -506,7 +506,7 @@
     this.act.gpu = 1; this.act.flip = 1;
   };
   Emu.prototype.startCompile = function (key, name, async) {
-    var l2 = !!this.disk[hashOf(key)];         // SPIR-V already persisted on disk?
+    var l2 = this.diskEnabled && !!this.disk[hashOf(key)];   // SPIR-V already persisted on disk?
     this.compileAnim = { key: key, name: name || permName(key), stage: 0, t: 0, full: !l2, async: !!async };
     this.recompile = { key: key, arts: shaderArtifacts(key) };
     this.shaders.stage = l2 ? 3 : 0;
@@ -524,7 +524,7 @@
     if (ca.stage >= nStages) {
       var key = ca.key, full = ca.full;
       this.shaders.commit(key);
-      if (full && !this.disk[hashOf(key)]) { this.disk[hashOf(key)] = 1; this.diskBytes += 8192 + (key % 9) * 512; }
+      if (this.diskEnabled && full && !this.disk[hashOf(key)]) { this.disk[hashOf(key)] = 1; this.diskBytes += 8192 + (key % 9) * 512; }
       this.vklog("vkCreateGraphicsPipelines", "0x" + hex(hashOf(key)) + " " + permName(key), "gpu");
       this.compileAnim = null;
       this.log("gpu", "pipeline ready 0x" + hex(hashOf(key)) + (full ? " · compiled + saved to disk" : " · from VkPipelineCache"), "gpu");
@@ -1072,9 +1072,9 @@
     var k = emu.focusKey;
     if (k != null && (emu.shaders.has(k) || (emu.compileAnim && emu.compileAnim.key === k))) return k;
     if (emu.compileAnim) return emu.compileAnim.key;
+    if (emu.recompile) return emu.recompile.key;   // otherwise follow the current program
     var keys = Object.keys(emu.shaders.pipes);
-    if (keys.length) return +keys[keys.length - 1];
-    return emu.recompile ? emu.recompile.key : null;
+    return keys.length ? +keys[keys.length - 1] : null;
   }
   function recompileDetailHTML() {
     var key = focusedKey();
@@ -1192,9 +1192,10 @@
     var ol = $("ax-disasm"); ol.innerHTML = "";
     var th = emu.th[emu.view];
     if (th) {
+      $("ax-cpu-ip").innerHTML = "IP <code>0x" + hex(th.base + th.pc * 8) + "</code> · " + esc(dis(th.ins[th.pc]));
       for (var p = Math.max(0, th.pc - 2); p < Math.min(th.ins.length, th.pc + 8); p++) {
         var li = document.createElement("li"); if (p === th.pc) li.className = "pc";
-        li.innerHTML = "<span>0x" + hex(th.base + p * 8) + "</span><code>" + dis(th.ins[p]) + "</code>";
+        li.innerHTML = "<span>" + (p === th.pc ? "▶" : "&nbsp;") + " 0x" + hex(th.base + p * 8) + "</span><code>" + dis(th.ins[p]) + "</code>";
         ol.appendChild(li);
       }
     }
@@ -1208,6 +1209,19 @@
       var pge = emu.m.pages[n]; el.className = "ax-page";
       if (pge && pge.on) { el.classList.add(pge.perm & PERM.X ? "rx" : "rw"); if (pge.dirty) el.classList.add("dirty"); }
     });
+    // memory layout: the mapped segments
+    var PN = ["", "R", "W", "RW", "X", "RX", "WX", "RWX"];
+    $("ax-maps").innerHTML = emu.m.maps.map(function (mp) {
+      var cur = emu.m.pages[mp.a / PAGE | 0];              // show the current protection
+      return "<div class='ax-map'><b>" + esc(mp.lab) + "</b><code>0x" + hex(mp.a) + "</code><span>" + mp.n + "B</span><em>" + (PN[cur ? cur.perm : mp.perm] || mp.perm) + "</em></div>";
+    }).join("");
+    // present / flip: the two swapchain images and which is scanning out
+    var front = emu.vblank % 2;
+    $("ax-flip").innerHTML =
+      "<span class='ax-flip-l'>SWAPCHAIN</span>" +
+      "<span class='ax-flip-img" + (front === 0 ? " front" : "") + "'>image 0" + (front === 0 ? " ◀ scanout" : "") + "</span>" +
+      "<span class='ax-flip-img" + (front === 1 ? " front" : "") + "'>image 1" + (front === 1 ? " ◀ scanout" : "") + "</span>" +
+      "<span class='ax-flip-vb'>FIFO · vblank " + emu.vblank + " · " + (emu.act.flip ? "vkQueuePresentKHR ↑" : "idle") + "</span>";
     var got = $("ax-got"); got.innerHTML = "";
     emu.got.forEach(function (g) {
       var d = document.createElement("div"); d.className = "ax-row";
@@ -1236,17 +1250,23 @@
     }
     Array.prototype.forEach.call(tabsEl.children, function (bt, i) { bt.classList.toggle("on", i === emu.shTab); });
     $("ax-recompile").innerHTML = recompileDetailHTML();
-    // cached pipeline list (click to inspect an old shader)
-    var sh = $("ax-pipes"); sh.innerHTML = "";
+    // cached pipeline list — rebuilt only when the cache changes, so the rows are
+    // stable elements a click can complete on (paint runs ~30x/s)
+    var sh = $("ax-pipes");
     var keys = Object.keys(emu.shaders.pipes);
-    if (!keys.length) sh.innerHTML = "<div class='ax-dim' style='padding:8px'>empty</div>";
-    keys.slice(-40).reverse().forEach(function (k) {
-      var p = emu.shaders.pipes[k];
-      var d = document.createElement("div"); d.className = "ax-pipe-row" + (+k === focus ? " on" : "");
-      d.innerHTML = "<b>" + esc(p.name) + "</b><code>0x" + hex(p.hash) + "</code>";
-      d.onclick = function () { emu.focusKey = +k; paint(); };
-      sh.appendChild(d);
-    });
+    var sig = keys.join(",");
+    if (sh._sig !== sig) {
+      sh._sig = sig; sh.innerHTML = "";
+      if (!keys.length) sh.innerHTML = "<div class='ax-dim' style='padding:8px'>empty — pick an effect or game</div>";
+      keys.slice(-40).reverse().forEach(function (k) {
+        var p = emu.shaders.pipes[k];
+        var d = document.createElement("div"); d.className = "ax-pipe-row"; d.setAttribute("data-k", k);
+        d.innerHTML = "<b>" + esc(p.name) + "</b><code>0x" + hex(p.hash) + "</code>";
+        d.onclick = function () { emu.focusKey = +k; emu.focusPinned = true; paint(); };
+        sh.appendChild(d);
+      });
+    }
+    Array.prototype.forEach.call(sh.children, function (d) { if (d.getAttribute) d.classList.toggle("on", +d.getAttribute("data-k") === focus); });
     // Vulkan event log
     var vk = $("ax-vk"); vk.innerHTML = "";
     emu.vk.slice(0, 16).forEach(function (e) {
@@ -1258,12 +1278,13 @@
     var l1 = Object.keys(emu.shaders.pipes).length, l2 = Object.keys(emu.disk).length;
     var last = emu.draws.length ? emu.draws[emu.draws.length - 1] : null;
     var lastKey = last ? last.key : null;
-    var lookup = lastKey == null ? "—" : (emu.shaders.has(lastKey) ? "L1 hit" : emu.disk[hashOf(lastKey)] ? "L1 miss → L2 hit (recreate pipeline)" : "L1+L2 miss → full compile");
+    var l2on = emu.diskEnabled;
+    var lookup = lastKey == null ? "—" : (emu.shaders.has(lastKey) ? "L1 hit — reuse program" : (l2on && emu.disk[hashOf(lastKey)]) ? "L1 miss → L2 hit (recreate pipeline, no recompile)" : "L1+L2 miss → full RDNA2→SPIR-V compile");
     $("ax-cache").innerHTML =
       "<div class='ax-cache-row'><b>L1 · Kyty ProgramCache</b><span>in-memory std::unordered_map&lt;key,Program&gt;</span></div>" +
       "<div class='ax-cache-kv'><span>entries</span><code>" + l1 + "</code><span>hits / misses</span><code>" + emu.shaders.hits + " / " + emu.shaders.misses + "</code></div>" +
-      "<div class='ax-cache-row'><b>L2 · VkPipelineCache</b><span>~/.kyty/CUSA00000/pipeline.cache</span></div>" +
-      "<div class='ax-cache-kv'><span>pipelines</span><code>" + l2 + "</code><span>on disk</span><code>" + (emu.diskBytes / 1024 | 0) + " KB</code></div>" +
+      "<div class='ax-cache-row'><b>L2 · VkPipelineCache</b><span>" + (l2on ? "~/.kyty/CUSA00000/pipeline.cache" : "<em style='color:var(--k)'>disabled — nothing persists</em>") + "</span></div>" +
+      "<div class='ax-cache-kv'><span>pipelines</span><code>" + (l2on ? l2 : "—") + "</code><span>on disk</span><code>" + (l2on ? (emu.diskBytes / 1024 | 0) + " KB" : "off") + "</code></div>" +
       "<div class='ax-cache-flow'>this draw &nbsp;<code>0x" + (lastKey == null ? "—" : hex(hashOf(lastKey))) + "</code> &nbsp;→ &nbsp;<b>" + lookup + "</b></div>";
     $("ax-crash").textContent = emu.crash;
     var s = emu.m.st;
@@ -1297,6 +1318,7 @@
       if (m === MEGA) { emu.enterMega(); paint(); return; }
       if (!emu.booted) emu.finishBoot();
       emu.knobMode = m; emu.knobVariant = 0; emu.demo = null;
+      emu.focusKey = null; emu.focusPinned = false;
       emu.resetGame(m);
       emu.running = true;
       paint();
@@ -1315,6 +1337,8 @@
     emu.vklog("vkDestroyPipeline", "flush L1 program cache");
     paint();
   };
+  var diskChk = $("ax-disk");
+  if (diskChk) { diskChk.checked = false; diskChk.onchange = function () { emu.diskEnabled = this.checked; emu.log("gpu", this.checked ? "VkPipelineCache on disk enabled" : "disk cache disabled — every miss recompiles", this.checked ? "gpu" : ""); paint(); }; }
   var wipeBtn = $("ax-wipe");
   if (wipeBtn) wipeBtn.onclick = function () {
     emu.shaders = new Cache(); emu.disk = {}; emu.diskBytes = 0; emu.focusKey = null;

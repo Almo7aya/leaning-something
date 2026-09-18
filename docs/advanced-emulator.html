@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="assets/tutor.css?v=26">
 <link rel="stylesheet" href="assets/app.css?v=26">
 <link rel="stylesheet" href="assets/highlight.css?v=26">
-<link rel="stylesheet" href="assets/advanced-emulator.css?v=8">
+<link rel="stylesheet" href="assets/advanced-emulator.css?v=9">
 </head>
 <body>
 <main data-app-content class="ax-wrap">
@@ -84,6 +84,7 @@
           </div>
           <div class="ax-boot" id="ax-boot"><pre id="ax-boot-text">assembling intro…</pre></div>
         </div>
+        <div class="ax-flip" id="ax-flip"></div>
         <p class="ax-help">Click any <b>pipeline stage</b> or <b>shader stage</b> to inspect it live · set <b>pace</b> to <em>learn</em> to slow boot &amp; compiles · try <b>Megademo</b>. Games: <kbd>WASD</kbd>/<kbd>arrows</kbd> · <kbd>space</kbd> shoot/flap · <kbd>.</kbd> insn · <kbd>,</kbd> frame · <kbd>P</kbd> pause</p>
       </section>
       <aside class="ax-side">
@@ -99,7 +100,7 @@
 
     <div class="ax-grid">
       <section class="ax-card">
-        <header><b>CPU · two threads</b><span>raster / mixer</span></header>
+        <header><b>CPU · executed code</b><span id="ax-cpu-ip">raster / mixer</span></header>
         <div class="ax-thread-switch">
           <button type="button" class="ax-btn" data-th="0">raster</button>
           <button type="button" class="ax-btn" data-th="1">mixer</button>
@@ -108,9 +109,11 @@
         <ol class="ax-disasm" id="ax-disasm"></ol>
       </section>
       <section class="ax-card">
-        <header><b>Uniforms in .data</b><span>specialisation source</span></header>
-        <pre id="ax-hex"></pre>
+        <header><b>Guest memory</b><span>layout · pages · .data uniforms</span></header>
+        <div id="ax-maps"></div>
+        <div class="ax-mem-h">4&nbsp;KB pages — <i class="k-rx"></i> R+X <i class="k-rw"></i> R+W <i class="k-d"></i> dirty</div>
         <div class="ax-pages" id="ax-pages"></div>
+        <pre id="ax-hex"></pre>
       </section>
       <section class="ax-card">
         <header><b>GOT + TLS</b><span>resolve then patch</span></header>
@@ -144,7 +147,7 @@
         <ol id="ax-vk"></ol>
       </section>
       <section class="ax-card ax-span2">
-        <header><b>Pipeline cache</b><span>L1 in-memory · L2 on disk (VkPipelineCache)</span></header>
+        <header><b>Pipeline cache</b><label class="ax-diskchk"><input type="checkbox" id="ax-disk"> persist to disk (L2 VkPipelineCache)</label></header>
         <div id="ax-cache"></div>
       </section>
       <section class="ax-card ax-span2">
@@ -196,7 +199,7 @@
 <script src="assets/search-index.js?v=26" defer></script>
 <script src="assets/app.js?v=26" defer></script>
 <script src="assets/highlight.js?v=26" defer></script>
-<script src="assets/advanced-emulator.js?v=8" defer></script>
+<script src="assets/advanced-emulator.js?v=9" defer></script>
 <script src="assets/tutor.js?v=26" defer></script>
 </body>
 </html>

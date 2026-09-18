@@ -187,6 +187,28 @@ ol.cx li::before { content: counter(ln); position: absolute; left: 0; width: 32p
 
 @media (max-width: 900px) { .ax-recomp-body { grid-template-columns: 1fr; } }
 
+/* disk-cache checkbox */
+.ax-diskchk { display: flex; align-items: center; gap: 5px; color: var(--ink2); font-size: 10px; cursor: pointer; }
+.ax-diskchk input { accent-color: var(--c); }
+
+/* live instruction pointer in the CPU header */
+#ax-cpu-ip code { color: var(--c); }
+
+/* memory layout: mapped segments + page legend */
+#ax-maps { border-bottom: 1px solid var(--ln); }
+.ax-map { display: grid; grid-template-columns: 62px 1fr auto auto; gap: 8px; align-items: baseline; padding: 3px 10px; font-size: 9px; }
+.ax-map b { color: var(--ink); } .ax-map code { color: var(--a); } .ax-map span { color: var(--ink3); text-align: right; } .ax-map em { color: var(--c); font-style: normal; min-width: 26px; text-align: right; }
+.ax-mem-h { padding: 6px 10px 2px; color: var(--ink3); font-size: 9px; display: flex; align-items: center; gap: 4px; }
+.ax-mem-h i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; margin-left: 6px; }
+.ax-mem-h .k-rx { background: rgba(85,197,222,.7); } .ax-mem-h .k-rw { background: rgba(240,184,73,.45); } .ax-mem-h .k-d { background: var(--k); }
+
+/* present / flip swapchain strip */
+.ax-flip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 12px; border-top: 1px solid var(--ln); background: #0a121b; font-size: 9px; }
+.ax-flip-l { color: var(--ink3); letter-spacing: .1em; }
+.ax-flip-img { padding: 3px 8px; border: 1px solid var(--ln2); border-radius: 4px; color: var(--ink3); }
+.ax-flip-img.front { border-color: var(--g); color: var(--g); box-shadow: 0 0 6px rgba(117,212,154,.3); }
+.ax-flip-vb { margin-left: auto; color: var(--ink3); }
+
 #ax-crash { margin: 0; padding: 10px; max-height: 180px; overflow: auto; color: var(--g); font-size: 10px; white-space: pre; }
 .ax-fault-btns { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px; }
 #ax-coh { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; margin: 0; padding: 10px; }
