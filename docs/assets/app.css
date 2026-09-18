@@ -1026,6 +1026,9 @@ kbd, .kbd {
 }
 .topic a:visited, .home a:visited, .callout a:visited,
 .check-item label a:visited { color: var(--accent); }
+/* the solid "Begin/Resume" button is not a text link: keep its label on the
+   accent fill, overriding the generic .home a / a:visited link colours above */
+a.resume-btn, a.resume-btn:visited, a.resume-btn:hover { color: var(--accent-ink); }
 
 /* Skip the shell's own controls */
 .side a, .pager a, .topbar a, .pal-item { text-decoration: none; }

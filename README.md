@@ -16,11 +16,10 @@ you source. Use the link above.
 
 `docs/index.html` is the front door. Every subject is one **topic page** carrying its
 explanation, the animation for that idea, an interactive tool and a checkpoint against the
-real source: 19 numbered topics in six parts (foundations, loading a game, memory, execution,
-graphics, working on it), a C++ appendix (C1–C8 plus a glossary), a set of whole-system
+real source: 20 numbered topics in six parts (foundations, loading a game, memory, execution,
+graphics, working on it), a C++ appendix (C1–C9 plus a glossary), a set of whole-system
 simulations (one full run, a browser micro-emulator, a system explorer, the machine running),
-the Playground, and **[The tree at HEAD](https://almo7aya.dev/leaning-something/upstream-changes.html)**,
-a themed reading of `main` at `5b7d334` mapped onto the topics that own each piece.
+and the Playground.
 
 The five original long-form documents are still served while their content is ported into
 topics, and were updated to the same commit:
@@ -90,9 +89,8 @@ tasks against the real repository; progress is saved in your browser's local sto
 ```
 docs/                          served by GitHub Pages
 ├─ index.html                  landing page and progress
-├─ t-*.html                    the topic pages (20 topics + C1–C8 + glossary)
-├─ upstream-changes.html       themed reading of KytyPS5 main at 5b7d334
-├─ lifetime / machine / system-explorer / browser-emulator .html   whole-system simulations
+├─ t-*.html                    the topic pages (20 topics + C1–C9 + glossary)
+├─ lifetime / machine / system-explorer / browser-emulator / advanced-emulator .html   whole-system simulations
 ├─ playground.html             decode your own command buffers, modules and logs
 ├─ lab / atlas / course / tour / path / examples .html            the long-form documents
 ├─ kytyps5-*.html              redirects from the old file names
