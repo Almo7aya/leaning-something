@@ -760,6 +760,7 @@
     paint();
   };
 
+  var inspectBuilt = null;
   function paint() {
     $("ax-led").className = emu.faulted ? "fault" : emu.booted ? "on" : "";
     $("ax-sub").textContent = emu.faulted ? "faulted" : emu.compileAnim ? "compiling" : !emu.booted ? "booting" : emu.running ? "running" : "paused";
@@ -768,21 +769,26 @@
     // --- side panel: live boundary, or the stage inspector ---
     var insEl = $("ax-inspect");
     if (emu.inspect) {
-      var t = emu.inspect.t, i = emu.inspect.i;
+      var t = emu.inspect.t, i = emu.inspect.i, sig = t + ":" + i;
       var title = t === "pipe" ? PIPE[i] : SH[i];
       var map = t === "pipe" ? PIPE_MAP[i] : SH_MAP[i];
-      var help = t === "pipe" ? PIPE_HELP[i] : SH_HELP[i];
-      var body = t === "pipe" ? emu.pipeInspect(i) : emu.shInspect(i);
       $("ax-bound-kind").textContent = t === "pipe" ? "INSPECT · STAGE" : "INSPECT · IR";
       $("ax-from").textContent = t === "pipe" ? "stage " + (i + 1) : "recompiler";
       $("ax-to").textContent = title;
-      $("ax-bound-text").textContent = help;
-      insEl.hidden = false;
-      insEl.innerHTML = "<p class='ax-ins-map'>KytyPS5 · " + esc(map) + "</p>" + body +
-        "<button type='button' class='ax-btn ax-ins-x' id='ax-ins-x'>▸ back to live</button>";
-      $("ax-ins-x").onclick = function () { emu.inspect = null; paint(); };
+      $("ax-bound-text").textContent = t === "pipe" ? PIPE_HELP[i] : SH_HELP[i];
+      // Build the shell (map line + data slot + button) only when the selected
+      // stage changes, so the button stays a stable element clicks can complete on.
+      if (inspectBuilt !== sig) {
+        insEl.hidden = false;
+        insEl.innerHTML = "<p class='ax-ins-map'>KytyPS5 · " + esc(map) + "</p>" +
+          "<div class='ax-ins-data'></div>" +
+          "<button type='button' class='ax-btn ax-ins-x' id='ax-ins-x'>&#9654; back to live</button>";
+        $("ax-ins-x").onclick = function () { emu.inspect = null; paint(); };
+        inspectBuilt = sig;
+      }
+      insEl.querySelector(".ax-ins-data").innerHTML = t === "pipe" ? emu.pipeInspect(i) : emu.shInspect(i);
     } else {
-      insEl.hidden = true; insEl.innerHTML = "";
+      if (inspectBuilt !== null) { insEl.hidden = true; insEl.innerHTML = ""; inspectBuilt = null; }
       $("ax-bound-kind").textContent = emu.bound.k;
       $("ax-from").textContent = emu.bound.from;
       $("ax-to").textContent = emu.bound.to;
