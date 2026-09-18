@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en" class="notranslate" translate="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pointers, references & memory — KytyPS5</title>
+<meta name="description" content="How KytyPS5 uses pointers, references and memory: why a guest pointer is a host pointer, when the tree reaches for T* vs T& vs unique_ptr, borrowed spans, reading raw bytes, placement new, and who owns what.">
+<link rel="stylesheet" href="assets/viz.css?v=26">
+<link rel="stylesheet" href="assets/atlas.css?v=26">
+<link rel="stylesheet" href="assets/lab.css?v=26">
+<link rel="stylesheet" href="assets/tutor.css?v=26">
+<link rel="stylesheet" href="assets/app.css?v=26">
+<link rel="stylesheet" href="assets/highlight.css?v=26">
+</head>
+<body>
+
+<main class="topic" data-app-content>
+
+  <p class="topic-eyebrow">Appendix · C10</p>
+  <h1 id="pointers-references-and-memory">Pointers, references &amp; memory</h1>
+  <p class="topic-deck">
+    An emulator is a memory program: it maps a foreign address space, hands the CPU raw addresses, and shares
+    memory between a CPU and a GPU that both think they own it. This page is how KytyPS5 spells all that in C++ —
+    what it means by <code>*</code> versus <code>&amp;</code>, who owns what, and the one idea that makes the
+    rest of it ordinary.
+  </p>
+
+  <section class="band band-read">
+    <div class="band-h"><span class="band-t">Read</span></div>
+    <div class="prose">
+<p class="deck">Start with the idea that surprises people, because once you accept it the pointers in this tree stop looking like emulator magic and start looking like plain C++.</p>
+
+  <h4 id="a-guest-pointer-is-a-host-pointer">A guest pointer <em>is</em> a host pointer</h4>
+  <p>Many emulators keep guest memory in a big host array and translate every guest address by adding a base — <code>host = guest_base + guest_addr</code>. KytyPS5 does not. At load time it <em>reserves the guest's own address range inside the emulator's process</em>, at those exact addresses, and maps the module there. So a 64-bit guest address is already a valid address in the host process: you cast the integer to a pointer and dereference it.</p>
+
+  <div class="filename">src/loader/elf.cpp — copying a segment straight to its guest address</div>
+<pre>m_f-&gt;Read(<b>reinterpret_cast&lt;void*&gt;(static_cast&lt;uintptr_t&gt;(vaddr))</b>, size);</pre>
+
+  <p><code>vaddr</code> is a <code>uint64_t</code> the ELF says the segment lives at; the loader reads the file bytes <em>into</em> that host address. Elsewhere guest pointer arithmetic is just integer arithmetic cast to a pointer:</p>
+
+  <div class="filename">src/loader/gamePatch.cpp</div>
+<pre>const auto* begin = reinterpret_cast&lt;const uint8_t*&gt;(<b>program.base_vaddr + segment.p_vaddr</b>);</pre>
+
+  <p>This is the direct consequence of <a href="t-no-cpu-emulator.html">there being no CPU emulator</a>: the guest's own machine code passes raw addresses around and dereferences them itself, so those addresses have to be <em>real</em>. There is no translation step to insert because there is nothing translating the code. The cost is that the emulator gives up the low part of its own address space to the guest — and that a bad guest pointer is a real host fault, which is exactly the notification channel the rest of the emulator is built on.</p>
+
+  <h4 id="reference-vs-pointer">A reference is a bound alias; a pointer is a nullable handle</h4>
+  <p>The tree reaches for the two for different jobs, and the choice tells you the contract before you read the body.</p>
+  <ul>
+    <li><strong><code>T&amp;</code> — a reference.</strong> Non-null, bound once, never re-seated. Read it as &ldquo;I have been handed this thing, I will use it, I do not own it, and it is <em>not</em> null.&rdquo; A <code>const T&amp;</code> parameter is the default way to pass anything bigger than a register without copying it: &ldquo;read-only borrow.&rdquo;</li>
+    <li><strong><code>T*</code> — a pointer.</strong> Nullable and re-seatable. Used when <em>null is a real state</em> (a lookup that can miss), for the start of a buffer, and at every C-ABI boundary — the guest's functions are C, so their parameters are pointers.</li>
+  </ul>
+  <p>Const attaches to whichever side you mean: <code>const T*</code> is &ldquo;a pointer to something I won't change&rdquo;; <code>T* const</code> is &ldquo;a pointer I won't re-point.&rdquo; You will mostly see the first — a promise about the pointee, not the pointer.</p>
+
+  <h4 id="who-owns-this">Who owns this? — ownership is in the type</h4>
+  <p>There is no garbage collector. Every allocation has exactly one owner whose destructor frees it, and the tree makes ownership visible by <em>type</em> so you never have to guess who calls <code>delete</code>.</p>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Type</th><th>Means</th><th>Who frees</th></tr></thead>
+      <tbody>
+        <tr><td><code>std::unique_ptr&lt;T&gt;</code></td><td>sole owner; moving it transfers ownership</td><td>its destructor, exactly once</td></tr>
+        <tr><td><code>std::shared_ptr&lt;T&gt;</code></td><td>shared owner (only where lifetime <em>must</em> be shared)</td><td>the last owner standing</td></tr>
+        <tr><td><code>T*</code> or <code>T&amp;</code></td><td><b>non-owning</b> — a borrow, by convention</td><td>someone else; not you</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>So a member like the renderer's GPU is a <code>unique_ptr</code> — the render context owns it and tears it down with the context:</p>
+  <div class="filename">src/graphics/host_gpu/renderer/renderContext.h</div>
+<pre>std::unique_ptr&lt;GuestGpu&gt; m_gpu;</pre>
+  <p>The reading rule: <strong>a raw pointer or reference in a signature is almost always a borrow</strong>; a <code>unique_ptr</code> passed <em>by value</em> means &ldquo;I am taking ownership.&rdquo; (The move-only <code>UniqueFunction</code> from <a href="t-cpp-language.html">C1</a> is the same idea for a closure that owns a captured resource.)</p>
+
+  <h4 id="borrowed-views">Borrowed views — <code>std::span</code> and <code>string_view</code></h4>
+  <p>A <code>std::span&lt;T&gt;</code> is a pointer plus a length: a window onto memory someone else owns, with no copy and no ownership. The shader recompiler takes the guest's shader words this way:</p>
+  <div class="filename">src/graphics/shader/shaderCompiler.h</div>
+<pre>std::span&lt;const uint32_t&gt; code;        <i>// the RDNA 2 binary — borrowed, not copied</i>
+std::span&lt;const uint32_t&gt; back_code;</pre>
+  <p>The extent can be fixed at compile time — the eight colour targets are a <code>std::span&lt;const T, 8&gt;</code>, which is a span that also asserts its length. The catch is the <b>lifetime contract</b>: a span is only valid while the memory it points into stays alive. That is the whole story behind the &ldquo;borrowed&rdquo; fields on a GPU submission — the spans point at the guest's command buffer, and the guest must not touch it until the GPU is done, which the timeline semaphore tracks. A span is a promise about someone else's bytes, so you keep those bytes alive.</p>
+
+  <h4 id="reading-raw-bytes">Reading structured bytes — <code>reinterpret_cast</code> at the boundary</h4>
+  <p>PM4 is a stream of 32-bit dwords; a register write might carry a float. The command processor reads the typed value straight out of the raw buffer:</p>
+  <div class="filename">src/graphics/guest_gpu/command_processor/pm4Handlers.cpp</div>
+<pre>const auto value  = buffer[i];                              <i>// a raw dword</i>
+const auto fvalue = *<b>reinterpret_cast&lt;const float*&gt;</b>(&amp;value);   <i>// same bits, read as float</i></pre>
+  <p><code>reinterpret_cast</code> is the &ldquo;I know these bytes are really a <code>T</code>&rdquo; cast. It generates <em>no code</em> — it only changes how the compiler types an address — which is why it is everywhere at the guest boundary (parsing PM4, ELF, param.json, save data) and almost nowhere in ordinary logic. The same move writes a guest address into a machine-code buffer for a JIT stub:</p>
+  <div class="filename">src/loader/jit.h</div>
+<pre>void SetPltGot(uint64_t vaddr) { *reinterpret_cast&lt;uint64_t*&gt;(&amp;code[2]) = vaddr; }</pre>
+  <p>Because the tree reads memory as bytes, layout has to be exact — which is why the pipeline key is <code>#pragma pack(1)</code> and compared with <code>memcmp</code>: it <em>is</em> its bytes. That packing habit is C1's territory; here just note <em>why</em> it exists — so that reading raw memory back as a struct is safe.</p>
+
+  <h4 id="placement-new">Building into memory you already have — placement <code>new</code></h4>
+  <p>Ordinary <code>new</code> allocates and constructs. <strong>Placement <code>new</code></strong> only constructs — at an address you give it. The TLS patch builds its 9-byte <code>Call9</code> object directly on top of the guest instruction it is replacing:</p>
+  <div class="filename">src/loader/runtimeLinker.cpp</div>
+<pre>auto* code = <b>new (inst_ptr)</b> Jit::Call9;   <i>// construct Call9 at inst_ptr — no allocation</i></pre>
+  <p>There is no memory allocated: <code>inst_ptr</code> already points at mapped, writable guest code, and the constructor lays the exact patch bytes there. Placement <code>new</code> is how the loader and the JIT write structured objects into memory whose address is fixed for them — the guest's own pages.</p>
+
+  <h4 id="the-four-owners">Where runtime memory lives — four owners</h4>
+  <p>At run time almost every byte belongs to one of four things, and knowing which answers &ldquo;can I free this?&rdquo;:</p>
+  <ol>
+    <li><strong>The guest heap</strong> — direct and flexible memory the game reserved through <code>sceKernel…</code>. Backed by the host reservation from <code>VirtualMemory::Alloc</code>; the game owns it and frees it.</li>
+    <li><strong>The GPU allocations</strong> — images and buffers, owned by <b>VMA</b> (VulkanMemoryAllocator), wrapped inside <code>vma.cpp</code>. Freed when the emulator drops the resource — but not while a submission still references it.</li>
+    <li><strong>The caches</strong> — compiled programs and pipelines, held by value or <code>unique_ptr</code> inside the <code>ProgramCache</code> maps. The cache owns them for the run.</li>
+    <li><strong>The borrows</strong> — every <code>span</code>, <code>T*</code> and <code>T&amp;</code> that <em>points into</em> the first three without owning anything.</li>
+  </ol>
+  <p>The one that trips people is (2): a texture the GPU is still reading cannot be freed just because the CPU is done with it. A monotonic <b>timeline semaphore</b> tracks GPU completion, and a resource retained by an in-flight submission is only released once the GPU signals past it — ownership stretched across the CPU/GPU boundary.</p>
+
+  <h4 id="a-pointer-can-fault">A pointer can fault on purpose</h4>
+  <p>Because guest pointers are host pointers, a page's <em>permission</em> is part of what the pointer means. After the loader protects the code and GOT, a write through a perfectly valid-looking pointer into <code>.text</code> traps — and the emulator wants it to. The same trick catches a CPU write to a page the GPU is reading, so the two stay coherent without the guest knowing. So &ldquo;a pointer&rdquo; here is an address <em>and</em> a permission: dereferencing one can hand control to the <a href="t-coherency.html">fault handler</a>, which is a feature, not a bug. The <a href="t-patching.html">patching</a> and <a href="t-coherency.html">coherency</a> topics live in that space.</p>
+
+  <h4 id="const-and-reading-a-signature">const, and reading a signature</h4>
+  <p>Because ownership and mutation are both in the types, you can read a function's contract from its signature without opening it. <code>const T&amp;</code> / <code>const T*</code> = &ldquo;input, I only read this.&rdquo; A non-const pointer or reference = &ldquo;output or in-out, I may write it.&rdquo; A <code>unique_ptr</code> by value = &ldquo;I take this.&rdquo; A <code>span</code> = &ldquo;I look at your buffer while you keep it alive.&rdquo; Getting fluent at that scan is most of what makes this tree quick to read.</p>
+
+  <h4 id="from-a-gc-language">Coming from a garbage-collected language</h4>
+  <p>The habit to unlearn is &ldquo;references keep things alive.&rdquo; Here nothing keeps anything alive except an owner going out of scope. A raw pointer never means &ldquo;the runtime will clean this up&rdquo; — it means &ldquo;someone else owns this; use it, don't free it, and don't outlive it.&rdquo; A dangling span or a pointer into a freed allocation is a real crash, not a caught exception — which is why the ownership types above are not style, they are the safety system.</p>
+    </div>
+  </section>
+
+  <section class="band band-watch">
+    <div class="band-h"><span class="band-t">Watch</span></div>
+    <p class="band-why">
+      Since a guest pointer is a host pointer, decoding one is decoding an address. Type any guest address and watch which band and module it lands in, and which host pages it covers.
+    </p>
+    <div data-viz="vaddr"></div>
+  </section>
+
+  <section class="band band-try">
+    <div class="band-h"><span class="band-t">Try</span></div>
+    <p class="band-why">
+      The fastest way to feel how thin these casts are is to watch the compiler erase them.
+    </p>
+    <div class="callout k">
+      <span class="lbl">A ten-minute lab</span>
+      <p>Open <a href="https://godbolt.org/">godbolt.org</a>, language C++, compiler <code>x86-64 clang 18</code> (matching the build). Write a function that takes a <code>uint64_t addr</code> and returns <code>*reinterpret_cast&lt;const float*&gt;(addr)</code>; the assembly is a single load — the cast is nothing. Then write one taking <code>std::span&lt;const uint32_t&gt;</code> and returning <code>s[0] + s.size()</code>; note that a span is passed as a pointer and a length, with no copy of the data. Finally give a function a <code>std::unique_ptr&lt;int&gt;</code> by value and try to copy it — the compiler refuses, because ownership is unique.</p>
+    </div>
+  </section>
+
+  <section class="band band-do">
+    <div class="band-h"><span class="band-t">Do</span></div>
+    <p class="band-why">
+      Each of these ends at the source, because the source is the only description of this tree that is guaranteed current.
+    </p>
+    <div class="check">
+      <p class="check-h">Checkpoint</p>
+      <ul class="check-list">
+        <li class="check-item"><input type="checkbox">
+          <label>In <code>src/loader/elf.cpp</code>, find where a segment is read to <code>reinterpret_cast&lt;void*&gt;(vaddr)</code>. Explain in one sentence why no base offset is added.</label></li>
+        <li class="check-item"><input type="checkbox">
+          <label>Grep <code>std::span&lt;const uint32_t&gt;</code> in <code>src/graphics/shader/</code>. Name what the span points into and what has to stay alive for it to be valid.</label></li>
+        <li class="check-item"><input type="checkbox">
+          <label>Find a <code>std::unique_ptr&lt;…&gt;</code> member (try <code>renderContext.h</code> or <code>memoryTracker.h</code>) and a raw <code>T*</code> parameter nearby. State which one owns and which borrows.</label></li>
+        <li class="check-item"><input type="checkbox">
+          <label>In <code>src/loader/runtimeLinker.cpp</code>, find <code>new (inst_ptr) Jit::Call9</code>. What is constructed, into what memory, and why is nothing allocated?</label></li>
+        <li class="check-item"><input type="checkbox">
+          <label>In <code>src/graphics/guest_gpu/command_processor/pm4Handlers.cpp</code>, find a <code>*reinterpret_cast&lt;const float*&gt;</code>. Explain why the bytes are read this way instead of copied.</label></li>
+        <li class="check-item"><input type="checkbox">
+          <label>Name the four owners of runtime memory from the Read band, and for each say what frees it.</label></li>
+      </ul>
+    </div>
+  </section>
+
+</main>
+
+<script src="assets/topics.js?v=26" defer></script>
+<script src="assets/search-index.js?v=26" defer></script>
+<script src="assets/app.js?v=26" defer></script>
+<script src="assets/viz.js?v=26" defer></script>
+<script src="assets/atlas.js?v=26" defer></script>
+<script src="assets/lab.js?v=26" defer></script>
+<script src="assets/figs.js?v=26" defer></script>
+<script src="assets/figures.js?v=26" defer></script>
+<script src="assets/highlight.js?v=26" defer></script>
+<script src="assets/tutor.js?v=26" defer></script>
+</body>
+</html>
