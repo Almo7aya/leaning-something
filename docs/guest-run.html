@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How the guest runs — KytyPS5</title>
+<meta name="description" content="A game's frame loop from the guest side: updating its world, using its heap and threads, calling the sce* API, building PM4 command buffers, submitting to the GPU, audio and flip — all running natively.">
+<link rel="stylesheet" href="assets/tutor.css?v=26">
+<link rel="stylesheet" href="assets/app.css?v=26">
+<link rel="stylesheet" href="assets/highlight.css?v=26">
+<link rel="stylesheet" href="assets/flowdiagram.css?v=1">
+</head>
+<body>
+
+<main class="topic" data-app-content style="max-width:1360px">
+
+  <p class="topic-eyebrow">The whole thing · guest side</p>
+  <h1 id="how-the-guest-runs">How the guest runs</h1>
+  <p class="topic-deck">
+    One frame, from the game's point of view. The game doesn't know it's emulated: it updates its
+    world, uses its heap and threads, builds PM4 command buffers and flips — all as native code.
+    The only moments it leaves its own instructions are the <code>sce*</code> calls through the GOT.
+  </p>
+  <p class="band-why" style="max-width:82ch">
+    The <b>game's frame loop</b> is on the left; the boxes around it are the things it reaches for —
+    memory, its threads, the OS API, the command buffer, the GPU, audio and the display. Step through
+    a single frame with <kbd>Prev</kbd>/<kbd>Next</kbd> (or ← →), press <b>Play</b>, or click a box.
+  </p>
+
+  <div class="fd fd-guest" id="guestrun"></div>
+
+  <!-- ---------------------------------------------------------- -->
+  <section class="band band-read" style="margin-top:48px">
+    <div class="band-h"><span class="band-t">What the guest never notices</span></div>
+    <div class="prose">
+      <p><b>It runs at native speed.</b> There is no interpreter between the game and your CPU. The
+      update loop, the physics, the AI — all of it is the game's own x86-64 executing directly. The
+      cost of &ldquo;emulation&rdquo; is paid only at the boundaries: the <code>sce*</code> calls and
+      the GPU work.</p>
+
+      <p><b>It talks to a console that isn't there.</b> Every service is a normal function call —
+      <code>sceKernelAllocateDirectMemory</code>, <code>sceGnmSubmitCommandBuffers</code>,
+      <code>sceVideoOutSubmitFlip</code> — that happens to land in KytyPS5's C++ instead of Sony's
+      firmware. The game builds real PM4 packets and hands over real shader binaries, exactly as it
+      would on hardware.</p>
+
+      <p><b>It is a normal multithreaded program.</b> Its worker threads are host threads; its locks
+      are <code>umtx</code> wait/wake; its memory is a heap it manages itself. The emulator adds no
+      scheduler and no memory model of its own — it just provides the console-shaped functions the
+      game already expects.</p>
+
+      <p>The mirror image — everything the emulator does to answer these calls — is the
+      <a href="host-run.html">host side</a>. And you loaded here from
+      <a href="loadlink.html">how a game loads &amp; links</a>.</p>
+    </div>
+  </section>
+
+</main>
+
+<script src="assets/topics.js?v=26" defer></script>
+<script src="assets/search-index.js?v=26" defer></script>
+<script src="assets/highlight.js?v=26" defer></script>
+<script src="assets/app.js?v=26" defer></script>
+<script src="assets/flowdiagram.js?v=1" defer></script>
+<script src="assets/guest-run.js?v=1" defer></script>
+<script src="assets/tutor.js?v=26" defer></script>
+</body>
+</html>

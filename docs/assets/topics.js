@@ -25,6 +25,10 @@ window.KYTY_TOPICS = [
 
   { id: "loadlink", n: "◇", title: "How a game loads & links", ready: true, file: "loadlink.html",
     blurb: "One diagram, step by step: SELF → ELF → map → resolve NIDs into the GOT → threads → the game calling the libraries." },
+  { id: "guest-run", n: "◇", title: "How the guest runs", ready: true, file: "guest-run.html",
+    blurb: "One frame from the game's side: update, heap, threads, sce* calls, PM4, submit, audio, flip — all native." },
+  { id: "host-run", n: "◇", title: "How the host runs a frame", ready: true, file: "host-run.html",
+    blurb: "The same frame from the emulator's side: HLE, memory + fault coherency, PM4 decode, shader recompile, Vulkan, present." },
 
   { part: "Foundations" },
   { id: "what-an-emulator-is", n: "01", title: "What an emulator is", ready: true,

@@ -1,0 +1,86 @@
+/* Shared engine for the stepped SVG flow diagrams (load/link, guest, host). */
+.fd {
+  --bg: #070b11; --p: #101722; --p2: #161f2c; --ln: #273446; --ln2: #3a4b61;
+  --ink: #eaf0f5; --ink2: #b2bfca; --ink3: #718092;
+  --c: #55c5de; --a: #f0b849; --k: #ec668b; --g: #75d49a;
+  --accent: var(--c);
+  margin: 22px 0 8px; border: 1px solid #1c2736; border-radius: 14px; overflow: hidden;
+  background: var(--bg); box-shadow: 0 24px 70px rgba(0,0,0,.28); font: 12px var(--mono);
+}
+.fd-guest { --accent: var(--g); }
+.fd-host { --accent: var(--a); }
+.fd-svg { display: block; width: 100%; height: auto; background: radial-gradient(120% 90% at 50% 0, #0b1220, #060a10); }
+
+/* wires */
+.fd-wire { stroke: var(--ln2); stroke-width: 1.6; opacity: .5; }
+.fd-wire-lab { fill: var(--ink3); font: 9px var(--mono); opacity: .55; }
+.fd-wg.on .fd-wire { stroke: var(--accent); stroke-width: 2.2; opacity: 1; stroke-dasharray: 7 6; animation: fd-flow .55s linear infinite; }
+.fd-wg.on .fd-wire-lab { fill: var(--accent); opacity: 1; }
+@keyframes fd-flow { to { stroke-dashoffset: -13; } }
+
+/* nodes */
+.fd-frame { fill: var(--p); stroke: var(--ln); stroke-width: 1.2; }
+.fd-node.on .fd-frame { stroke: var(--accent); fill: #12202c; filter: drop-shadow(0 0 6px rgba(85,197,222,.22)); }
+.fd-node { cursor: pointer; }
+.fd-title { fill: var(--ink); font: 650 13px var(--mono); }
+.fd-node.on .fd-title { fill: var(--accent); }
+.fd-sub { fill: var(--ink3); font: 9px var(--mono); }
+
+/* generic rows */
+.fd-rrect { fill: var(--p2); stroke: var(--ln); stroke-width: .8; }
+.fd-rl { fill: var(--ink2); font: 10px var(--mono); }
+.fd-rv { fill: var(--ink3); font: 9px var(--mono); }
+.fd-row.hot .fd-rrect { stroke: var(--a); fill: rgba(240,184,73,.12); }
+.fd-row.hot .fd-rl { fill: var(--a); }
+.fd-row.seg .fd-rrect { stroke: rgba(85,197,222,.5); }
+.fd-row.res .fd-rrect { stroke: rgba(117,212,154,.55); }
+.fd-row.res .fd-rv { fill: var(--g); }
+.fd-row.stub .fd-rrect { stroke: var(--k); }
+.fd-row.stub .fd-rv { fill: var(--k); }
+.fd-row.ok .fd-rrect { stroke: rgba(117,212,154,.5); } .fd-row.ok .fd-rl { fill: var(--g); }
+.fd-row.cy .fd-rl { fill: var(--ink); } .fd-row.cy .fd-rv { fill: var(--c); }
+.fd-note { fill: var(--ink2); font: 10px var(--mono); }
+.fd-note.hd { fill: var(--ink3); font: 8.5px var(--mono); letter-spacing: .1em; }
+.fd-note.sm { fill: var(--ink3); font: 9px var(--mono); }
+.fd-note.op { fill: var(--a); font: 650 12px var(--mono); }
+.fd-note.done { fill: var(--ink3); text-decoration: line-through; }
+.fd-note.mono { fill: var(--ink3); font: 10px var(--mono); }
+.fd-note.hot { fill: var(--c); }
+
+/* bands (memory / stages) */
+.fd-band { fill: var(--p2); stroke: var(--ln); stroke-width: .8; }
+.fd-band.band-rx { fill: rgba(85,197,222,.18); stroke: rgba(85,197,222,.55); }
+.fd-band.band-rw { fill: rgba(240,184,73,.14); stroke: rgba(240,184,73,.5); }
+.fd-band.band-r { fill: rgba(178,191,202,.1); stroke: var(--ln2); }
+.fd-band.band-g { fill: rgba(117,212,154,.14); stroke: rgba(117,212,154,.5); }
+.fd-band.band-off { fill: #0c121b; stroke: var(--ln); opacity: .5; }
+.fd-band.hot { stroke: var(--a); }
+.fd-bl { fill: var(--ink); font: 10px var(--mono); } .fd-bv { fill: var(--ink3); font: 9px var(--mono); }
+.fd-patch { fill: var(--k); font: 8px var(--mono); }
+
+/* small lib/list blocks */
+.fd-lib { fill: #0c121b; stroke: var(--ln); stroke-width: .8; }
+.fd-lib.on { fill: #12202c; stroke: rgba(85,197,222,.4); }
+.fd-lib.hot { stroke: var(--a); fill: rgba(240,184,73,.1); }
+.fd-libn { fill: var(--ink); font: 650 10px var(--mono); }
+.fd-libf { fill: var(--ink3); font: 8px var(--mono); }
+.fd-ex { fill: var(--ink3); font: 9px var(--mono); }
+.fd-ex.hot { fill: var(--a); }
+
+/* control bar */
+.fd-bar { padding: 12px 16px 14px; border-top: 1px solid var(--ln); background: #0c121b; }
+.fd-cap { color: var(--ink2); font: 13px/1.55 var(--serif); min-height: 3.1em; max-width: 112ch; }
+.fd-cap b { color: var(--ink); font-family: var(--mono); font-size: 12px; }
+.fd-cap code { font-family: var(--mono); color: var(--a); font-size: 12px; }
+.fd-ctl { display: flex; align-items: center; gap: 8px; margin: 12px 0 10px; }
+.fd-btn { min-height: 30px; padding: 5px 12px; border: 1px solid var(--ln2); border-radius: 6px; background: var(--p2); color: var(--ink2); font: 650 11px var(--mono); cursor: pointer; }
+.fd-btn:hover { color: var(--ink); border-color: var(--accent); }
+.fd-btn.pri { border-color: var(--accent); color: var(--accent); }
+.fd-pos { margin-left: 6px; color: var(--ink3); font-size: 11px; }
+.fd-rail { display: flex; gap: 4px; }
+.fd-mark { flex: 1; height: 8px; border: 0; border-radius: 3px; background: var(--ln); cursor: pointer; padding: 0; }
+.fd-mark:hover { background: var(--ln2); }
+.fd-mark.done { background: rgba(117,212,154,.5); }
+.fd-mark.on { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+
+@media (max-width: 720px) { .fd-cap { min-height: 5.5em; } }
