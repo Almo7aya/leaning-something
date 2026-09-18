@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ELF, SELF and Sony's format — KytyPS5</title>
 <meta name="description" content="A PS5 module is an ELF that no standard loader will accept. Here is what is different and why.">
-<link rel="stylesheet" href="assets/viz.css?v=23">
-<link rel="stylesheet" href="assets/atlas.css?v=23">
-<link rel="stylesheet" href="assets/lab.css?v=23">
-<link rel="stylesheet" href="assets/tutor.css?v=23">
-<link rel="stylesheet" href="assets/app.css?v=23">
-<link rel="stylesheet" href="assets/highlight.css?v=23">
+<link rel="stylesheet" href="assets/viz.css?v=26">
+<link rel="stylesheet" href="assets/atlas.css?v=26">
+<link rel="stylesheet" href="assets/lab.css?v=26">
+<link rel="stylesheet" href="assets/tutor.css?v=26">
+<link rel="stylesheet" href="assets/app.css?v=26">
+<link rel="stylesheet" href="assets/highlight.css?v=26">
 </head>
 <body>
 
@@ -191,7 +191,7 @@ struct SelfSegment {
 
   <h4 id="the-encoded-identifiers">The encoded identifiers</h4>
   <p>Module and library identifiers in a NID string are not names — they are small integers encoded in a base64-like alphabet. <code>EncodeId64</code> converts an index into the one- or two-character form, and resolution then looks that up in the file's own import tables to find the real name and version. This is why the same NID string can mean different things in two different modules.</p>
-  <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp:1001</span><span class="src">src/loader/runtimeLinker.cpp:2287</span></div>
+  <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp:846</span><span class="src">src/loader/runtimeLinker.cpp:925</span></div>
     </div>
   </section>
 
@@ -249,16 +249,16 @@ struct SelfSegment {
 
 </main>
 
-<script src="assets/topics.js?v=23" defer></script>
-<script src="assets/search-index.js?v=23" defer></script>
-<script src="assets/app.js?v=23" defer></script>
-<script src="assets/viz.js?v=23" defer></script>
-<script src="assets/atlas.js?v=23" defer></script>
-<script src="assets/lab.js?v=23" defer></script>
-<script src="assets/figs.js?v=23" defer></script>
-<script src="assets/figures.js?v=23" defer></script>
-<script src="assets/highlight.js?v=23" defer></script>
-<script src="assets/tutor.js?v=23" defer></script>
+<script src="assets/topics.js?v=26" defer></script>
+<script src="assets/search-index.js?v=26" defer></script>
+<script src="assets/app.js?v=26" defer></script>
+<script src="assets/viz.js?v=26" defer></script>
+<script src="assets/atlas.js?v=26" defer></script>
+<script src="assets/lab.js?v=26" defer></script>
+<script src="assets/figs.js?v=26" defer></script>
+<script src="assets/figures.js?v=26" defer></script>
+<script src="assets/highlight.js?v=26" defer></script>
+<script src="assets/tutor.js?v=26" defer></script>
 </body>
 </html>
 

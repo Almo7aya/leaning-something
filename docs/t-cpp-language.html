@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>C++ language, by example — KytyPS5</title>
 <meta name="description" content="The C++ you will actually meet in this tree — templates, move semantics, constexpr, casts, packing and the preprocessor — each one shown as it really appears.">
-<link rel="stylesheet" href="assets/viz.css?v=23">
-<link rel="stylesheet" href="assets/atlas.css?v=23">
-<link rel="stylesheet" href="assets/lab.css?v=23">
-<link rel="stylesheet" href="assets/tutor.css?v=23">
-<link rel="stylesheet" href="assets/app.css?v=23">
-<link rel="stylesheet" href="assets/highlight.css?v=23">
+<link rel="stylesheet" href="assets/viz.css?v=26">
+<link rel="stylesheet" href="assets/atlas.css?v=26">
+<link rel="stylesheet" href="assets/lab.css?v=26">
+<link rel="stylesheet" href="assets/tutor.css?v=26">
+<link rel="stylesheet" href="assets/app.css?v=26">
+<link rel="stylesheet" href="assets/highlight.css?v=26">
 </head>
 <body>
 
@@ -157,7 +157,7 @@ class UniqueFunction {
     <li><strong><code>std::forward</code></strong> re-applies the argument's original value category — lvalue stays an lvalue, rvalue stays an rvalue — so nothing is copied unnecessarily. <code>std::move</code> is the "I am done with this" cast; <code>std::forward</code> is the "pass it along as it came" cast.</li>
   </ul>
 
-  <p>The same trio appears in <code>ByteBuffer</code>, where <code>Add(Byte&amp;&amp; val)</code> lets the vector steal the byte instead of copying it. You do not need to write these yourself yet — you need to <em>read</em> them, and the rule that makes reading easy is: <code>&amp;&amp;</code> in a parameter means "accept an rvalue and allow moving from it".</p>
+  <p>The same trio appears wherever a <code>UniqueFunction</code> is handed off — <code>GuestGpu::SendCommand(UniqueFunction&lt;void&gt;&amp;&amp; command)</code> and <code>CommandScheduler::DeferOperation(…&amp;&amp; operation)</code> take the closure by <code>&amp;&amp;</code> so the queue can steal it instead of copying. You do not need to write these yourself yet — you need to <em>read</em> them, and the rule that makes reading easy is: <code>&amp;&amp;</code> in a parameter means "accept an rvalue and allow moving from it".</p>
 
   <h4 id="raii-and-smart-pointers">RAII — the object owns the resource</h4>
   <p>There is no garbage collector. A resource (memory, a Vulkan handle, a file) is owned by an object whose destructor releases it. <code>std::unique_ptr</code> is the default owner; <code>std::shared_ptr</code> is used when ownership genuinely must be shared.</p>
@@ -331,7 +331,7 @@ public:                                                                         
         <tr><td><code>std::optional&lt;T&gt;</code></td><td>a value that may be absent — like <code>T | null</code></td><td><code>redZonePatcher.cpp</code>, <code>profiler.h</code>; read with <code>.has_value()</code> / <code>.value()</code></td></tr>
         <tr><td><code>std::span&lt;const T&gt;</code></td><td>a non-owning view of contiguous data — like a typed slice</td><td><code>redZonePatcher.h</code>, <code>shader.h</code></td></tr>
         <tr><td><code>std::from_chars</code></td><td>fast, allocation-free number parsing</td><td><code>main.cpp</code>, <code>gamePatch.cpp</code></td></tr>
-        <tr><td>Lambdas</td><td>anonymous functions, passed as comparators/callbacks</td><td><code>ByteBuffer::Sort</code>, everywhere</td></tr>
+        <tr><td>Lambdas</td><td>anonymous functions, passed as comparators/callbacks</td><td><code>std::sort</code> comparators, <code>ForEach</code> visitors, everywhere</td></tr>
         <tr><td><code>&lt;bit&gt;</code> helpers</td><td>bit tricks: <code>std::countr_zero</code>, <code>std::countl_one</code></td><td><code>bitArray.h</code> scanning for set-bit runs</td></tr>
         <tr><td><code>std::atomic</code>, <code>std::mutex</code></td><td>thread-safe counters and locks</td><td><code>agc.cpp</code>, <code>ajm.cpp</code>, <code>memoryAddressSpace.inc</code></td></tr>
       </tbody>
@@ -432,15 +432,15 @@ public:                                                                         
 
 </main>
 
-<script src="assets/topics.js?v=23" defer></script>
-<script src="assets/search-index.js?v=23" defer></script>
-<script src="assets/app.js?v=23" defer></script>
-<script src="assets/viz.js?v=23" defer></script>
-<script src="assets/atlas.js?v=23" defer></script>
-<script src="assets/lab.js?v=23" defer></script>
-<script src="assets/figs.js?v=23" defer></script>
-<script src="assets/figures.js?v=23" defer></script>
-<script src="assets/highlight.js?v=23" defer></script>
-<script src="assets/tutor.js?v=23" defer></script>
+<script src="assets/topics.js?v=26" defer></script>
+<script src="assets/search-index.js?v=26" defer></script>
+<script src="assets/app.js?v=26" defer></script>
+<script src="assets/viz.js?v=26" defer></script>
+<script src="assets/atlas.js?v=26" defer></script>
+<script src="assets/lab.js?v=26" defer></script>
+<script src="assets/figs.js?v=26" defer></script>
+<script src="assets/figures.js?v=26" defer></script>
+<script src="assets/highlight.js?v=26" defer></script>
+<script src="assets/tutor.js?v=26" defer></script>
 </body>
 </html>

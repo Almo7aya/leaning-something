@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The program cache — KytyPS5</title>
+<meta name="description" content="One function, ProgramCache::Get: how a draw finds or builds a shader permutation, including mesh stages.">
+<link rel="stylesheet" href="assets/viz.css?v=26">
+<link rel="stylesheet" href="assets/atlas.css?v=26">
+<link rel="stylesheet" href="assets/lab.css?v=26">
+<link rel="stylesheet" href="assets/tutor.css?v=26">
+<link rel="stylesheet" href="assets/app.css?v=26">
+<link rel="stylesheet" href="assets/highlight.css?v=26">
+</head>
+<body>
+
+<main class="topic" data-app-content>
+
+  <p class="topic-eyebrow">Appendix · C9</p>
+  <h1 id="the-program-cache">The program cache</h1>
+  <p class="topic-deck">
+    Topics 15–17 describe the split between plan and SPIR-V. This page reads the one function that actually does it on every draw: <code>ProgramCache::Get</code> in <code>pipelineCache.cpp</code>.
+  </p>
+
+  <section class="band band-read">
+    <div class="band-h"><span class="band-t">Read</span></div>
+    <div class="prose">
+<p class="deck">A draw arrives with a blob of RDNA 2, a hash, current user data, and stage input info. <code>Get</code> returns a handle the renderer can bind. Everything between those two sentences is this function.</p>
+
+  <h4 id="how-the-stage-is-chosen">How the stage is chosen</h4>
+  <p>The template argument is the stage's input-info struct. Vertex input is special: if <code>input_info.mesh.threads_num[0] != 0</code> the stage is <code>ShaderType::Mesh</code>, otherwise <code>ShaderType::Vertex</code>. Pixel and compute are unambiguous. That is the whole mesh-vs-vertex decision — merged ES/GS geometry stages arrive as vertex input with a non-zero mesh thread count, and from here they take the mesh path (<code>DecodeFusedProgram</code>, <code>spirvEmitterMesh.cpp</code>, <code>VK_EXT_mesh_shader</code>).</p>
+
+  <h4 id="the-lookup-key">The lookup key</h4>
+  <p>The program cache is keyed on stage, shader hash, user-data count, code size and a packed static-state blob from the input info — not on the current descriptors. Two draws of the same binary share an entry even when they bind different textures. What they do <em>not</em> share is the SPIR-V permutation:</p>
+  <div class="filename">src/graphics/host_gpu/renderer/pipeline/pipelineCache.cpp — ProgramCache::Get(), cache hit</div>
+<pre>if (entry != programs.end()) {
+    EXIT_IF(!ShaderRecompiler::IR::MaterializeResources(
+        entry-&gt;second.resource_plan, runtime, resources, specialization));
+    if (const auto permutation = std::ranges::find_if(
+            entry-&gt;second.permutations, [&amp;](const Permutation&amp; candidate) {
+                return candidate.specialization == specialization
+                    &amp;&amp; /* push-constant placement matches */;
+            });
+        permutation != entry-&gt;second.permutations.end()) {
+        input_info.stage = { .program = &amp;permutation-&gt;program,
+                             .resources = std::move(resources) };
+        return permutation-&gt;handle;     <i>// hot path: no Translate, no Compile</i>
+    }
+}</pre>
+  <p>On a hit, <code>MaterializeResources</code> still runs — user data changed. A failed read is <code>EXIT_IF</code>. If the resulting <code>ResourceSpecialization</code> matches a permutation already compiled, the function returns. That is the common case after the first few frames.</p>
+
+  <h4 id="the-two-misses">The two misses</h4>
+  <p>A <em>program</em> miss means this binary has never been translated. <code>TranslateProgram</code> runs, <code>ExtractResourcePlan</code> keeps the immutable plan, then materialisation runs and the first permutation is compiled. A <em>permutation</em> miss means the plan is cached but this specialisation is new — only <code>CompileProgram</code> runs. Both miss paths end in <code>CompilePermutation</code>, which is the call that emits SPIR-V and a Vulkan shader module.</p>
+  <p>Mesh user-data base is 0; ordinary vertex user-data base is 8. Wave size and scratch dwords for mesh come from <code>input_info.mesh</code>, not from the generic vertex fields. If you are reading a mesh compile in the log, those are the numbers that fed it.</p>
+
+  <h4 id="what-the-renderer-receives">What the renderer receives</h4>
+  <p><code>input_info.stage</code> is a <code>ShaderStageRuntime</code>: a pointer to the compiled info plus the <code>ResourceSnapshot</code> just materialised. <code>PrepareBindings</code> reads the snapshot. Push-constant space is advanced with <code>AdvancePushData</code> so the next stage in the same draw does not collide; a mesh draw reserves six dwords of that space (<code>PushData::MeshDrawDwordCount</code>).</p>
+
+  <h4 id="three-small-surfaces-next-to-it">Three small surfaces next to it</h4>
+  <p>These sit outside the graphics cache but show up in the same runs, so they belong on a page you read while debugging a title:</p>
+
+  <h5 id="umtx">umtx wait / wake</h5>
+  <p><code>UmtxOp</code> in <code>libKernel.cpp</code> implements FreeBSD <code>_umtx_op</code> operations 2 (wait) and 3 (wake) on top of <code>SyncOnAddress</code>. A malformed timeout — negative seconds, or nanoseconds outside <code>[0, 1e9)</code> — sets <code>errno</code> to <code>POSIX_EINVAL</code> and returns −1. A <em>valid</em> timed wait is still <code>EXIT</code> (“not implemented”). Untimed wait and wake work. If a game hangs in a timed umtx, that is why.</p>
+
+  <h5 id="dualsense">DualSense light bar and triggers</h5>
+  <div class="filename">src/libs/controller.cpp — PadSetLightBar / PadSetTriggerEffect</div>
+<pre>int KYTY_SYSV_ABI PadSetLightBar(int handle, const PadLightBarParam* param) {
+    PRINT_NAME();
+    if (handle != 1) return PAD_ERROR_INVALID_HANDLE;
+    if (param == nullptr) return PAD_ERROR_INVALID_ARG;
+    g_controller-&gt;SetLightBar(param-&gt;r, param-&gt;g, param-&gt;b);
+    return OK;
+}</pre>
+  <p>Handle <code>1</code> is the only pad. The HIDAPI driver then drives the real DualSense. <code>PadSetTriggerEffect</code> is the same shape: validate handle and pointer, forward the struct, map a failed host call to <code>PAD_ERROR_INVALID_ARG</code>. The NIDs are <code>RR4novUEENY</code> (light bar) and <code>2JgFB2n9oUM</code> (triggers) in <code>libPad.cpp</code>.</p>
+
+  <h5 id="libces">libCes — a whole module in one file</h5>
+  <p><code>libCes.cpp</code> is 10 KB of CP932 / Shift-JIS ↔ UTF-8 conversion, registered as <code>LIB_VERSION("Ces", 1, "Ces", 1, 1)</code>. <code>CesDecodeUtf8</code> is a textbook UTF-8 decoder with the replacement character <code>0xfffd</code> on a truncated or invalid sequence. If you want a first HLE file to read that is not inlined inside <code>libs.cpp</code>, start here — then compare it to <code>LibContentExport</code> in <a href="t-hle.html">topic 12</a>.</p>
+    </div>
+  </section>
+
+  <section class="band band-watch">
+    <div class="band-h"><span class="band-t">Watch</span></div>
+    <p class="band-why">The SRT walk on topic 15 is the plan this function re-executes. The pipeline-key lab is the <em>other</em> cache — Vulkan pipelines, not shader permutations.</p>
+    <div data-viz="srtwalk"></div>
+  </section>
+
+  <section class="band band-try">
+    <div class="band-h"><span class="band-t">Try</span></div>
+    <p class="band-why">Open <code>pipelineCache.cpp</code> at <code>ProgramCache::Get</code>. Count the returns. There are two: the permutation hit, and the fall-through after <code>CompilePermutation</code>. Everything else is setup or <code>EXIT_IF</code>.</p>
+  </section>
+
+  <section class="band band-do">
+    <div class="band-h"><span class="band-t">Do</span></div>
+    <div class="check">
+      <p class="check-h">Checkpoint</p>
+      <ul class="check-list">
+        <li class="check-item">
+          <input type="checkbox">
+          <label>State the condition that makes a vertex-input shader a mesh shader.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Explain the difference between a program miss and a permutation miss.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Say what happens if <code>MaterializeResources</code> fails on the hit path.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Name the two implemented <code>_umtx_op</code> operations and what a valid timed wait does.</label>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+</main>
+
+<script src="assets/topics.js?v=26" defer></script>
+<script src="assets/search-index.js?v=26" defer></script>
+<script src="assets/app.js?v=26" defer></script>
+<script src="assets/viz.js?v=26" defer></script>
+<script src="assets/atlas.js?v=26" defer></script>
+<script src="assets/lab.js?v=26" defer></script>
+<script src="assets/figs.js?v=26" defer></script>
+<script src="assets/figures.js?v=26" defer></script>
+<script src="assets/highlight.js?v=26" defer></script>
+<script src="assets/tutor.js?v=26" defer></script>
+</body>
+</html>

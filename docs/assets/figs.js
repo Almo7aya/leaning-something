@@ -247,7 +247,7 @@
       ["--printf-direction File", "_kyty.txt", "everything the emulator says: unresolved imports, unimplemented calls, errors"],
       ["--command-buffer-dump true", "command buffers", "the raw PM4 dwords the game submitted — feed these to the decoder"],
       ["--shader-log-direction File", "_Shaders/", "input ISA, the IR, and the emitted SPIR-V for every shader"],
-      ["(crash)", "crash log", "faulting module, code bytes, every register, a stack walk"]
+      ["(crash)", "crash log", "the faulting guest thread, every register, 96 code bytes, 32 stack words"]
     ];
 
     var CAPS = [
@@ -255,7 +255,7 @@
       "<code>--printf-direction File</code> is the one to start with. Everything the emulator has to say lands in a file you can search — and drop straight into the log triage tool.",
       "<code>--command-buffer-dump true</code> captures what the game actually submitted to the GPU. Without it, the graphics topics are theory.",
       "<code>--shader-log-direction File</code> fills <code>_Shaders/</code> with the input ISA, the intermediate representation and the SPIR-V for every shader translated. Reading all three side by side is the fastest way to understand the recompiler.",
-      "And when it crashes you get the crash log for free: which module faulted, the bytes at the faulting address, every register, and a walk back up the stack. Because guest code runs natively, that is a <em>real</em> crash — which is exactly why the dump has to be this thorough."
+      "And when it crashes you get the crash log for free: a <code>Guest fault context</code> block with the faulting thread, every register, 96 code bytes around PC and 32 stack words. Because guest code runs natively, that is a <em>real</em> crash — which is exactly why the dump has to be this thorough."
     ];
 
     var drv = driver(body, CAPS, function (i) {
@@ -383,7 +383,7 @@
       ["lld links every object + 3rdparty → kyty_emulator.exe + launcher.exe",
        "the linker resolves every symbol across all translation units and writes a map file / PDB so crash addresses become names."],
       ["kyty_emulator.exe --game \"D:\\Games\\Example\" --printf-direction File",
-       "run: prints the build string (Debug, clang-lld-64, ver=0.2.2), boots guest code natively, and logs to _kyty.txt"]
+       "run: prints the build string (Debug, clang-lld-64, ver=0.3.0 plus the git hash), boots guest code natively, and logs to _kyty.txt"]
     ];
 
     var CAPS = [

@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Mapping a program into memory — KytyPS5</title>
 <meta name="description" content="Reserving the guest address space and laying segments into it at the addresses they demand.">
-<link rel="stylesheet" href="assets/viz.css?v=23">
-<link rel="stylesheet" href="assets/atlas.css?v=23">
-<link rel="stylesheet" href="assets/lab.css?v=23">
-<link rel="stylesheet" href="assets/tutor.css?v=23">
-<link rel="stylesheet" href="assets/app.css?v=23">
-<link rel="stylesheet" href="assets/highlight.css?v=23">
+<link rel="stylesheet" href="assets/viz.css?v=26">
+<link rel="stylesheet" href="assets/atlas.css?v=26">
+<link rel="stylesheet" href="assets/lab.css?v=26">
+<link rel="stylesheet" href="assets/tutor.css?v=26">
+<link rel="stylesheet" href="assets/app.css?v=26">
+<link rel="stylesheet" href="assets/highlight.css?v=26">
 </head>
 <body>
 
@@ -30,7 +30,7 @@
   <h4 id="deciding-how-much-space-to-reserve">Deciding how much space to reserve</h4>
   <p>The mapped size is the highest address any loadable segment reaches, rounded up to a guest page, plus room for the generated TLS handler:</p>
 
-  <div class="filename">src/loader/runtimeLinker.cpp:2127</div>
+  <div class="filename">src/loader/runtimeLinker.cpp:1977</div>
 <pre>static uint64_t CalcBaseSize(const Elf64_Ehdr* ehdr, const Elf64_Phdr* phdr) {
     uint64_t base_size = 0;
     for (Elf64_Half i = 0; i &lt; ehdr-&gt;e_phnum; i++) {
@@ -59,7 +59,7 @@ g_desired_base_addr += CODE_BASE_INCR * (1 + program-&gt;mapped_size / CODE_BASE
   <p>Note that the region is initially mapped <strong>ExecuteReadWrite</strong>. Correct protection is applied per segment afterwards — the loader needs write access to copy data in and to patch instructions, before locking things down.</p>
 
   <h4 id="the-layout-constants">The layout constants</h4>
-  <div class="filename">src/loader/runtimeLinker.cpp:337</div>
+  <div class="filename">src/loader/runtimeLinker.cpp:344</div>
 <pre>constexpr uint64_t SYSTEM_RESERVED  = 0x800000000u;
 constexpr uint64_t CODE_BASE_INCR   = 0x010000000u;   <i>// 256 MB between modules</i>
 constexpr uint64_t CODE_BASE_OFFSET = 0x100000000u;
@@ -187,7 +187,7 @@ static uint64_t g_desired_base_addr = SYSTEM_RESERVED + CODE_BASE_OFFSET;   <i>/
 
   <h4 id="loading-order-across-modules">Loading order across modules</h4>
   <p><code>PreloadAdjacentPrograms()</code> scans the directory beside the executable for <code>.prx</code> / <code>.sprx</code> modules and loads them before relocation begins. This ordering is mandatory: a symbol may be exported by a module that is loaded after the one importing it, so all modules must exist before any relocation is resolved.</p>
-  <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp:1979</span><span class="src">src/loader/runtimeLinker.cpp:1464</span></div>
+  <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp:1829</span><span class="src">src/loader/runtimeLinker.cpp:1450</span></div>
     </div>
   </section>
 
@@ -236,16 +236,16 @@ static uint64_t g_desired_base_addr = SYSTEM_RESERVED + CODE_BASE_OFFSET;   <i>/
 
 </main>
 
-<script src="assets/topics.js?v=23" defer></script>
-<script src="assets/search-index.js?v=23" defer></script>
-<script src="assets/app.js?v=23" defer></script>
-<script src="assets/viz.js?v=23" defer></script>
-<script src="assets/atlas.js?v=23" defer></script>
-<script src="assets/lab.js?v=23" defer></script>
-<script src="assets/figs.js?v=23" defer></script>
-<script src="assets/figures.js?v=23" defer></script>
-<script src="assets/highlight.js?v=23" defer></script>
-<script src="assets/tutor.js?v=23" defer></script>
+<script src="assets/topics.js?v=26" defer></script>
+<script src="assets/search-index.js?v=26" defer></script>
+<script src="assets/app.js?v=26" defer></script>
+<script src="assets/viz.js?v=26" defer></script>
+<script src="assets/atlas.js?v=26" defer></script>
+<script src="assets/lab.js?v=26" defer></script>
+<script src="assets/figs.js?v=26" defer></script>
+<script src="assets/figures.js?v=26" defer></script>
+<script src="assets/highlight.js?v=26" defer></script>
+<script src="assets/tutor.js?v=26" defer></script>
 </body>
 </html>
 

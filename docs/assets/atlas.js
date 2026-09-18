@@ -150,9 +150,9 @@
       "PS5 code reads its thread control block through the <code>fs</code> segment register. Windows uses <code>fs</code> for its own Thread Information Block, so the read returns something unrelated and the guest then dereferences it. With no recompiler in the pipeline, the loader fixes this by rewriting the bytes in place — before the code is ever executed.");
 
     var BEFORE = ["64", "48", "8B", "04", "25", "00", "00", "00", "00"];
-    var AFTER = ["E8", "1C", "4A", "01", "00", "48", "89", "C0", "90"];
+    var AFTER = ["48", "E8", "1C", "4A", "01", "00", "48", "89", "C0"];
     var LBL_B = ["fs prefix", "REX.W", "mov r64", "modrm", "sib", "disp32", "", "", ""];
-    var LBL_A = ["call rel32", "", "", "", "", "mov rax,rax", "", "", "nop"];
+    var LBL_A = ["REX.W", "call rel32", "", "", "", "", "mov rax,rax", "", ""];
 
     var wrap = el("div");
     wrap.innerHTML =
@@ -165,9 +165,9 @@
 
     var CAPS = [
       "The ELF file on disk contains this nine-byte instruction: <code>mov rax, qword ptr fs:[0]</code>. Perfectly valid on the console.",
-      "The loader scans every executable segment for the five-byte signature <code>64 48 8B _ 25</code>, tolerating up to three <code>0x66</code> padding prefixes that compilers insert.",
+      "The loader scans every executable segment for the five-byte signature <code>64 48 8B _ 25</code>, tolerating up to three <code>0x66</code> padding prefixes that compilers insert. The prefixes are left in place; the rewrite starts after them.",
       "It reads the ModR/M byte to learn <b>which register</b> the original targeted — bits 5:3. Here that is <code>rax</code>. A different register selects a different stub variant.",
-      "<b>The rewrite.</b> Nine bytes become a five-byte <code>call</code> to a generated stub, a three-byte <code>mov</code> putting the result in the right register, and one <code>nop</code>. Exactly nine bytes, so nothing shifts and no address changes.",
+      "<b>The rewrite.</b> Nine bytes become a <code>REX.W</code>-prefixed six-byte <code>call</code> to a generated stub and a three-byte <code>mov</code> putting the result in the right register. Exactly nine bytes, so nothing shifts and no address changes. The <code>REX.W</code> is there because AMD CPUs honour a retained <code>0x66</code> prefix on a near <code>call</code> and would execute a 16-bit <code>callw</code>.",
       "At run time the stub fetches the guest's real thread control block, switching from System&nbsp;V to the Microsoft convention on the way in and back on the way out — saving flags and every volatile register, aligning the stack, reserving shadow space.",
       "A second pattern gets the same treatment: stack-canary stores through <code>fs:[0x28]</code>, which would otherwise fault writing to address <code>0x28</code>. Those twelve bytes become <code>nop</code>s — or <code>pop rbp; ret</code> if the loader recognises the canary-failure epilogue that follows."
     ];
@@ -183,13 +183,13 @@
     var drv = driver(body, CAPS, function (i) {
       paint(BEFORE, LBL_B, bR, -1, -1, "");
       abR.textContent = "mov rax, qword ptr fs:[0]";
-      if (i >= 3) { paint(AFTER, LBL_A, aR, -1, -1, ""); aaR.textContent = "call tls_handler ; mov rax, rax ; nop"; aR.parentElement.style.opacity = 1; aaR.style.opacity = 1; }
+      if (i >= 3) { paint(AFTER, LBL_A, aR, -1, -1, ""); aaR.textContent = "rex.w call tls_handler ; mov rax, rax"; aR.parentElement.style.opacity = 1; aaR.style.opacity = 1; }
       else { aR.innerHTML = ""; aaR.textContent = ""; aR.parentElement.style.opacity = .35; }
 
       if (i === 1) paint(BEFORE, LBL_B, bR, 0, 4, "sig");
       if (i === 2) paint(BEFORE, LBL_B, bR, 3, 3, "hot");
       if (i === 3) { paint(BEFORE, LBL_B, bR, 0, 8, "old"); paint(AFTER, LBL_A, aR, 0, 8, "new"); }
-      if (i === 4) paint(AFTER, LBL_A, aR, 0, 4, "hot");
+      if (i === 4) paint(AFTER, LBL_A, aR, 0, 5, "hot");
       if (i === 5) { abR.textContent = "mov qword ptr fs:[0x28], rax   ; the other pattern"; }
     }, 3600);
 
@@ -201,8 +201,8 @@
      CPU · 4 — the exception handler as control flow
      ============================================================ */
   V.register("faultpath", function (host) {
-    var body = frame(host, "A fault arrives — what happens next", "three of these branches are load-bearing",
-      "Because guest code runs natively, the emulator cannot instrument it. The CPU's own fault mechanism becomes the primary hook: three of the four branches below are deliberate design, not error handling.");
+    var body = frame(host, "A fault arrives — what happens next", "two of these branches are load-bearing",
+      "Because guest code runs natively, the emulator cannot instrument it. The CPU's own fault mechanism becomes the primary hook: two of the three branches below are deliberate design, not error handling.");
 
     var W = 740, H = 300;
     var s = svg(W, H, "Decision tree for a CPU fault inside guest code");
@@ -211,42 +211,39 @@
     var start = box(s, 270, 8, 200, 40, "g", "CPU raises a fault", "in guest code");
     var b1 = box(s, 40, 78, 300, 44, "h", "Illegal instruction?", "X64InstructionEmulator::TryEmulate");
     var b2 = box(s, 40, 140, 300, 44, "k", "GPU-watched page?", "Memory::HandleGpuFault");
-    var b3 = box(s, 40, 202, 300, 44, "k", "Reserved, not committed?", "KernelHandleReservedRangeAccessViolation");
-    var crash = box(s, 400, 202, 300, 44, "h", "Genuine crash", "dump module, code, regs, stack walk");
+    var crash = box(s, 40, 202, 300, 44, "h", "Genuine crash", "Guest fault context: thread, regs, code, stack — then EXIT");
     var resume = box(s, 400, 106, 300, 50, "g", "return true", "guest resumes — it never knew");
 
     var arr = [];
-    [[190, 48, 190, 76], [190, 122, 190, 138], [190, 184, 190, 200], [340, 224, 396, 224]].forEach(function (c) {
+    [[190, 48, 190, 76], [190, 122, 190, 138], [190, 184, 190, 200]].forEach(function (c) {
       var p = mk("path", { d: "M" + c[0] + " " + c[1] + " L" + c[2] + " " + c[3], "class": "wire", "marker-end": "url(#vz-ah)" });
       s.appendChild(p); arr.push(p);
     });
     var toResume = [];
-    [100, 162, 224].forEach(function (y) {
+    [100, 162].forEach(function (y) {
       var p = mk("path", { d: "M340 " + y + " C 372 " + y + ", 372 131, 396 131", "class": "wire", "stroke-dasharray": "4 3", "marker-end": "url(#vz-ah)" });
       s.appendChild(p); toResume.push(p);
     });
-    var yes = mk("text", { x: 352, y: 262, "class": "s" }, "no to all three");
+    var yes = mk("text", { x: 352, y: 228, "class": "s" }, "no to both");
     s.appendChild(yes);
 
     var CAPS = [
-      "Guest code faults. On Windows this arrives as a vectored exception; on Linux and macOS as a signal. Either way it reaches <code>KytyExceptionHandler</code>.",
+      "Guest code faults. On Windows this arrives as a vectored exception; on Linux and macOS as a signal delivered on a per-thread alternate stack. Either way it reaches <code>KytyExceptionHandler</code>.",
       "<b>Branch 1 — an instruction this CPU lacks.</b> The PS5's Zen 2 has instructions your processor may not, notably the SHA extensions. The handler decodes the bytes at the fault address, performs the operation in software against the saved register context, advances the instruction pointer past it, and resumes.",
       "<b>Branch 2 — the GPU cares about this page.</b> Memory the renderer has cached as a Vulkan resource is deliberately write-protected. A guest write traps here, the tracker marks the page dirty, protection is lifted, and execution resumes. <b>The fault is the notification mechanism</b> — there is no other way to learn of the write without a recompiler.",
-      "<b>Branch 3 — reserved but not yet committed.</b> The guest touched a range inside a reservation the memory manager commits on demand.",
-      "<b>Otherwise it is a real crash.</b> The handler prints the faulting module, 64 bytes of code around the fault (probed first so the dump does not itself fault), all sixteen registers, sixteen stack words, and a guest stack walk — accepted only where the frame pointer is inside the stack and the return address inside the module band.",
-      "Reading the dump: a fault address of <code>0x28</code> means an unpatched canary store. A small address usually means a null pointer downstream of a stubbed import that returned zero. An address in the <code>0x9…</code> band with a sensible stack walk is a genuine guest bug."
+      "<b>Otherwise it is a real crash.</b> The handler prints a <code>Guest fault context</code> block — the faulting guest thread's name, all sixteen registers, 96 code bytes around the fault and 32 stack words, each range probed first so the dump does not itself fault — and then exits with <code>Unhandled host exception: type=… pc=… access=… address=…</code>.",
+      "Reading the dump: <code>address=0x28</code> means an unpatched canary store. A small address usually means a null pointer downstream of a stubbed import that returned zero. A <code>pc</code> in the <code>0x9…</code> band with plausible return addresses among the stack words is a genuine guest bug."
     ];
 
     body.insertBefore(s, body.firstChild);
     var drv = driver(body, CAPS, function (i) {
-      [start, b1, b2, b3, crash, resume].forEach(function (n) { n.rect.classList.remove("lit"); });
+      [start, b1, b2, crash, resume].forEach(function (n) { n.rect.classList.remove("lit"); });
       arr.concat(toResume).forEach(function (p) { p.classList.remove("on"); });
-      yes.setAttribute("opacity", i >= 4 ? 1 : 0.25);
+      yes.setAttribute("opacity", i >= 3 ? 1 : 0.25);
       if (i === 0) { start.rect.classList.add("lit"); }
       if (i === 1) { b1.rect.classList.add("lit"); resume.rect.classList.add("lit"); arr[0].classList.add("on"); toResume[0].classList.add("on"); }
       if (i === 2) { b2.rect.classList.add("lit"); resume.rect.classList.add("lit"); arr[1].classList.add("on"); toResume[1].classList.add("on"); }
-      if (i === 3) { b3.rect.classList.add("lit"); resume.rect.classList.add("lit"); arr[2].classList.add("on"); toResume[2].classList.add("on"); }
-      if (i >= 4) { crash.rect.classList.add("lit"); arr[3].classList.add("on"); }
+      if (i >= 3) { crash.rect.classList.add("lit"); arr[2].classList.add("on"); }
     }, 3600);
     return drv;
   });
@@ -574,10 +571,10 @@
     var CAPS = [
       "A shader receives up to 64 dwords in its first scalar registers, written by <code>SET_SH_REG</code> packets. Inside those dwords the game may place inline descriptors, plain constants, or <b>pointers to tables</b> — in any arrangement it likes.",
       "In the machine code you see the shader loading a pointer out of its own user data, then loading a 256-bit descriptor from that table. Tables may point at further tables, to arbitrary depth.",
-      "<b>TranslateProgram + RewriteToSsa</b> create a typed value graph that exposes how descriptor addresses depend on user data, constants, arithmetic and memory reads. The old separate scalar-provenance representation is gone.",
+      "<b>TranslateProgram + RewriteToSsa</b> create a typed value graph that exposes how descriptor addresses depend on user data, constants, arithmetic and memory reads.",
       "<b>BuildSrtPlan</b> walks those values and records the reads needed to recover each descriptor. Constant offsets get flattened slots; genuinely dynamic reads stay explicit.",
-      "<b>MaterializeResources</b> executes the recipe against the <em>current</em> user data and guest memory, producing concrete descriptors: this address, this format, these dimensions, this tiling mode.",
-      "Which finally becomes a Vulkan image view. And if any read fails — a null pointer, an unmapped address — <code>ShaderMaterializeStageRuntime</code> keeps the <em>previous</em> stage rather than binding garbage. A failed descriptor read produces a stale frame, not corruption."
+      "<b>MaterializeResources</b> executes the recipe against the <em>current</em> user data and guest memory, producing a <code>ResourceSnapshot</code> of concrete descriptors: this address, this format, these dimensions, this tiling mode.",
+      "Which finally becomes a Vulkan image view. The snapshot also decides the <em>specialization</em> the SPIR-V is compiled against, so one immutable <code>ResourcePlan</code> can serve many draws while <code>CompileProgram</code> runs only when a new specialization appears. A descriptor read that cannot be satisfied is a hard <code>EXIT_IF</code> — the emulator would rather stop than bind garbage."
     ];
 
     body.insertBefore(s, body.firstChild);

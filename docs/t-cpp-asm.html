@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Assembly, the ABI &amp; machine code — KytyPS5</title>
 <meta name="description" content="Why the emulator drops to raw assembly, how to read inline asm, explicit register variables, naked functions and the machine-code buffers in jit.h.">
-<link rel="stylesheet" href="assets/viz.css?v=23">
-<link rel="stylesheet" href="assets/atlas.css?v=23">
-<link rel="stylesheet" href="assets/lab.css?v=23">
-<link rel="stylesheet" href="assets/tutor.css?v=23">
-<link rel="stylesheet" href="assets/app.css?v=23">
-<link rel="stylesheet" href="assets/highlight.css?v=23">
+<link rel="stylesheet" href="assets/viz.css?v=26">
+<link rel="stylesheet" href="assets/atlas.css?v=26">
+<link rel="stylesheet" href="assets/lab.css?v=26">
+<link rel="stylesheet" href="assets/tutor.css?v=26">
+<link rel="stylesheet" href="assets/app.css?v=26">
+<link rel="stylesheet" href="assets/highlight.css?v=26">
 </head>
 <body>
 
@@ -117,7 +117,7 @@ register uintptr_t    guest_rbp_reg asm("r15") = guest_rbp;</pre>
 
   <p>Here is the naked stub in full — the whole function is its own epilogue, because its job <em>is</em> stack surgery:</p>
 
-  <div class="filename">src/loader/runtimeLinker.cpp:1284</div>
+  <div class="filename">src/loader/runtimeLinker.cpp:1115</div>
 <pre>__attribute__((naked)) static KYTY_SYSV_ABI void RelocateHandlerReturnStub() {
     asm volatile("addq $8, %rsp\n\t"   <i>// drop the saved handler return address</i>
                  "retq\n");            <i>// return to whoever called the stubbed import</i>
@@ -281,7 +281,7 @@ mov    rsp, rbx                   <i>restore, pop everything back, ret</i></pre>
         </li>
         <li class="check-item">
           <input type="checkbox">
-          <label>In <code>jit.h</code>, hand-compute the relative offset <code>Call9::SetFunc</code> writes: <code>offset32 = func_addr − rip_addr</code> with <code>rip_addr = &amp;code[5]</code>. Why <code>code[5]</code> and not <code>code[1]</code>?</label>
+          <label>In <code>jit.h</code>, hand-compute the relative offset <code>Call9::SetFunc</code> writes: <code>offset32 = func_addr − rip_addr</code> with <code>rip_addr = &amp;code[6]</code>. Why <code>code[6]</code> and not <code>code[2]</code>?</label>
         </li>
         <li class="check-item">
           <input type="checkbox">
@@ -301,15 +301,15 @@ mov    rsp, rbx                   <i>restore, pop everything back, ret</i></pre>
 
 </main>
 
-<script src="assets/topics.js?v=23" defer></script>
-<script src="assets/search-index.js?v=23" defer></script>
-<script src="assets/app.js?v=23" defer></script>
-<script src="assets/viz.js?v=23" defer></script>
-<script src="assets/atlas.js?v=23" defer></script>
-<script src="assets/lab.js?v=23" defer></script>
-<script src="assets/figs.js?v=23" defer></script>
-<script src="assets/figures.js?v=23" defer></script>
-<script src="assets/highlight.js?v=23" defer></script>
-<script src="assets/tutor.js?v=23" defer></script>
+<script src="assets/topics.js?v=26" defer></script>
+<script src="assets/search-index.js?v=26" defer></script>
+<script src="assets/app.js?v=26" defer></script>
+<script src="assets/viz.js?v=26" defer></script>
+<script src="assets/atlas.js?v=26" defer></script>
+<script src="assets/lab.js?v=26" defer></script>
+<script src="assets/figs.js?v=26" defer></script>
+<script src="assets/figures.js?v=26" defer></script>
+<script src="assets/highlight.js?v=26" defer></script>
+<script src="assets/tutor.js?v=26" defer></script>
 </body>
 </html>

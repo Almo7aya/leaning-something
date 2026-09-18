@@ -6,8 +6,8 @@
 <title>KytyPS5 — Learning Path</title>
 <meta name="description" content="A seven-level workbook for learning the KytyPS5 PlayStation 5 emulator codebase.">
 <meta name="color-scheme" content="light dark">
-<link rel="stylesheet" href="assets/viz.css?v=23">
-<script src="assets/viz.js?v=23" defer></script>
+<link rel="stylesheet" href="assets/viz.css?v=26">
+<script src="assets/viz.js?v=26" defer></script>
 <style>
 .xlinks{margin-top:var(--s6);padding-top:var(--s4);border-top:1px solid var(--rule);font-family:var(--mono);font-size:10.5px;line-height:1.8;color:var(--faint)}
 .xlinks b{display:block;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);margin-bottom:4px;font-weight:600}
@@ -15,7 +15,7 @@
 .xlinks a:hover{color:var(--ink);text-decoration:underline}
 .xlinks a.here{color:var(--ink);font-weight:600}
 </style>
-<link rel="stylesheet" href="assets/highlight.css?v=23">
+<link rel="stylesheet" href="assets/highlight.css?v=26">
 </head>
 <body><style>
 :root {
@@ -248,7 +248,7 @@ section.app { padding-top:var(--s8); scroll-margin-top:var(--s4); }
         <tr>
           <td><strong>Crashes before any rendering</strong></td>
           <td>default logging</td>
-          <td>Search for <code>kyty_exception_handler</code>. The handler prints the faulting module, 64 bytes of code, all registers and a guest stack walk. If the fault address is small (like <code>0x28</code>) suspect an unpatched <code>fs:</code> access.</td>
+          <td>Search for <code>Guest fault context</code>. The handler prints the faulting guest thread, all registers, 96 code bytes around the fault and 32 stack words, then <code>Unhandled host exception: … address=…</code>. If that address is small (like <code>0x28</code>) suspect an unpatched <code>fs:</code> access.</td>
         </tr>
         <tr>
           <td><strong>Boots, then a function does nothing</strong></td>
@@ -268,7 +268,7 @@ section.app { padding-top:var(--s8); scroll-margin-top:var(--s4); }
         <tr>
           <td><strong>Wrong colours or garbage pixels</strong></td>
           <td><code>--shader-log-direction File</code></td>
-          <td>The dumped IR for the pixel shader. Also check whether <code>dispatcher fallback used</code> appears — the fallback is correct but exercises different code.</td>
+          <td>The dumped IR for the pixel shader. Also check whether <code>dispatcher fallback</code> appears — the fallback is correct but exercises different code.</td>
         </tr>
         <tr>
           <td><strong>Textures flicker or go stale</strong></td>
@@ -279,6 +279,11 @@ section.app { padding-top:var(--s8); scroll-margin-top:var(--s4); }
           <td><strong>Vulkan device lost / validation errors</strong></td>
           <td><code>--vulkan-validation true --shader-validation true</code></td>
           <td>Validation output first. <code>--shader-validation</code> runs every emitted module through <code>spirv-val</code>, which catches malformed SPIR-V before the driver does something unpredictable with it.</td>
+        </tr>
+        <tr>
+          <td><strong>Wrong GPU on a multi-GPU machine</strong></td>
+          <td><code>--gpu &lt;index&gt;</code></td>
+          <td>The Vulkan physical device index; the default (−1) picks automatically. An invalid value is a usage error, an out-of-range one falls back to automatic with a log line. The launcher exposes the same setting.</td>
         </tr>
         <tr>
           <td><strong>Runs but very slowly</strong></td>
@@ -341,9 +346,16 @@ kyty_emulator.exe --game "..." --command-buffer-dump true ^
 .\_Build\windows\memory_tracker_tests.exe
 
 <i># every test target is EXCLUDE_FROM_ALL, so a normal build skips them:</i>
-scalar_provenance_tests      resource_tracking_tests    page_manager_tests
-memory_tracker_tests         resource_mutex_tests       image_page_table_tests
-event_queue_lifetime_tests   shader_stage_runtime_tests shader_vertex_metadata_tests</pre>
+shader_cfg_tests               shader_recompiler_compute_tests   scalar_provenance_tests
+resource_tracking_tests        resource_materialization_tests    shader_vertex_metadata_tests
+memory_tracker_tests           page_manager_tests                image_page_table_tests
+virtual_memory_allocation_tests sync_on_address_tests            event_queue_lifetime_tests
+kernel_file_system_tests       audio_out2_port_tests             ime_dialog_tests
+bit_array_tests
+
+<i># or all sixteen at once, then run them through ctest:</i>
+cmake --build _Build/windows --target <b>kyty_tests</b>
+ctest --test-dir _Build/windows --output-on-failure</pre>
 </section>
 
 <section class="app" id="conventions">
@@ -355,8 +367,8 @@ event_queue_lifetime_tests   shader_stage_runtime_tests shader_vertex_metadata_t
     <table>
       <thead><tr><th>You will see</th><th>It means</th></tr></thead>
       <tbody>
-        <tr><td><code>EXIT_NOT_IMPLEMENTED(cond)</code><br>1,034 sites</td><td>"If this is true, I did not handle this case." Not an assertion of impossibility — a marker of the frontier. Grepping these is the fastest way to map what the emulator does not yet do.</td></tr>
-        <tr><td><code>EXIT("...")</code><br>484 sites</td><td>An unrecoverable error with a message. Distinguished from the above: this is a real invariant violation, usually a bug rather than a gap.</td></tr>
+        <tr><td><code>EXIT_NOT_IMPLEMENTED(cond)</code><br>about 950 sites</td><td>"If this is true, I did not handle this case." Not an assertion of impossibility — a marker of the frontier. Grepping these is the fastest way to map what the emulator does not yet do.</td></tr>
+        <tr><td><code>EXIT("...")</code><br>about 500 sites</td><td>An unrecoverable error with a message. Distinguished from the above: this is a real invariant violation, usually a bug rather than a gap.</td></tr>
         <tr><td><code>KYTY_SYSV_ABI</code></td><td>This function is called by guest code. Its arguments arrive in System&nbsp;V registers. Never call it directly from emulator code without thinking about the ABI.</td></tr>
         <tr><td><code>PRINT_NAME()</code></td><td>First line of a guest-facing function. Logs the call when the module's thread-local flag is on. Free tracing, already wired up.</td></tr>
         <tr><td><code>KYTY_CLASS_NO_COPY(T)</code></td><td>Deleted copy constructor and assignment. Ubiquitous on anything owning a Vulkan or OS handle.</td></tr>
@@ -381,7 +393,7 @@ event_queue_lifetime_tests   shader_stage_runtime_tests shader_vertex_metadata_t
 </section>
 
 <div class="foot">
-  <p>Built against KytyPS5 <code>v0.2.2</code>; line references will drift as the code moves. Times are rough and assume you are comfortable with C++ but new to emulation. If a level takes twice as long as stated, that is normal — level 5 in particular is a compiler course wearing a disguise.</p>
+  <p>Built against KytyPS5 <code>main</code> at <code>5b7d334</code> (18 September 2026); line references will drift as the code moves. Times are rough and assume you are comfortable with C++ but new to emulation. If a level takes twice as long as stated, that is normal — level 5 in particular is a compiler course wearing a disguise.</p>
 </div>
 
     </div>
@@ -401,7 +413,7 @@ event_queue_lifetime_tests   shader_stage_runtime_tests shader_vertex_metadata_t
       reading: [
         ["README.md", "The build section is authoritative and platform-specific. Read the whole thing once."],
         ["CMakeLists.txt", "Skim the source globs, generated Vulkan 1.3 shaders, emulator target and focused test targets."],
-        ["src/main.cpp:40", "PrintUsage() — the complete list of runtime flags, in one function."]
+        ["src/main.cpp:40", "PrintUsage() — the complete list of runtime flags (30 of them, including <code>--gpu &lt;index&gt;</code>), in one function."]
       ],
       tasks: [
         ["Build <code>kyty_emulator</code> with clang-cl (Windows) or Clang (Linux/macOS).", "MSVC is rejected at configure time because the project needs <code>__attribute__((sysv_abi))</code>. CMake also recognises GCC on POSIX, but upstream instructions and CI use Clang."],
@@ -423,9 +435,9 @@ event_queue_lifetime_tests   shader_stage_runtime_tests shader_vertex_metadata_t
       title: "The shape of the whole program",
       goal: "Understand the top level end to end. These are small files and you can genuinely finish them in one sitting — resist every temptation to follow a call into the graphics or loader code.",
       reading: [
-        ["src/main.cpp", "352 lines. Host virtual-memory/thread bootstrap, argument parsing, then <code>Run()</code>."],
-        ["src/emulator.h", "23 lines. <code>RunOptions</code> is the entire input to the emulator."],
-        ["src/emulator.cpp", "220 lines. <code>Init</code>, mounts, <code>LoadElf</code>, <code>Execute</code>. This file is the spine."],
+        ["src/main.cpp", "319 lines. Host virtual-memory/thread bootstrap, argument parsing, then <code>Run()</code>."],
+        ["src/emulator.h", "15 lines. <code>RunOptions</code> is the entire input to the emulator."],
+        ["src/emulator.cpp", "175 lines. <code>Init</code>, mounts, <code>LoadElf</code>, <code>Execute</code>. This file is the spine."],
         ["src/common/subsystems.h", "The lifecycle callback stack: typed initialization plus reverse normal/emergency teardown."],
         ["src/common/emulatorConfig.h", "Every configurable value and its default, in one struct."]
       ],
@@ -437,7 +449,7 @@ event_queue_lifetime_tests   shader_stage_runtime_tests shader_vertex_metadata_t
       ],
       checks: [
         ["Why does the window event loop run on the main thread, with the game on a spawned thread?", "<p>Windowing systems on macOS and Windows require window creation and event pumping on the process's first thread. Rather than marshalling, Kyty gives the guest its own thread. A side benefit: a hung game does not freeze the window.</p><p><span class=\"src\">src/emulator.cpp:171</span></p>"],
-        ["Why must <code>Config</code> and <code>Log</code> initialise before the other lifecycles?", "<p>Logging reads configuration (direction and output file), and later components log during initialization. The explicit order is config → load values → log → the remaining <code>Initialize&lt;Lifecycle&gt;()</code> calls.</p><p><span class=\"src\">src/emulator.cpp:126–151</span></p>"],
+        ["Why must <code>Config</code> and <code>Log</code> initialise before the other lifecycles?", "<p>Logging reads configuration (direction and output file), and later components log during initialization. The explicit order is config → load values → log → the remaining <code>Initialize&lt;Lifecycle&gt;()</code> calls.</p><p><span class=\"src\">src/emulator.cpp:130</span></p>"],
         ["Where does the flexible-memory budget come from, and why is it applied where it is?", "<p>From <code>sce_sys/param.json</code>, via <code>SystemContentGetFlexibleMemorySize()</code>. It is applied <em>before</em> <code>Memory::Lifecycle</code> is initialized, because the memory manager sizes its pools during <code>Initialize</code> and would ignore a later change.</p><p><span class=\"src\">src/emulator.cpp:133–147</span></p>"]
       ],
       out: "Navigate the top level without a map, and add configuration. You now know where every major component is started."
@@ -453,7 +465,7 @@ event_queue_lifetime_tests   shader_stage_runtime_tests shader_vertex_metadata_t
         ["src/libs/libs.cpp", "<code>InitAll</code>, plus three small complete examples at the bottom of the file."],
         ["src/libs/libAppContent.cpp", "8 KB — a realistically sized module you can read in full."],
         ["src/loader/symbolDatabase.h", "How a symbol record is keyed and looked up."],
-        ["src/loader/runtimeLinker.cpp:1654", "<code>Resolve()</code> — splitting <code>name#library#module</code> and searching."]
+        ["src/loader/runtimeLinker.cpp:1506", "<code>Resolve()</code> — splitting <code>name#library#module</code> and searching."]
       ],
       tasks: [
         ["Pick one <code>LIB_FUNC</code> in <code>libAppContent.cpp</code>, breakpoint the C++ function, and catch the guest calling it.", "Look at the call stack. The frames below yours are guest code — addresses in the <code>0x9xxxxxxxx</code> range."],
@@ -476,24 +488,24 @@ event_queue_lifetime_tests   shader_stage_runtime_tests shader_vertex_metadata_t
       goal: "Understand exactly how a file on disk becomes executable memory — including the two places where Kyty rewrites the guest's own instruction bytes, which is where most people's mental model breaks.",
       reading: [
         ["src/loader/elf.h", "Sony's ELF extensions. Note <code>ET_DYNEXEC</code>, the <code>PT_OS_*</code> segments and the <code>DT_OS_*</code> tags."],
-        ["src/loader/runtimeLinker.cpp:1511", "<code>LoadProgram</code> — the top of the load path."],
-        ["src/loader/runtimeLinker.cpp:2141", "<code>LoadProgramToMemory</code> — segments, protection, TLS, proc-param."],
-        ["src/loader/runtimeLinker.cpp:1309", "<code>PatchProgram</code> — the <code>fs:[0]</code> and <code>fs:[0x28]</code> rewrites. Read this twice."],
+        ["src/loader/runtimeLinker.cpp:1359", "<code>LoadProgram</code> — the top of the load path."],
+        ["src/loader/runtimeLinker.cpp:1991", "<code>LoadProgramToMemory</code> — segments, protection, TLS, proc-param."],
+        ["src/loader/runtimeLinker.cpp:1154", "<code>PatchProgram</code> — the <code>fs:[0]</code> and <code>fs:[0x28]</code> rewrites. Read this twice."],
         ["src/loader/jit.h", "Hand-assembled stubs, with the disassembly in comments."],
-        ["src/loader/runtimeLinker.cpp:147", "<code>AllocateUnresolvedImportThunk</code> — 162 bytes of generated machine code, byte by byte."],
-        ["src/loader/runtimeLinker.cpp:763", "The exception handler, and the three cases it handles rather than reports."]
+        ["src/loader/runtimeLinker.cpp:150", "<code>AllocateUnresolvedImportThunk</code> — 165 bytes of generated machine code, byte by byte."],
+        ["src/loader/runtimeLinker.cpp:782", "The exception handler, and the three cases it handles rather than reports."]
       ],
       tasks: [
         ["Reconstruct the full memory layout of a booted game from its log alone.", "The loader prints <code>base_vaddr</code>, <code>base_size</code>, <code>mapped_size</code> and every segment's address, size and mode. Sketch the address space."],
-        ["Find a <code>Patch tls at addr</code> line, then look at those 9 bytes in a debugger before and after.", "You should see <code>64 48 8B 04 25 00 00 00 00</code> become <code>E8 xx xx xx xx 48 89 C0 90</code>. Seeing this once makes the whole trick concrete."],
+        ["Find a <code>Patch tls at addr</code> line, then look at those 9 bytes in a debugger before and after.", "You should see <code>64 48 8B 04 25 00 00 00 00</code> become <code>48 E8 xx xx xx xx 48 89 C0</code> — a REX.W-prefixed <code>call</code> so that any retained <code>0x66</code> prefix cannot turn it into a 16-bit <code>callw</code> on AMD CPUs. Seeing this once makes the whole trick concrete."],
         ["Single-step an unresolved-import thunk.", "Break on <code>ResolveImportStubWithId</code>, then step out and watch the register restore and the <code>test r11,r11</code> decision. Note what happens on the failure path."],
         ["Trace one relocation of each type you can find.", "<code>R_X86_64_RELATIVE</code>, <code>GLOB_DAT</code>, <code>JUMP_SLOT</code>, <code>DTPMOD64</code>. Use <code>program->dbg_print_reloc = true</code> to get them logged."],
         ["Explain to yourself why executable segments are patched <em>before</em> protection is applied.", "Look at the order in <code>LoadProgramToMemory</code>, and at the <code>FlushInstructionCache</code> call that follows."]
       ],
       checks: [
-        ["Why is the guest page size 0x4000 rather than the host's 0x1000?", "<p>The PS5 uses 16&nbsp;KB pages and games observe this through <code>sceKernelVirtualQuery</code> and alignment requirements. One guest page covers four host pages, so protection changes always apply in groups — which matters a great deal later, in the memory tracker.</p><p><span class=\"src\">src/loader/runtimeLinker.cpp:2160</span></p>"],
+        ["Why is the guest page size 0x4000 rather than the host's 0x1000?", "<p>The PS5 uses 16&nbsp;KB pages and games observe this through <code>sceKernelVirtualQuery</code> and alignment requirements. One guest page covers four host pages, so protection changes always apply in groups — which matters a great deal later, in the memory tracker.</p><p><span class=\"src\">src/loader/runtimeLinker.cpp:2010</span></p>"],
         ["When resolution fails, the thunk executes <code>xor eax, eax; ret</code>. Why not abort?", "<p>Games import far more functions than they call. Aborting at load time would make almost everything unbootable. Failing lazily at call time limits the damage to code paths actually taken, and the log records exactly which NID was stubbed — which is the single most useful line in a compatibility report.</p>"],
-        ["The exception handler returns <code>true</code> for some access violations. What are they, and why is that not a workaround?", "<p>GPU page faults and reserved-range faults. Both are load-bearing design: memory the GPU has cached is deliberately write-protected so a guest write traps and the renderer learns the data is stale. The page fault <em>is</em> the notification mechanism, not an error being swallowed.</p><p><span class=\"src\">src/loader/runtimeLinker.cpp:771–794</span></p>"]
+        ["The exception handler returns <code>true</code> for some access violations. What are they, and why is that not a workaround?", "<p>GPU page faults — <code>Memory::HandleGpuFault()</code>. It is load-bearing design: memory the GPU has cached is deliberately write-protected so a guest write traps and the renderer learns the data is stale. The page fault <em>is</em> the notification mechanism, not an error being swallowed. (The older reserved-range branch is gone; every other access violation falls through to the crash dump.)</p><p><span class=\"src\">src/loader/runtimeLinker.cpp:790–803</span></p>"]
       ],
       out: "Diagnose a game that will not boot: read the load log, spot a missing import, identify an unpatched instruction, and interpret a crash dump."
     },
@@ -504,27 +516,27 @@ event_queue_lifetime_tests   shader_stage_runtime_tests shader_vertex_metadata_t
       title: "Follow one draw call from packet to Vulkan",
       goal: "Trace a single triangle from the bytes the game wrote into its command buffer all the way to a recorded vkCmdDraw. This chain is the spine of the graphics stack — once you can walk it, most graphics work becomes navigable.",
       reading: [
-        ["src/graphics/guest_gpu/pm4.cpp", "170 lines. The packet dumper — the clearest statement of the packet format anywhere in the tree."],
+        ["src/graphics/guest_gpu/pm4.cpp", "147 lines. The packet dumper — the clearest statement of the packet format anywhere in the tree."],
         ["src/graphics/guest_gpu/command_processor/pm4Dispatch.h", "The four jump tables. Skim the declarations to see the shape."],
-        ["…/pm4Handlers.cpp:2084", "<code>CpOpDrawIndexAuto</code> — a tiny function; find it in the 174 KB file and read only that."],
+        ["…/pm4Handlers.cpp:1706", "<code>CpOpDrawIndexAuto</code> — a tiny function; find it in the 144 KB file and read only that."],
         ["src/graphics/guest_gpu/graphicsRun.cpp:79", "<code>GpuState</code> — the queues, the thread, the submission struct."],
-        ["…/graphicsRun.cpp:1239", "<code>CommandProcessor::DrawIndexAuto</code>."],
-        ["src/graphics/host_gpu/renderer/renderDraw.cpp:1281", "<code>RenderExecutor::DrawAuto</code>."],
-        ["…/renderDraw.cpp:812", "<code>PrepareDrawRenderState</code> — targets, shaders, resources."],
-        ["…/renderDraw.cpp:1063", "<code>ExecutePreparedDraw</code> — bindings, pipeline, record."]
+        ["…/graphicsRun.cpp:1146", "<code>CommandProcessor::DrawIndexAuto</code>."],
+        ["src/graphics/host_gpu/renderer/renderDraw.cpp:1339", "<code>RenderExecutor::DrawAuto</code>."],
+        ["…/renderDraw.cpp:905", "<code>PrepareDrawRenderState</code> — targets, shaders, resources."],
+        ["…/renderDraw.cpp:1076", "<code>ExecutePreparedDraw</code> — bindings, pipeline, record."]
       ],
       tasks: [
         ["Dump a command buffer and find an <code>IT_DRAW_INDEX_AUTO</code> packet.", "<code>--command-buffer-dump true</code>. Use a simple 2D title; the buffers are short enough to read."],
         ["Decode that packet's header dword by hand, then check yourself.", "type = <code>&gt;&gt;30</code>, count = <code>(&gt;&gt;16)&amp;0x3fff</code>, opcode = <code>(&gt;&gt;8)&amp;0xff</code>. The architecture guide has an interactive decoder to verify against."],
         ["Breakpoint all six functions in the chain and record what each one adds.", "<code>CpOpDrawIndexAuto</code> → <code>DrawIndexAuto</code> → <code>DrawAuto</code> → <code>PrepareDrawRenderState</code> → <code>ExecutePreparedDraw</code> → <code>CreateGraphicsPipeline</code>. Write down the state that exists after each step."],
         ["Count the <code>SET_CONTEXT_REG</code> packets preceding your draw, then find where two of them land in <code>HW::Context</code>.", "Look up the register offset in <code>g_hw_ctx_func</code> and read the handler. This is how all GPU state arrives."],
-        ["Find the pipeline cache key for your draw.", "<code>GraphicsPipelineKey</code> in <code>pipelineCache.h</code>: rendering state, both shader IDs, and a byte-comparable struct of every static parameter. Understand why each part must be in the key."],
+        ["Find the pipeline cache key for your draw.", "<code>GraphicsPipelineKey</code> in <code>pipelineCache.h</code>: rendering state (attachment formats and count), both shader IDs, the vertex-input layout, and a byte-comparable struct of every static parameter that is not Vulkan dynamic state. Understand why each part must be in the key — and why viewport, scissor, depth test and blend colour are not."],
         ["Trace the lifetime contract of a submitted command buffer.", "Read the borrowed <code>std::span</code> fields in <code>GuestGpu::Submission</code>, then follow an AGC submit through <code>Done()</code>. Identify which side must keep the guest memory valid and when it may reuse it."]
       ],
       checks: [
         ["How many queues does the GPU state machine have, and why that number?", "<p>57: one graphics queue plus seven compute pipes of eight queues each. It mirrors the hardware's queue topology, which games rely on for asynchronous compute — work submitted to different queues must be able to progress independently.</p><p><span class=\"src\">src/graphics/guest_gpu/graphicsRun.cpp:81–84</span></p>"],
         ["A <code>WAIT_REG_MEM</code> packet's condition is not yet true. What happens?", "<p><code>Process()</code> returns <code>Pm4ProcessResult::Blocked</code> and the submission is suspended with its buffer-stack cursor intact, so the thread can service other queues and resume later. A busy-wait would let one blocked graphics submission stall all compute work.</p>"],
-        ["Why is the entire static pipeline state part of the cache key, rather than just the shaders?", "<p>Because Vulkan bakes blend factors, depth compare, cull mode, sample count and attachment formats into the <code>VkPipeline</code> object. Two draws with identical shaders but different blend state genuinely need different pipelines. The key is compared as raw bytes, which is why the struct is <code>#pragma pack(1)</code> with a <code>static_assert</code> on its exact size.</p><p><span class=\"src\">…/pipeline/pipelineCache.h:34</span></p>"]
+        ["Why is the entire static pipeline state part of the cache key, rather than just the shaders?", "<p>Because Vulkan bakes blend factors, cull and polygon mode, sample count and attachment formats into the <code>VkPipeline</code> object. Two draws with identical shaders but different blend state genuinely need different pipelines. Viewport, scissor, depth test/compare/bias, the whole stencil state and blend colour, by contrast, are set as dynamic state and were removed from the key — moving stencil out shrank the struct from 166 to 125 bytes. The key is compared as raw bytes, which is why the struct is <code>#pragma pack(1)</code> with a <code>static_assert</code> on its exact size (125 bytes).</p><p><span class=\"src\">…/pipeline/pipelineCache.h:35</span></p>"]
       ],
       out: "Debug a draw that is missing, misplaced or wrongly blended: find its packet, inspect the register state it was built from, and see which Vulkan objects resulted."
     },
@@ -533,29 +545,29 @@ event_queue_lifetime_tests   shader_stage_runtime_tests shader_vertex_metadata_t
     {
       id: "l5", lv: "Level 5", side: "k", time: "1–2 days", pre: "Level 4", viz: ["wave","shaderflow"],
       title: "Watch one shader get compiled",
-      goal: "Follow a blob of RDNA 2 machine code through eleven compiler passes to a SPIR-V module. This is a real compiler and it will take real time. Keep AMD's ISA reference open throughout — instruction semantics are not guessable.",
+      goal: "Follow a blob of RDNA 2 machine code through TranslateProgram and CompileProgram to a SPIR-V module. This is a real compiler and it will take real time. Keep AMD's ISA reference open throughout — instruction semantics are not guessable.",
       reading: [
         ["AMD RDNA 2 ISA reference, document 70648", "Not in the repo. The README names it explicitly as the primary reference for this code."],
-        ["…/recompiler/ShaderRecompiler.cpp:640", "<code>TryRecompile</code> — the whole pipeline in one function, with per-phase logging."],
+        ["…/recompiler/ShaderRecompiler.cpp:485", "<code>TranslateProgram</code> and, at line 615, <code>CompileProgram</code> — the whole pipeline in two functions (immutable translation and analysis, then per-specialization SPIR-V emission), with per-phase logging."],
         ["…/frontend/decode/ShaderDecoder.h", "Instruction representation and encoding classes."],
         ["…/frontend/cfg/ShaderCFG.h", "Blocks, terminators, back edges, natural loops, failure kinds."],
         ["…/frontend/translate/Translate.cpp", "Program setup and the explicit opcode-translation dispatchers."],
         ["…/ir/ShaderIR.h", "The opcode enumeration. Skim it — the length itself is informative."],
         ["…/ir/passes/SrtWalker.h", "The descriptor-recovery contract. Short header, dense ideas."],
-        ["src/graphics/shader/shader.h:44", "<code>ShaderMaterializeStageRuntime</code> — the compile/bind split."]
+        ["src/graphics/shader/shader.h:42", "<code>ShaderStageRuntime</code> — a compiled program plus its <code>ResourceSnapshot</code>: the compile/bind split in one small struct. <code>ProgramCache::Get()</code> in <code>pipelineCache.cpp</code> is where it is filled in."]
       ],
       tasks: [
         ["Dump the shaders for one frame and open the smallest one.", "<code>--shader-log-direction File --shader-log-folder _Shaders</code>. You get the decoded RDNA&nbsp;2 listing, the CFG and the IR."],
         ["Map five decoded instructions to their IR opcodes by hand.", "Pick a mix: a scalar ALU op, a vector ALU op, a compare, a buffer load, and the export at the end."],
         ["Read the phase timings in the log and find the slowest stage.", "Each phase logs <code>phase begin</code> / <code>phase end</code> with elapsed milliseconds and the shader hash. Compare a cold compile against a cache hit."],
-        ["Find a shader that used the dispatcher fallback, and work out why.", "Grep the log for <code>dispatcher fallback used</code>. The reason is printed: either an irreducible CFG, a structurisation failure, or a loop header containing an instruction whose lowering emits control flow."],
+        ["Find a shader that used the dispatcher fallback, and work out why.", "Grep the log for <code>dispatcher fallback</code>. The reason is printed: either an irreducible CFG, a structurisation failure, or a loop header containing an instruction whose lowering emits control flow."],
         ["Trace one texture from T# to a bound Vulkan image.", "Follow a typed value through <code>RewriteToSsa</code> → <code>BuildSrtPlan</code> → <code>MaterializeResources</code> → <code>ResolveTexture</code>. This is the hardest single trace in the codebase and worth the effort."],
         ["Run the shader test suites and make one fail on purpose.", "Use the focused scalar-tracing and resource-tracking tests. Change something small in an IR pass and watch which assertions catch it — the tests are a better specification than the comments."]
       ],
       checks: [
         ["Why can't RDNA 2 branching map directly onto SPIR-V control flow?", "<p>GPU branches manipulate a 64-bit EXEC mask that enables or disables individual lanes; control flow is data, not structure. SPIR-V requires <em>structured</em> control flow — every conditional branch declares a merge block, every loop declares a merge and a continue target. Recovering that structure from mask manipulation is what the CFG and structurisation passes do, and it is the stage most likely to fail.</p>"],
         ["What does resource specialisation mean, and why does it affect the cache key?", "<p>Once the resources are known concretely — this buffer's stride, this image's format — the IR can be emitted more directly. But that means the SPIR-V is only valid for resources of that shape, so two draws using differently-shaped resources need different modules. Hence <code>ShaderId</code> carries resource information alongside the code hash, and the pipeline cache will not conflate them.</p><p><span class=\"src\">src/graphics/shader/shader.h:48</span></p>"],
-        ["Why are compilation and resource binding deliberately separate?", "<p>Shader code and its SRT <em>plan</em> are immutable and cached. User data changes on every draw, so the plan is re-executed each time against fresh user data and guest memory. If any read fails, <code>ShaderMaterializeStageRuntime</code> keeps the previous stage rather than drawing with garbage — a failed descriptor read produces a stale frame, not corruption.</p>"]
+        ["Why are compilation and resource binding deliberately separate?", "<p>Shader code and its SRT <em>plan</em> are immutable and cached. User data changes on every draw, so the plan is re-executed each time against current user data and guest memory. A failed descriptor read is an <code>EXIT_IF</code> — a loud stop, not a stale frame.</p>"]
       ],
       out: "Investigate a wrong-pixels bug: dump the shader, read its IR, identify which pass mistranslated, and write a regression test for it."
     },
@@ -736,7 +748,7 @@ event_queue_lifetime_tests   shader_stage_runtime_tests shader_vertex_metadata_t
   spy();
 })();
 </script>
-<script src="assets/highlight.js?v=23" defer></script>
+<script src="assets/highlight.js?v=26" defer></script>
 </body>
 </html>
 

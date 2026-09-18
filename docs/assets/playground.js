@@ -245,7 +245,7 @@
 
   /* ============================================================
      2. Module / library ID encoder  (EncodeId64)
-     Verbatim from src/loader/runtimeLinker.cpp:1015-1029
+     Verbatim from src/loader/runtimeLinker.cpp:846-860
      ============================================================ */
 
   var ID64_ALPHA = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-";
@@ -289,7 +289,7 @@
       '<div class="pg-row"><input id="id-range" class="pg-range" type="range" min="0" max="65535" value="0"></div>' +
       '</div>' +
       '<div class="pg-out" id="id-out"></div>' +
-      '<p class="pg-src">Verbatim from <code>src/loader/runtimeLinker.cpp:1015–1029</code>. ' +
+      '<p class="pg-src">Verbatim from <code>src/loader/runtimeLinker.cpp:846–860</code>. ' +
       'This is how the 16-bit module and library ids packed into Sony dynamic entries become ' +
       'the short strings you see inside symbol names.</p>';
 
@@ -1009,10 +1009,10 @@
       total: 16
     },
     call9: {
-      label: "Call9 — call rel32 (jit.h, 9 bytes)",
-      opName: "call", op: "E8", opByte: 1, ripByte: 5, nops: 0,
-      prefix: "E8 ", total: 9,
-      suffix: " 48 89 C0 90"
+      label: "Call9 — rex.w call rel32; mov rax,rax (jit.h, 9 bytes)",
+      opName: "call", op: "E8", opByte: 2, ripByte: 6, nops: 0,
+      prefix: "48 E8 ", total: 9,
+      suffix: " 48 89 C0"
     },
     tls: {
       label: "TlsRegStub — sub rsp; push rax; call rel32 … (jit.h, 32 bytes)",
@@ -1144,7 +1144,7 @@
   /* ============================================================
      C. C++ primer — crash-log reader
      Parses the forensic dump written by KytyExceptionHandler
-     (src/loader/runtimeLinker.cpp:792-1013) and annotates each
+     (src/loader/runtimeLinker.cpp:782-844) and annotates each
      block. The faulting address is usually a symptom; the stack
      trace at the bottom is the cause.
      ============================================================ */
@@ -1157,57 +1157,82 @@
     c0000409: "STATUS_STACK_BUFFER_OVERRUN"
   };
 
+  var EXCEPTION_TYPES = { 0: "Unknown", 1: "AccessViolation", 2: "IllegalInstruction" };
+  var ACCESS_TYPES = { 0: "Unknown", 1: "Read", 2: "Write", 3: "Execute" };
+
   function parseCrash(text) {
     var t = String(text).replace(/\r/g, "");
-    var o = { regs: [], stack: [], guest: [], trace: [], code: [], summary: {}, unpatched: false };
+    var o = { regs: [], stack: [], guest: [], trace: [], code: [], codeFault: -1, summary: {}, unpatched: false, format: "" };
     var m;
     var HEX = "[0-9a-fA-F]";
 
-    if ((m = t.match(/kyty_exception_handler:\s*([0-9a-fA-F]+)/))) o.summary.addr = m[1].toUpperCase();
+    /* ---- current format ---- */
+    if (/---\s*Guest fault context\s*---/i.test(t)) o.format = "guest-fault-context";
+    if ((m = t.match(/^\s*thread:\s*(.+)$/mi))) o.summary.thread = m[1].trim();
+    if ((m = t.match(/Unhandled host exception:\s*type=(\d+)\s+code=(\d+)\s+pc=0x(" + HEX + "+)\s+access=(\d+)\s+address=0x(" + HEX + "+)/i)) ||
+        (m = t.match(new RegExp("Unhandled host exception:\\s*type=(\\d+)\\s+code=(\\d+)\\s+pc=0x(" + HEX + "+)\\s+access=(\\d+)\\s+address=0x(" + HEX + "+)", "i")))) {
+      o.format = o.format || "guest-fault-context";
+      o.summary.type = EXCEPTION_TYPES[+m[1]] || ("type " + m[1]);
+      o.summary.native = (+m[2]).toString(16).toLowerCase();
+      o.summary.addr = m[3].toUpperCase();
+      o.summary.av_type = ACCESS_TYPES[+m[4]] || ("access " + m[4]);
+      o.summary.av_addr = m[5].toUpperCase();
+    }
+    if ((m = t.match(/code \(pc-48 \.\. pc\+48, fault at byte 48\):\s*\n((?:[ \t]*(?:[0-9a-fA-F]{2}[ \t]*)+\n?)+)/i))) {
+      o.code = m[1].trim().split(/\s+/).filter(Boolean).slice(0, 96);
+      o.codeFault = 48;
+    }
+    if ((m = t.match(/^\s*stack:\s*\n((?:[ \t]*(?:[0-9a-fA-F]{16}[ \t]*)+\n?)+)/mi))) {
+      o.stack = m[1].trim().split(/\s+/).filter(Boolean).slice(0, 32).map(function (v) { return v.toUpperCase(); });
+    }
+
+    /* ---- legacy format ---- */
+    if ((m = t.match(/kyty_exception_handler:\s*([0-9a-fA-F]+)/))) { o.summary.addr = m[1].toUpperCase(); o.format = o.format || "legacy"; }
     if ((m = t.match(/exception module:\s*(.+)/i))) o.summary.module = m[1].trim();
-    if ((m = t.match(/code-32:\s*(.+)/i))) o.code = m[1].trim().split(/\s+/).filter(Boolean).slice(0, 32);
+    if ((m = t.match(/code-32:\s*(.+)/i))) { o.code = m[1].trim().split(/\s+/).filter(Boolean).slice(0, 32); o.codeFault = -1; }
     if ((m = t.match(/exception:\s*type=(\w+),\s*av_type=(\w+),\s*av_addr=([0-9a-fA-F]+),\s*native_code=([0-9a-fA-F_]+)/i))) {
       o.summary.type = m[1]; o.summary.av_type = m[2]; o.summary.av_addr = m[3].toUpperCase();
       o.summary.native = m[4].replace(/[^0-9a-f]/gi, "").slice(-8).toLowerCase();
     }
-    var re = new RegExp("\\b(rax|rbx|rcx|rdx|rsi|rdi|rbp|rsp|r8|r9|r10|r11|r12|r13|r14|r15)\\s*=\\s*(" + HEX + "+)", "gi");
-    while ((m = re.exec(t))) o.regs.push({ name: m[1], value: m[2].toUpperCase() });
-    var sm = t.match(/stack:\s*(.+)/i);
+    var sm = t.match(/stack:\s*(\[\d+\]=.+)/i);
     if (sm) sm[1].replace(/\[\d+\]=([0-9a-fA-F]+)/gi, function (_, v) { o.stack.push(v.toUpperCase()); return ""; });
     var g = new RegExp("guest\\s+(\\S+)\\[0\\]:\\s*addr=(" + HEX + "+),\\s*off=(" + HEX + "+),\\s*(.*)", "gi");
     while ((m = g.exec(t))) o.guest.push({ reg: m[1], addr: m[2].toUpperCase(), off: m[3].toUpperCase(), module: m[4].trim() });
-    var tr = new RegExp("\\[(\\d+)\\]\\s+(" + HEX + "+),\\s*off=(" + HEX + "+),\\s*(.*)", "g");
-    while ((m = tr.exec(t))) o.trace.push({ frame: +m[1], addr: m[2].toUpperCase(), off: m[3].toUpperCase(), module: m[4].trim() });
     if (t.indexOf("(Unpatched object)") >= 0) o.unpatched = true;
     if ((m = t.match(/Access violation:\s*(\w+)\s*\[([0-9a-fA-F]+)\]/i))) {
       o.summary.fatal = "Access violation — " + m[1] + " at " + m[2].toUpperCase();
     } else if ((m = t.match(/Unknown exception!!!\s*\(([0-9a-fA-F]+)\)/i))) {
       o.summary.fatal = "Unknown exception — " + m[1];
     }
+
+    /* ---- common: registers and the guest stack walk (RuntimeLinker::StackTrace) ---- */
+    var re = new RegExp("\\b(rax|rbx|rcx|rdx|rsi|rdi|rbp|rsp|r8|r9|r10|r11|r12|r13|r14|r15)\\s*=\\s*(" + HEX + "+)", "gi");
+    while ((m = re.exec(t))) o.regs.push({ name: m[1], value: m[2].toUpperCase() });
+    var tr = new RegExp("\\[(\\d+)\\]\\s+(" + HEX + "+),\\s*off=(" + HEX + "+),\\s*(.*)", "g");
+    while ((m = tr.exec(t))) o.trace.push({ frame: +m[1], addr: m[2].toUpperCase(), off: m[3].toUpperCase(), module: m[4].trim() });
     return o;
   }
 
   function renderCrash(o, out) {
-    if (!o.summary.addr && !o.summary.fatal && !o.trace.length) {
+    if (!o.summary.addr && !o.summary.fatal && !o.trace.length && !o.summary.thread) {
       out.innerHTML = '<p class="pg-hint pg-warntext">No crash-log lines recognised. ' +
-        "Look for a <code>kyty_exception_handler:</code> line at the top of the dump.</p>";
+        "Look for a <code>--- Guest fault context ---</code> block.</p>";
       return;
     }
     var h = "";
 
     var nativeName = NATIVE_CODES[o.summary.native] || "unknown";
     h += '<div class="pg-stats">';
-    h += '<div class="pg-stat"><span class="pg-stat-l">faulting module</span><span class="pg-stat-n">' +
-      esc(o.summary.module || "—") + "</span></div>";
+    h += '<div class="pg-stat"><span class="pg-stat-l">' + (o.summary.thread ? "faulting thread" : "faulting module") + '</span><span class="pg-stat-n">' +
+      esc(o.summary.thread || o.summary.module || "—") + "</span></div>";
     h += '<div class="pg-stat"><span class="pg-stat-l">access</span><span class="pg-stat-n">' +
       esc(o.summary.av_type || o.summary.type || "—") + "</span></div>";
-    h += '<div class="pg-stat"><span class="pg-stat-l">av_addr</span><span class="pg-stat-n">' +
+    h += '<div class="pg-stat"><span class="pg-stat-l">address touched</span><span class="pg-stat-n">' +
       esc(o.summary.av_addr || "—") + "</span></div>";
-    h += '<div class="pg-stat"><span class="pg-stat-l">native_code</span><span class="pg-stat-n">' +
+    h += '<div class="pg-stat"><span class="pg-stat-l">native code</span><span class="pg-stat-n">' +
       (o.summary.native ? esc(o.summary.native) + " · " + esc(nativeName) : "—") + "</span></div>";
     h += "</div>";
     if (o.summary.fatal) h += '<p class="pg-why pg-warntext">' + esc(o.summary.fatal) + "</p>";
-
     if (o.unpatched) {
       h += '<div class="callout k" style="margin:10px 0"><span class="lbl">Unpatched object</span>' +
         "<p>The write landed on the special <code>g_invalid_memory</code> address — a known bug " +
@@ -1218,14 +1243,24 @@
     h += '<p class="pg-why"><strong>Cause vs symptom:</strong> the exception happened at ' +
       "<code>" + esc(o.summary.addr || "?") + "</code> because of a " +
       esc(o.summary.av_type || "?") + " to <code>" + esc(o.summary.av_addr || "?") +
-      "</code>. The reason it <em>got there</em> is the stack trace at the bottom — that is the " +
-      "call path, module and offset per frame. Fix the caller, not the address.</p>";
+      "</code>. The reason it <em>got there</em> is in the callers — the stack words that fall " +
+      "inside a loaded module are return addresses, and a <code>Stack trace</code> block, where the " +
+      "emulator prints one, resolves them to module and offset. Fix the caller, not the address.</p>";
 
     if (o.code.length) {
       h += "<h4>Faulting instruction</h4><p class='pg-big' style='font-size:14px'><code>" +
-        o.code.map(function (b) { return esc(b); }).join(" ") + "</code></p>" +
-        '<p class="pg-dim">The <code>code-32</code> block — 32 bytes around the fault. Feed these ' +
+        o.code.map(function (b, i) { return i === o.codeFault ? "<mark>" + esc(b) + "</mark>" : esc(b); }).join(" ") + "</code></p>" +
+        '<p class="pg-dim">' + (o.codeFault >= 0
+          ? "The 96-byte code window, <code>pc-48 .. pc+48</code>; the highlighted byte is the first byte of the instruction that faulted. Feed the bytes from there onward "
+          : "Bytes around the fault. Feed these ") +
         "to any disassembler to recover the exact instruction that died.</p>";
+    }
+
+    if (o.stack.length && o.codeFault >= 0) {
+      h += "<h4>Stack words</h4><p class='pg-big' style='font-size:12px'><code>" +
+        o.stack.map(function (v) { return /^0000000[89A-F]/.test(v) ? "<mark>" + esc(v) + "</mark>" : esc(v); }).join(" ") + "</code></p>" +
+        '<p class="pg-dim">32 qwords read upward from <code>rsp</code>. Highlighted values sit in the guest module band ' +
+        "(<code>0x8…</code>–<code>0xF…</code>) and are the likely return addresses — the call path, newest first.</p>";
     }
 
     if (o.regs.length) {
@@ -1264,24 +1299,27 @@
   }
 
   var DEMO_CRASH = [
-    "kyty_exception_handler: 0x00000009000A3B4C",
-    "exception module: D:\\Games\\Example\\eboot.bin",
-    "code-32: 48 8b 5c 24 50 48 8b 03 48 8b 04 18 48 89 04 24 48 83 c4 50 c3 90 90 90 90 90 90 90 90",
-    "exception: type=AccessViolation, av_type=Write, av_addr=0000000000000000, native_code=00000000_c0000005",
-    "regs: rax=0000000000000000 rbx=000000090009E000 rcx=0000000000000050 rdx=00000009000A3B40",
-    "regs: rsi=0000000900ABCD00 rdi=0000000000000000 rbp=0000000900C80000 rsp=0000000900C7F800",
-    "regs: r8 =0000000900C7F820 r9 =0000000000000001 r10=0000000900C7F810 r11=0000000000000000",
-    "regs: r12=0000000000000000 r13=0000000900C7F830 r14=0000000900C80000 r15=0000000900C80040",
-    "stack: [00]=000000090009E000 [01]=0000000000000000 [02]=0000000900C7F830 [03]=0000000000000050",
-    "guest rax[0]: addr=0000000000000000, off=0000000000000000, module=???",
-    "guest rbx[0]: addr=000000090009E000, off=000000000001E000, module=eboot.bin",
-    "guest rsi[0]: addr=0000000900ABCD00, off=0000000000ABCD00, module=eboot.bin",
-    "guest stack[0]: addr=000000090009E000, off=000000000001E000, module=eboot.bin",
-    "Stack trace [thread = 1]:",
-    "[0] 00000009000A3B4C, off=00000000000A3B4C, eboot.bin",
-    "[1] 0000000900C01234, off=0000000000001234, libScePad.sprx",
-    "[2] 0000000900C10000, off=0000000000010000, eboot.bin",
-    "Access violation: Write [0000000000000000] "
+    "--- Guest fault context ---",
+    "thread: GameMainThread",
+    "rax=0000000000000050 rbx=000000090009e000 rcx=0000000000000050 rdx=00000009000a3b40",
+    "rsi=0000000900abcd00 rdi=0000000000000000 rbp=0000000900c80000 rsp=0000000900c7f800",
+    "r8 =0000000900c7f820 r9 =0000000000000001 r10=0000000900c7f810 r11=0000000000000000",
+    "r12=0000000000000000 r13=0000000900c7f830 r14=0000000900c80000 r15=0000000900c80040",
+    "code (pc-48 .. pc+48, fault at byte 48):",
+    " 55 48 89 e5 48 83 ec 50 48 89 7d f8 48 8b 45 f8 48 8b 5c 24 50 48 8b 03 48 8b 04 18 48 89 04 24",
+    " 48 8b 7d f8 48 85 ff 74 08 48 8b 45 e8 48 89 07 48 89 07 48 83 c4 50 5d c3 90 90 90 90 90 90 90",
+    " 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90",
+    "stack:",
+    " 000000090009e000 0000000900c01234 0000000900c7f830 0000000000000050",
+    " 0000000900c10000 0000000000000000 0000000900c7f870 0000000000000001",
+    " 0000000000000000 0000000000000000 0000000000000000 0000000000000000",
+    " 0000000000000000 0000000000000000 0000000000000000 0000000000000000",
+    " 0000000000000000 0000000000000000 0000000000000000 0000000000000000",
+    " 0000000000000000 0000000000000000 0000000000000000 0000000000000000",
+    " 0000000000000000 0000000000000000 0000000000000000 0000000000000000",
+    " 0000000000000000 0000000000000000 0000000000000000 0000000000000000",
+    "--- Error ---",
+    "Unhandled host exception: type=1 code=3221225477 pc=0x00000009000a3b4c access=2 address=0x0000000000000000"
   ].join("\n");
 
   function toolCrash(root) {
@@ -1297,7 +1335,7 @@
       'placeholder="Paste the crash block of your log here…"></textarea>' +
       '<div class="pg-out" id="crash-out"><p class="pg-hint">Crash logs are free — the emulator ' +
       "writes one whenever guest code faults. Run a title until it dies and copy the block from " +
-      "<code>kyty_exception_handler:</code> down to the <code>Stack trace</code>.</p></div>";
+      "<code>--- Guest fault context ---</code> down to the <code>Unhandled host exception</code> line.</p></div>";
 
     var out = $("#crash-out", root), drop = $("#crash-drop", root), file = $("#crash-file", root), ta = $("#crash-ta", root);
 

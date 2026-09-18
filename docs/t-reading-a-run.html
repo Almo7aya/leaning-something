@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reading a run — KytyPS5</title>
+<meta name="description" content="How to read the log, the crash dump and the shader phase lines a real KytyPS5 run produces.">
+<link rel="stylesheet" href="assets/viz.css?v=26">
+<link rel="stylesheet" href="assets/atlas.css?v=26">
+<link rel="stylesheet" href="assets/lab.css?v=26">
+<link rel="stylesheet" href="assets/tutor.css?v=26">
+<link rel="stylesheet" href="assets/app.css?v=26">
+<link rel="stylesheet" href="assets/highlight.css?v=26">
+</head>
+<body>
+
+<main class="topic" data-app-content>
+
+  <p class="topic-eyebrow">Working on it · 21</p>
+  <h1 id="reading-a-run">Reading a run</h1>
+  <p class="topic-deck">
+    The rest of the course explains the machine. This page is the field guide: the exact log lines a build at <code>5b7d334</code> writes, what each field means, and which grep to run first.
+  </p>
+
+  <section class="band band-read">
+    <div class="band-h"><span class="band-t">Read</span></div>
+    <div class="prose">
+<p class="deck">A useful run is one you can search. Start with <code>--printf-direction File --printf-output-file _kyty.txt</code>. Add dumps only when the first file has told you which subsystem is stuck.</p>
+
+  <h4 id="the-order-the-log-arrives-in">The order the log arrives in</h4>
+  <p>The first few dozen lines are the boot you already know from <a href="lifetime.html">One full run</a>: host virtual memory, parsed flags, lifecycle inits, HLE registration, SELF/ELF load, TLS patches, relocations, then guest entry. After that the log is <em>reactive</em> — a line appears because guest code called something, faulted, or submitted GPU work.</p>
+  <div class="tw">
+    <table>
+      <thead><tr><th>You grep for</th><th>It means</th><th>Then</th></tr></thead>
+      <tbody>
+        <tr><td><code>unresolved symbol</code></td><td>An import the linker could not bind. The NID and owning module are on the same line.</td><td><a href="t-first-change.html">topic 19</a></td></tr>
+        <tr><td><code>EXIT_NOT_IMPLEMENTED</code></td><td>A case the author marked and left. The condition and file are in the message.</td><td>That file, that condition</td></tr>
+        <tr><td><code>Patch tls at addr:</code></td><td>A nine-byte <code>fs:[0]</code> read was rewritten to <code>Jit::Call9</code>.</td><td><a href="t-patching.html">topic 08</a></td></tr>
+        <tr><td><code>CFG dispatcher fallback:</code></td><td>This shader will emit a program-counter dispatcher. Not an error.</td><td>Section below</td></tr>
+        <tr><td><code>phase begin</code> / <code>phase end</code></td><td>Recompiler timings, with stage name and shader hash.</td><td>Section below</td></tr>
+        <tr><td><code>--- Guest fault context ---</code></td><td>Unhandled host exception. The process is about to <code>EXIT</code>.</td><td><a href="playground.html#crash-log-reader">Crash reader</a></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4 id="shader-phase-lines">Shader phase lines</h4>
+  <p><code>TranslateProgram()</code> and <code>CompileProgram()</code> log every expensive phase with the same shape. The label is <code>ShaderRecompiler VS</code>, <code>PS</code>, <code>CS</code> or <code>MS</code> (mesh). A cold vertex shader looks like this:</p>
+<pre>ShaderRecompiler VS phase begin: stage=VS hash=0x… code_words=N decode
+ShaderRecompiler VS phase end:   stage=VS hash=0x… decode instructions=N elapsed_ms=…
+ShaderRecompiler VS phase begin: stage=VS hash=0x… CFG BuildGraph
+ShaderRecompiler VS phase end:   stage=VS hash=0x… CFG BuildGraph blocks=N loops=N back_edges=N elapsed_ms=…
+ShaderRecompiler VS phase begin: stage=VS hash=0x… CFG Structurize
+ShaderRecompiler VS phase end:   stage=VS hash=0x… CFG Structurize blocks=N loops=N elapsed_ms=…
+ShaderRecompiler VS phase begin: stage=VS hash=0x… IR TranslateProgram
+ShaderRecompiler VS phase end:   stage=VS hash=0x… IR TranslateProgram blocks=N elapsed_ms=…</pre>
+  <p>If <code>elapsed_ms</code> on Structurize or TranslateProgram is hundreds of milliseconds on a shader you hit every frame, that is a cache miss, not a slow draw. The hash is the key: the same hash later in the log with no phase lines is a hit.</p>
+
+  <h4 id="the-dispatcher-fallback-line">The dispatcher-fallback line</h4>
+  <p>When the CFG is irreducible, or <code>Structurize()</code> fails, the recompiler restores the unstructured graph and logs one line — then continues. The SPIR-V backend emits a loop around a switch on a program counter. The line is:</p>
+  <div class="filename">src/graphics/shader/recompiler/ShaderRecompiler.cpp — LogDispatcherFallback()</div>
+<pre>LOGF("%s CFG dispatcher fallback: stage=%s hash=0x%016" PRIx64
+     " phase=%s failure=%s block=%" PRIu32 " pc=0x%08" PRIx32 "..0x%08" PRIx32
+     " preds=%" PRIu64 " succs=%" PRIu64 " blocks=%" PRIu64 " loops=%" PRIu64
+     " back_edges=%" PRIu64 " reason=%s\n", …);</pre>
+  <p><code>phase</code> is <code>build</code> (irreducible graph) or <code>structurize</code> (structure could not be recovered). <code>failure</code> is a <code>CFG::FailureKind</code> name. <code>reason</code> is the human sentence — an indirect <code>S_SETPC_B64</code> jump table is a common one. Grep <code>CFG dispatcher fallback</code>, not a longer phrase: that is the exact text.</p>
+
+  <h4 id="reading-guest-fault-context">Reading <code>Guest fault context</code></h4>
+  <p>The dump is four blocks, then an <code>EXIT</code>. Read them in this order:</p>
+  <ol>
+    <li><code>thread:</code> — guest pthread name, <code>(host thread)</code>, or <code>(unnamed guest thread)</code>. Tells you which of the four threads died.</li>
+    <li>Sixteen registers, <code>%016llx</code>. <code>rsp</code> is the stack you are about to dump; <code>rdi</code>/<code>rsi</code>/… are the System V arguments of the faulting call if you are in a prologue.</li>
+    <li><code>code (pc-48 .. pc+48, fault at byte 48)</code> — 96 bytes, 6 lines of 16. Byte 48 is the first byte of the instruction that faulted. Feed from there into a disassembler.</li>
+    <li><code>stack:</code> — 32 qwords from <code>rsp</code>. Values in the <code>0x8…</code>–<code>0xF…</code> guest-module band are return addresses.</li>
+  </ol>
+  <p>Then:</p>
+<pre>EXIT("Unhandled host exception: type=%u code=%u pc=0x… access=%u address=0x…")</pre>
+  <p><code>type</code> 1 is access violation, 2 is illegal instruction. <code>access</code> 1/2/3 is read/write/execute. <code>address</code> is what was touched:</p>
+  <ul>
+    <li><code>0x28</code> — an unpatched stack-canary store through <code>fs:[0x28]</code>.</li>
+    <li>A small address — usually a null pointer downstream of a stub that returned 0.</li>
+    <li>A <code>pc</code> in the <code>0x9…</code> band with plausible return addresses on the stack — a genuine guest bug.</li>
+  </ul>
+  <p>Each range is probed with <code>IsReadableRange</code> before it is printed, so a corrupt <code>rsp</code> does not crash the dumper. Drop the block into the <a href="playground.html#crash-log-reader">crash-log reader</a>.</p>
+
+  <h4 id="a-grep-kit">A grep kit</h4>
+<pre>rg "unresolved symbol" _kyty.txt
+rg "EXIT_NOT_IMPLEMENTED" _kyty.txt
+rg "CFG dispatcher fallback" _kyty.txt
+rg "phase end:.*elapsed_ms=" _kyty.txt
+rg "Guest fault context" _kyty.txt
+rg "mesh shader exceeds host limits" _kyty.txt</pre>
+  <p>The last one is the pipeline cache refusing a mesh shader whose thread, vertex, primitive or LDS limits do not fit the device. If the extension is missing entirely, that path is an <code>EXIT_NOT_IMPLEMENTED</code> instead.</p>
+    </div>
+  </section>
+
+  <section class="band band-watch">
+    <div class="band-h"><span class="band-t">Watch</span></div>
+    <p class="band-why">The fault-path animation on topic 10 is the same three branches the dump above comes from. The crash reader on the Playground annotates a real block.</p>
+    <div data-viz="faultpath"></div>
+  </section>
+
+  <section class="band band-try">
+    <div class="band-h"><span class="band-t">Try</span></div>
+    <p class="band-why">Paste a <code>Guest fault context</code> block into the <a href="playground.html#crash-log-reader">crash reader</a>, then paste the same log into <a href="playground.html#log-triage">log triage</a> and confirm the unresolved-import bucket matches what you grepped.</p>
+  </section>
+
+  <section class="band band-do">
+    <div class="band-h"><span class="band-t">Do</span></div>
+    <div class="check">
+      <p class="check-h">Checkpoint</p>
+      <ul class="check-list">
+        <li class="check-item">
+          <input type="checkbox">
+          <label>From a real <code>_kyty.txt</code>, name the first unresolved NID and the module that owns it.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Find one <code>phase end</code> line and say whether that compile was a cache miss.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>Read a <code>CFG dispatcher fallback</code> line and say whether <code>phase</code> was <code>build</code> or <code>structurize</code>.</label>
+        </li>
+        <li class="check-item">
+          <input type="checkbox">
+          <label>On a crash dump, identify byte 48 of the code window and the first stack word in a guest-module band.</label>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+</main>
+
+<script src="assets/topics.js?v=26" defer></script>
+<script src="assets/search-index.js?v=26" defer></script>
+<script src="assets/app.js?v=26" defer></script>
+<script src="assets/viz.js?v=26" defer></script>
+<script src="assets/atlas.js?v=26" defer></script>
+<script src="assets/lab.js?v=26" defer></script>
+<script src="assets/figs.js?v=26" defer></script>
+<script src="assets/figures.js?v=26" defer></script>
+<script src="assets/highlight.js?v=26" defer></script>
+<script src="assets/tutor.js?v=26" defer></script>
+</body>
+</html>

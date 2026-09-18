@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Intro machine — KytyPS5</title>
+<meta name="description" content="A two-thread demoscene cockpit: guest uniforms, NID/GOT, TLS patch, PM4, shader specialisation and a live intro — not a copy of Signal Run.">
+<link rel="stylesheet" href="assets/tutor.css?v=26">
+<link rel="stylesheet" href="assets/app.css?v=26">
+<link rel="stylesheet" href="assets/highlight.css?v=26">
+<link rel="stylesheet" href="assets/advanced-emulator.css?v=5">
+</head>
+<body>
+<main data-app-content class="ax-wrap">
+  <header class="ax-hero">
+    <p class="topic-eyebrow">Executable lab · demoscene cockpit</p>
+    <h1 id="intro-machine">Intro machine</h1>
+    <p class="ax-lede">
+      Not a game. A fake 4K intro running on a teaching RISC, with the same boundaries as KytyPS5:
+      two guest threads (raster + mixer), a GOT of NIDs, a TLS <code>Call9</code> patch at boot,
+      PM4 packets that only carry <em>uniforms</em>, and a shader cache that recompiles when those
+      uniforms change shape. You twist knobs in guest memory. The intro is the side effect.
+    </p>
+  </header>
+
+  <section class="ax-machine" id="ax-machine">
+    <header class="ax-bar">
+      <div class="ax-brand"><i id="ax-led"></i><b>ASTERIA · INTRO</b><small id="ax-sub">cold</small></div>
+      <div class="ax-actions">
+        <button type="button" class="ax-btn ax-pri" id="ax-run">Pause</button>
+        <button type="button" class="ax-btn" id="ax-frame">Step frame</button>
+        <button type="button" class="ax-btn" id="ax-insn">Step insn</button>
+        <button type="button" class="ax-btn" id="ax-reset">Cold reboot</button>
+        <button type="button" class="ax-btn" id="ax-sound">Sound</button>
+      </div>
+      <div class="ax-knobs" id="ax-knobs">
+        <span class="ax-knob-l">intro</span>
+        <button type="button" class="ax-btn" data-mode="0">Plasma</button>
+        <button type="button" class="ax-btn" data-mode="1">Tunnel</button>
+        <button type="button" class="ax-btn" data-mode="2">Constellation</button>
+        <button type="button" class="ax-btn" data-mode="3">Fire</button>
+        <button type="button" class="ax-btn" data-mode="4">Starfield</button>
+        <button type="button" class="ax-btn" data-mode="5">Moire</button>
+        <button type="button" class="ax-btn" data-mode="6">Hex rain</button>
+        <button type="button" class="ax-btn" data-mode="7">Kaleido</button>
+        <span class="ax-knob-l">games</span>
+        <button type="button" class="ax-btn" data-mode="10">Serpent</button>
+        <button type="button" class="ax-btn" data-mode="11">Breakout</button>
+        <button type="button" class="ax-btn" data-mode="12">Drift</button>
+        <label>warp <input id="ax-warp" type="range" min="1" max="32" value="8"></label>
+      </div>
+    </header>
+
+    <ol class="ax-pipe" id="ax-pipe"></ol>
+
+    <div class="ax-top">
+      <section class="ax-screen-card">
+        <header>
+          <span>VIDEO_OUT_0 · 640×360 · fullscreen pass</span>
+          <h2 id="ax-effect-name">plasma.fs</h2>
+          <div class="ax-lights"><span id="ax-l-cpu">CPU</span><span id="ax-l-up">UPLOAD</span><span id="ax-l-gpu">GPU</span><span id="ax-l-flip">FLIP</span></div>
+        </header>
+        <div class="ax-screen-shell" tabindex="0">
+          <canvas id="ax-screen" width="640" height="360"></canvas>
+          <div class="ax-hud">
+            <div><small>TICK</small><b id="ax-tick">0</b></div>
+            <div><small>PERMUTATION</small><b id="ax-perm">—</b></div>
+            <div><small>THREAD</small><b id="ax-which">raster</b></div>
+          </div>
+          <div class="ax-boot" id="ax-boot"><pre id="ax-boot-text">assembling intro…</pre></div>
+        </div>
+        <p class="ax-help">Intros are uniforms. Games: <kbd>WASD</kbd>/<kbd>arrows</kbd> · <kbd>.</kbd> insn · <kbd>,</kbd> frame · <kbd>P</kbd> pause</p>
+      </section>
+      <aside class="ax-side">
+        <header><span>LIVE BOUNDARY</span><b id="ax-bound-kind">BOOT</b></header>
+        <p class="ax-bound"><span id="ax-from">host</span> → <span id="ax-to">loader</span></p>
+        <p id="ax-bound-text">Reserving guest address space.</p>
+        <dl id="ax-metrics"></dl>
+        <h3>Trace</h3>
+        <ol id="ax-log"></ol>
+      </aside>
+    </div>
+
+    <div class="ax-grid">
+      <section class="ax-card">
+        <header><b>CPU · two threads</b><span>raster / mixer</span></header>
+        <div class="ax-thread-switch">
+          <button type="button" class="ax-btn" data-th="0">raster</button>
+          <button type="button" class="ax-btn" data-th="1">mixer</button>
+        </div>
+        <div class="ax-regs" id="ax-regs"></div>
+        <ol class="ax-disasm" id="ax-disasm"></ol>
+      </section>
+      <section class="ax-card">
+        <header><b>Uniforms in .data</b><span>specialisation source</span></header>
+        <pre id="ax-hex"></pre>
+        <div class="ax-pages" id="ax-pages"></div>
+      </section>
+      <section class="ax-card">
+        <header><b>GOT + TLS</b><span>resolve then patch</span></header>
+        <div id="ax-got"></div>
+        <pre id="ax-tls"></pre>
+      </section>
+      <section class="ax-card">
+        <header><b>HLE</b><span>NID → native</span></header>
+        <div id="ax-hle"></div>
+      </section>
+      <section class="ax-card">
+        <header><b>PM4</b><span>fullscreen draw only</span></header>
+        <div id="ax-pm4"></div>
+      </section>
+      <section class="ax-card">
+        <header><b>Shader permutations</b><span>Translate → Materialize → Compile</span></header>
+        <ol class="ax-sh-stages" id="ax-sh-stages"></ol>
+        <div id="ax-pipes"></div>
+      </section>
+      <section class="ax-card ax-span2">
+        <header><b>Guest fault context</b><span>KytyPS5 dump shape</span></header>
+        <pre id="ax-crash">No unhandled fault this run.</pre>
+        <div class="ax-fault-btns">
+          <button type="button" class="ax-btn" id="ax-fault-rx">Write RX</button>
+          <button type="button" class="ax-btn" id="ax-flush">Flush permutations</button>
+        </div>
+      </section>
+      <section class="ax-card">
+        <header><b>Coherency / audio</b><span>dirty pages + mixer ring</span></header>
+        <dl id="ax-coh"></dl>
+      </section>
+    </div>
+  </section>
+
+  <section class="ax-note">
+    <h2 id="what-this-is">What you are looking at</h2>
+    <p>
+      The raster thread only stores a handful of uniforms and submits one fullscreen draw.
+      The mixer thread writes an envelope into a tiny audio ring. Changing <em>Plasma / Tunnel /
+      Constellation</em> changes the specialisation key, so the five-stage cache misses and
+      “compiles” again — the same split as <code>TranslateProgram</code> / <code>CompileProgram</code>.
+      The picture is the uniforms, visualised. Switch to Serpent, Breakout or Drift for a real guest-ticked game on the same machine.
+    </p>
+  </section>
+</main>
+<script src="assets/topics.js?v=26" defer></script>
+<script src="assets/search-index.js?v=26" defer></script>
+<script src="assets/app.js?v=26" defer></script>
+<script src="assets/highlight.js?v=26" defer></script>
+<script src="assets/advanced-emulator.js?v=5" defer></script>
+<script src="assets/tutor.js?v=26" defer></script>
+</body>
+</html>

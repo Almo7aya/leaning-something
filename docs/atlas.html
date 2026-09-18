@@ -6,10 +6,10 @@
 <title>KytyPS5 — The Visual Atlas</title>
 <meta name="description" content="Nineteen animated explainers covering how a PlayStation 5 emulator runs guest code, maps memory, starts a game, schedules threads, and drives a GPU.">
 <meta name="color-scheme" content="light dark">
-<link rel="stylesheet" href="assets/viz.css?v=23">
-<link rel="stylesheet" href="assets/atlas.css?v=23">
-<script src="assets/viz.js?v=23" defer></script>
-<script src="assets/atlas.js?v=23" defer></script>
+<link rel="stylesheet" href="assets/viz.css?v=26">
+<link rel="stylesheet" href="assets/atlas.css?v=26">
+<script src="assets/viz.js?v=26" defer></script>
+<script src="assets/atlas.js?v=26" defer></script>
 <style>
 :root{
   --ground:#EFF1F2; --surface:#FCFCFB; --surface-2:#F4F6F7; --surface-3:#E9EDEF;
@@ -110,7 +110,7 @@ h3::before{content:"▸ ";color:var(--faint)}
 .xlinks a:hover{color:var(--ink);text-decoration:underline}
 .xlinks a.here{color:var(--ink);font-weight:600}
 </style>
-<link rel="stylesheet" href="assets/highlight.css?v=23">
+<link rel="stylesheet" href="assets/highlight.css?v=26">
 </head>
 <body>
 
@@ -206,15 +206,15 @@ h3::before{content:"▸ ";color:var(--faint)}
   <div class="sh"><span class="sn">01·3</span><h2 id="rewriting-the-guest-s-own-instructions">Rewriting the guest's own instructions</h2></div>
   <p class="deck">Two instruction patterns in PS5 code cannot execute on Windows. With no recompiler in the pipeline, the loader rewrites the bytes in place — before the code is ever run.</p>
   <figure data-viz="patchbytes"></figure>
-  <p>You can watch this happen for real. Run any title, grep the log for <code>Patch tls at addr</code>, then look at those nine bytes in a debugger: the file on disk has <code>64 48 8B 04 25 00 00 00 00</code> and memory has <code>E8 …</code>. Seeing it once makes the whole mechanism concrete.</p>
-  <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp:1309</span><span class="src">src/loader/jit.h</span></div>
+  <p>You can watch this happen for real. Run any title, grep the log for <code>Patch tls at addr</code>, then look at those nine bytes in a debugger: the file on disk has <code>64 48 8B 04 25 00 00 00 00</code> and memory has <code>48 E8 … 48 89 C0</code>. Seeing it once makes the whole mechanism concrete.</p>
+  <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp:1154</span><span class="src">src/loader/jit.h</span></div>
 </section>
 
 <section id="cpu-fault">
   <div class="sh"><span class="sn">01·4</span><h2 id="faults-are-a-control-flow-mechanism">Faults are a control-flow mechanism</h2></div>
-  <p class="deck">Because there is no code generation step, the emulator cannot instrument guest code. The CPU's own fault mechanism becomes the hook — and three of the handler's four branches are deliberate design.</p>
+  <p class="deck">Because there is no code generation step, the emulator cannot instrument guest code. The CPU's own fault mechanism becomes the hook — and two of the handler's three branches are deliberate design.</p>
   <figure data-viz="faultpath"></figure>
-  <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp:763</span><span class="src">src/loader/x64InstructionEmulator.cpp</span></div>
+  <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp:782</span><span class="src">src/loader/x64InstructionEmulator.cpp</span></div>
 </section>
 
 <!-- ============================== 02 MEMORY -->
@@ -230,7 +230,7 @@ h3::before{content:"▸ ";color:var(--faint)}
   <div class="sh"><span class="sn">02·2</span><h2 id="16-kb-guest-pages-on-4-kb-host-pages">16 KB guest pages on 4 KB host pages</h2></div>
   <p class="deck">A mismatch that sounds like a footnote and turns out to shape the whole coherency design.</p>
   <figure data-viz="pagegrain"></figure>
-  <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp:2160</span><span class="src">src/graphics/host_gpu/regionManager.h</span></div>
+  <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp:2010</span><span class="src">src/graphics/host_gpu/regionManager.h</span></div>
 </section>
 
 <section id="mem-coherency">
@@ -246,14 +246,14 @@ h3::before{content:"▸ ";color:var(--faint)}
   <div class="sh"><span class="sn">03</span><h2 id="startup-a-file-becoming-a-running-program">Startup — a file becoming a running program</h2></div>
   <p class="deck">A PS5 executable is a SELF: a signed container wrapping standard ELF64, with Sony's own segment types and dynamic tags bolted on.</p>
   <figure data-viz="elfmap"></figure>
-  <div class="srcs"><span class="src">src/loader/elf.h</span><span class="src">src/loader/runtimeLinker.cpp:2141</span></div>
+  <div class="srcs"><span class="src">src/loader/elf.h</span><span class="src">src/loader/runtimeLinker.cpp:1991</span></div>
 </section>
 
 <section id="start-reloc">
   <div class="sh"><span class="sn">03·2</span><h2 id="wiring-up-the-imports">Wiring up the imports</h2></div>
   <p class="deck">PS5 modules do not export readable names — they export hashes. Resolution is where the emulator inserts itself into the game.</p>
   <figure data-viz="relocgot"></figure>
-  <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp:1654</span><span class="src">src/libs/libs.h:39</span></div>
+  <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp:1506</span><span class="src">src/libs/libs.h:47</span></div>
 </section>
 
 <section id="start-call">
@@ -269,7 +269,7 @@ h3::before{content:"▸ ";color:var(--faint)}
   <p class="deck">Three actors, three completely different jobs, and a separation that is required rather than stylistic.</p>
   <figure data-viz="threads"></figure>
   <p>Guest threads are real host threads, but with two pieces of state Kyty maintains itself: a <strong>guest stack</strong> allocated inside the guest bands, because guest code computes addresses relative to it and may hand them to the GPU; and a per-thread copy of every loaded module's <strong>TLS image</strong>, allocated lazily and freed through the game's own allocator if it installed one.</p>
-  <div class="srcs"><span class="src">src/kernel/pthread.cpp</span><span class="src">src/emulator.cpp:171</span><span class="src">src/loader/runtimeLinker.cpp:2073</span></div>
+  <div class="srcs"><span class="src">src/kernel/pthread.cpp</span><span class="src">src/emulator.cpp:171</span><span class="src">src/loader/runtimeLinker.cpp:1923</span></div>
 </section>
 
 <section id="thr-queues">
@@ -300,7 +300,7 @@ h3::before{content:"▸ ";color:var(--faint)}
   <p class="deck">About 28,700 lines of compiler: explicit decode/CFG/translation frontends, one typed SSA-capable IR and its passes, then the SPIR-V backend.</p>
   <figure data-viz="shaderflow"></figure>
   <p>Structurisation failure is a <em>supported outcome</em>. An irreducible graph, or a graph for which merge and continue blocks cannot be recovered, selects the <strong>dispatcher</strong>: one loop around a switch on a program-counter value, each basic block a case. Slower, but explicit and diagnosable.</p>
-  <div class="srcs"><span class="src">…/ShaderRecompiler.cpp:475</span><span class="src">…/frontend/cfg/ShaderCFG.cpp</span><span class="src">…/backend/spirv/spirvEmitterFlow.cpp</span></div>
+  <div class="srcs"><span class="src">…/ShaderRecompiler.cpp:485</span><span class="src">…/frontend/cfg/ShaderCFG.cpp</span><span class="src">…/backend/spirv/spirvEmitterFlow.cpp</span></div>
 </section>
 
 <section id="gpu-srt">
@@ -341,7 +341,7 @@ h3::before{content:"▸ ";color:var(--faint)}
         <tr><td style="padding:8px 16px;border-bottom:1px solid var(--rule)"><a href="#cpu-native">nativeexec</a></td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">Interpreter cost vs native execution</td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">ch 1, 3</td></tr>
         <tr><td style="padding:8px 16px;border-bottom:1px solid var(--rule)"><a href="#cpu-abi">abiflow</a></td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">System V vs Microsoft x64, and the mismatch</td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">ch 4</td></tr>
         <tr><td style="padding:8px 16px;border-bottom:1px solid var(--rule)"><a href="#cpu-patch">patchbytes</a></td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">The <code>fs:[0]</code> nine-byte rewrite</td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">ch 16</td></tr>
-        <tr><td style="padding:8px 16px;border-bottom:1px solid var(--rule)"><a href="#cpu-fault">faultpath</a></td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">The exception handler's four branches</td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">ch 18</td></tr>
+        <tr><td style="padding:8px 16px;border-bottom:1px solid var(--rule)"><a href="#cpu-fault">faultpath</a></td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">The exception handler's three branches</td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">ch 18</td></tr>
         <tr><td style="padding:8px 16px;border-bottom:1px solid var(--rule)"><a href="#mem-map">addrmap</a></td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">Address bands filling with allocations</td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">ch 5, 19</td></tr>
         <tr><td style="padding:8px 16px;border-bottom:1px solid var(--rule)"><a href="#mem-grain">pagegrain</a></td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">16 KB guest pages over 4 KB host pages</td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">ch 5</td></tr>
         <tr><td style="padding:8px 16px;border-bottom:1px solid var(--rule)"><a href="#mem-coherency">coherency</a></td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">Page faults as a notification channel</td><td style="padding:8px 16px;border-bottom:1px solid var(--rule)">ch 32</td></tr>
@@ -361,7 +361,7 @@ h3::before{content:"▸ ";color:var(--faint)}
   </div>
 
   <div class="foot">
-    <p>Written by reading the <a href="https://github.com/KytyPS5/KytyPS5">KytyPS5</a> source tree at <code>v0.2.2</code>; file and line references point at that revision and will drift. These are unofficial — a reading of the source, not maintainer-authored documentation. Where a document and the code disagree, the code is right.</p>
+    <p>Written by reading the <a href="https://github.com/KytyPS5/KytyPS5">KytyPS5</a> source tree at <code>main</code> commit <code>5b7d334</code> (18 September 2026); file and line references point at that revision and will drift. These are unofficial — a reading of the source, not maintainer-authored documentation. Where a document and the code disagree, the code is right.</p>
     <p>Some animations are deliberately simplified and say so in their own notes — the tiling one in particular shows 2×2 Morton ordering to make the idea visible, where the real families vary block size by bytes-per-element, XOR block coordinates across memory channels, and pack small mips into a tail.</p>
     <p>KytyPS5 is GPL-2.0-only and based on <a href="https://github.com/InoriRus/Kyty">InoriRus/Kyty</a> (MIT), and credits <a href="https://github.com/shadps4-emu/shadPS4">shadPS4</a> as a reference for the memory model and AVPlayer. Not affiliated with Sony Interactive Entertainment.</p>
   </div>
@@ -395,7 +395,7 @@ h3::before{content:"▸ ";color:var(--faint)}
   spy();
 })();
 </script>
-<script src="assets/highlight.js?v=23" defer></script>
+<script src="assets/highlight.js?v=26" defer></script>
 </body>
 </html>
 

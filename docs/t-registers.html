@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Registers, sharps &amp; resources — KytyPS5</title>
 <meta name="description" content="Accumulated register writes become pipeline state; packed descriptors become Vulkan resources.">
-<link rel="stylesheet" href="assets/viz.css?v=23">
-<link rel="stylesheet" href="assets/atlas.css?v=23">
-<link rel="stylesheet" href="assets/lab.css?v=23">
-<link rel="stylesheet" href="assets/tutor.css?v=23">
-<link rel="stylesheet" href="assets/app.css?v=23">
-<link rel="stylesheet" href="assets/highlight.css?v=23">
+<link rel="stylesheet" href="assets/viz.css?v=26">
+<link rel="stylesheet" href="assets/atlas.css?v=26">
+<link rel="stylesheet" href="assets/lab.css?v=26">
+<link rel="stylesheet" href="assets/tutor.css?v=26">
+<link rel="stylesheet" href="assets/app.css?v=26">
+<link rel="stylesheet" href="assets/highlight.css?v=26">
 </head>
 <body>
 
@@ -49,15 +49,17 @@ HW::Shader&amp;     GetShCtx() { return m_sh_ctx; }</pre>
 
   <div class="filename">src/graphics/guest_gpu/hardwareContext.h</div>
 <pre>struct ColorInfo {
-    bool     fmask_compression_enable        = false;
-    bool     fmask_data_compression_disable  = false;
-    bool     cmask_fast_clear_enable         = false;
-    bool     <b>dcc_compression_enable</b>          = false;
-    bool     blend_clamp                     = false;
-    bool     blend_bypass                    = false;
-    uint32_t <b>format</b>                          = 0;
-    uint32_t <b>channel_type</b>                    = 0;
-    uint32_t <b>channel_order</b>                   = 0;
+    bool fmask_compression_enable                   = false;
+    bool fmask_data_compression_disable             = false;
+    bool fmask_one_frag_mode                        = false;
+    bool cmask_fast_clear_enable                    = false;
+    bool <b>dcc_compression_enable</b>                     = false;
+    bool blend_clamp                                = false;
+    bool blend_bypass                               = false;
+    bool round_mode                                 = false;
+    Prospero::ChannelLayout <b>format</b>                  = Prospero::ChannelLayout::kInvalid;
+    Prospero::ChannelType   <b>channel_type</b>            = Prospero::ChannelType::kUNorm;
+    Prospero::ChannelOrder  <b>channel_order</b>           = Prospero::ChannelOrder::kStandard;
 };
 
 struct RenderTarget {
@@ -81,9 +83,9 @@ struct RenderTarget {
 <pre>#define KYTY_PM4_GET(u, r, f) (((u) &gt;&gt; Pm4::r##_##f##_SHIFT) &amp; Pm4::r##_##f##_MASK)
 
 r.polymode_front_ptype = KYTY_PM4_GET(buffer[0], PA_SU_SC_MODE_CNTL, POLYMODE_FRONT_PTYPE);</pre>
-  <p>The shift and mask constants come from <code>pm4.h</code>, which is 62 KB of them.</p>
+  <p>The shift and mask constants come from <code>pm4.h</code>, which is about 59 KB of RDNA 2 fields the PS5 driver actually writes — including <code>DCC_ENABLE</code> on <code>CB_COLOR0_INFO</code> at bit 28.</p>
 
-  <h4 id="why-agcregisterdefaults-inc-is-215-kb">Why <code>agcRegisterDefaults.inc</code> is 215 KB</h4>
+  <h4 id="why-agcregisterdefaults-inc-is-215-kb">Why <code>agcRegisterDefaults.inc</code> is 216 KB</h4>
   <p>The largest file in the repository is a table of default register values. It exists because of how the real driver works: at context reset it writes a complete default state, and games then only set what they change. If Kyty's defaults differ anywhere, state leaks between draws in ways that are almost impossible to attribute — a blend mode set by one draw silently applying to the next.</p>
   <p>Games can also ask for these defaults directly, which is why <code>GraphicsGetRegisterDefaults2</code> is an exported function.</p>
 
@@ -103,7 +105,7 @@ enum class TileMode : uint32_t {
 enum class BlendFactor : uint32_t { kZero = 0, kOne = 1, kSrcColor = 2, ... };
 enum class BufferFormat : uint32_t { kInvalid = 0, k8UNorm = 1, ..., kBc7Srgb = 182 };</pre>
 
-  <p><code>kRectList</code> is worth noting: a three-vertex primitive describing an axis-aligned rectangle, used constantly for full-screen passes. Vulkan has no direct equivalent; current Kyty handles the required pipeline path automatically and can synthesize tessellation-control/evaluation shaders with <code>BuildRectListShaders()</code>. The former <code>--ngg-rectlist-draw</code> switch no longer exists.</p>
+  <p><code>kRectList</code> is worth noting: a three-vertex primitive describing an axis-aligned rectangle, used constantly for full-screen passes. Vulkan has no direct equivalent; Kyty handles the required pipeline path automatically and can synthesize tessellation-control/evaluation shaders with <code>BuildRectListShaders()</code>.</p>
 
   <h4 id="colour-component-remapping">Colour component remapping</h4>
   <p>A neat piece of design worth calling out. The shader exports RGBA, but the render target's channel order may differ. Rather than recompiling for every permutation, Kyty carries a one-byte mapping:</p>
@@ -195,45 +197,67 @@ image_sample    v[0:3], v[4:5], s[12:19], s[20:23] dmask:0xf</pre>
   <p>To bind a Vulkan descriptor, Kyty must determine <em>which texture</em> <code>s[12:19]</code> will hold — and that requires evaluating the shader's own address arithmetic before the shader ever runs. Current code does this through three layers:</p>
 
   <div class="stack">
-    <div class="layer k"><span class="nm">1 · Typed SSA values</span><span class="chip kyty">kyty</span><span class="ds"><code>TranslateProgram</code> creates typed values; <code>RewriteToSsa</code> and simplification expose where descriptor-address inputs came from. The old separate <code>ScalarProvenance</code> IR has been removed.</span></div>
+    <div class="layer k"><span class="nm">1 · Typed SSA values</span><span class="chip kyty">kyty</span><span class="ds"><code>TranslateProgram</code> creates typed values; <code>RewriteToSsa</code> and simplification expose where descriptor-address inputs came from.</span></div>
     <div class="arrow">↓</div>
     <div class="layer k"><span class="nm">2 · BuildSrtPlan</span><span class="chip kyty">kyty</span><span class="ds">Walks those values and records descriptor-table reads. Constant offsets get flattened slots; genuinely dynamic reads stay explicit.</span></div>
     <div class="arrow">↓ at draw time, every draw</div>
-    <div class="layer k"><span class="nm">3 · MaterializeResources</span><span class="chip kyty">kyty</span><span class="ds">Executes the recipe against the <em>current</em> user data and guest memory, producing a concrete <code>ResourceSnapshot</code>: this exact address, this format, this size.</span></div>
+    <div class="layer k"><span class="nm">3 · MaterializeResources</span><span class="chip kyty">kyty</span><span class="ds">Executes the recipe against the <em>current</em> user data and guest memory, producing a concrete <code>ResourceSnapshot</code>: this exact address, this format, this size — plus the <code>ResourceSpecialization</code> the SPIR-V is compiled against.</span></div>
   </div>
 
-  <p>The plan is stored directly on <code>IR::Program</code>:</p>
-  <div class="filename">src/graphics/shader/recompiler/ir/ShaderIR.h:477</div>
+  <p>The plan lives on <code>IR::ResourcePlan</code>, the immutable part of the program that the shader cache keeps after the translated blocks have been thrown away. <code>IR::Program</code> derives from it and adds the blocks themselves:</p>
+  <div class="filename">src/graphics/shader/recompiler/ir/ShaderIR.h — SrtRead, ResourcePlan, Program</div>
 <pre>struct SrtRead {
     Value    value;             <i>// typed value that performs the read</i>
     uint32_t flat_offset = 0;   <i>// slot in the flattened buffer</i>
-    uint32_t use_pc      = 0;   <i>// where it was used, for diagnostics</i>
 };
 
-struct Program {
-    std::vector&lt;SrtRead&gt; srt_reads;
-    std::vector&lt;Value&gt;   dynamic_reads;
-    bool                  srt_plan_complete;
+<i>// Immutable runtime resource analysis retained by the shader cache.</i>
+struct ResourcePlan {
+    ShaderType                    stage;
+    uint64_t                      shader_hash;
+    uint32_t                      user_data_base, user_data_count = 64;
+    std::list&lt;Inst&gt;               value_storage;           <i>// the values the reads depend on</i>
+    std::vector&lt;DescriptorSource&gt; descriptor_sources;
+    std::vector&lt;ResourceBlock&gt;    control_flow;            <i>// uniform branches around resources</i>
+    std::vector&lt;SrtRead&gt;          srt_reads;
+    bool                          requires_specialization_memory, srt_plan_complete, resource_tracking_complete;
+    ShaderInfo                    info;
+    UniformFillPlan               uniform_fill;
 };
 
-struct DescriptorValue {
+struct Program : ResourcePlan {
+    BlockList          blocks;                <i>// only while translating and emitting</i>
+    bool               dispatcher_fallback;
+    std::vector&lt;Value&gt; dynamic_reads;
+    BindingLayout      bindings;
+    ...
+};</pre>
+
+  <div class="filename">src/graphics/shader/recompiler/ir/ResourceSnapshot.h</div>
+<pre>struct DescriptorValue {
     std::array&lt;uint32_t, 8&gt; dwords      = {};   <i>// a materialised V#, T# or S#</i>
     uint32_t                dword_count = 0;
+};
+
+struct ResourceSnapshot {
+    std::vector&lt;DescriptorValue&gt; buffers, images, samplers;
+    std::vector&lt;uint32_t&gt;        flattened_srt;    <i>// the constant SRT reads, already resolved</i>
+    std::vector&lt;uint32_t&gt;        user_data;
+    UniformFill                  uniform_fill;     <i>// a whole-buffer fill detected from uniform stores</i>
 };</pre>
 
   <h4 id="why-compilation-and-binding-are-separate">Why compilation and binding are separate</h4>
-  <p>The consequence is important: <strong>the immutable native program/plan can be reused while a fresh resource snapshot is resolved from current user data.</strong> The pipeline cache then reuses a matching specialized permutation when one already exists.</p>
+  <p>The consequence is important: <strong>the immutable plan is built once, and a fresh snapshot is resolved from current user data on every draw.</strong> Since September 2026 the recompiler itself is split the same way — <code>TranslateProgram()</code> produces the plan, <code>CompileProgram()</code> emits SPIR-V for one specialization — and the pipeline cache sits between them:</p>
 
-  <div class="filename">src/graphics/shader/shader.h:55</div>
-<pre><i>// Resolves an immutable native shader plan against current user data. The prior stage is</i>
-<i>// preserved if any ReadConst, snapshot, or specialization check fails.</i>
-bool <b>ShaderMaterializeStageRuntime</b>(std::shared_ptr&lt;const IR::Program&gt; program,
-                                   std::span&lt;const uint32_t&gt; user_data, uint64_t shader_base,
-                                   ShaderStageRuntime&amp; stage, std::string* error,
-                                   ShaderSpecializationMemoryReader reader = nullptr,
-                                   void* reader_data = nullptr);</pre>
+  <div class="filename">src/graphics/host_gpu/renderer/pipeline/pipelineCache.cpp — ProgramCache::Get()</div>
+<pre>auto translated = ShaderRecompiler::TranslateProgram(params.code, options);      <i>// cache miss only</i>
+EXIT_IF(!ShaderRecompiler::IR::MaterializeResources(resource_plan, runtime, resources, ...));
+                                                                                  <i>// every draw</i>
+<i>// look the specialization up; on a miss, emit one more SPIR-V permutation</i>
+auto result = ShaderRecompiler::CompileProgram(std::move(translated), options,
+                                               specialization, push_data_start_dword);</pre>
 
-  <p>Read that comment carefully. <code>MaterializeResources()</code> builds a temporary snapshot and validates its specialization first; only then does the function replace <code>stage</code>. Any failure therefore leaves the prior stage intact.</p>
+  <p>The snapshot then travels to the renderer inside a plain struct, <code>ShaderStageRuntime { const IR::CompiledShaderInfo* program; IR::ResourceSnapshot resources; }</code> in <code>shader.h</code>, and <code>RenderExecutor::PrepareBindings()</code> writes descriptors from it. A descriptor read that cannot be satisfied is an <code>EXIT_IF</code>.</p>
     </div>
   </section>
 
@@ -286,16 +310,16 @@ bool <b>ShaderMaterializeStageRuntime</b>(std::shared_ptr&lt;const IR::Program&g
 
 </main>
 
-<script src="assets/topics.js?v=23" defer></script>
-<script src="assets/search-index.js?v=23" defer></script>
-<script src="assets/app.js?v=23" defer></script>
-<script src="assets/viz.js?v=23" defer></script>
-<script src="assets/atlas.js?v=23" defer></script>
-<script src="assets/lab.js?v=23" defer></script>
-<script src="assets/figs.js?v=23" defer></script>
-<script src="assets/figures.js?v=23" defer></script>
-<script src="assets/highlight.js?v=23" defer></script>
-<script src="assets/tutor.js?v=23" defer></script>
+<script src="assets/topics.js?v=26" defer></script>
+<script src="assets/search-index.js?v=26" defer></script>
+<script src="assets/app.js?v=26" defer></script>
+<script src="assets/viz.js?v=26" defer></script>
+<script src="assets/atlas.js?v=26" defer></script>
+<script src="assets/lab.js?v=26" defer></script>
+<script src="assets/figs.js?v=26" defer></script>
+<script src="assets/figures.js?v=26" defer></script>
+<script src="assets/highlight.js?v=26" defer></script>
+<script src="assets/tutor.js?v=26" defer></script>
 </body>
 </html>
 

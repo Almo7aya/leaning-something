@@ -632,7 +632,7 @@
       "<b>Decode.</b> Each word is matched to an encoding family (SOP, VOP, SMEM, MUBUF, MIMG, FLAT, DS, EXP) and unpacked into a typed instruction with its operands and its considerable pile of modifier bits.",
       "<b>Build the control-flow graph</b>, then try to <em>structurise</em> it: compute the merge and continue blocks SPIR-V requires. This is the stage most likely to fail, and failure is a supported outcome — the dispatcher fallback emits one loop around a switch on a program counter.",
       "<b>Translate to one typed IR.</b> Explicit opcode-category dispatchers build values, then SSA rewriting, propagation, identity removal and dead-code elimination prepare them for resource analysis and emission.",
-      "<b>Emit SPIR-V.</b> The current backend is about 360 KB across 15 files. It declares types and capabilities, then lowers flow, ALU, memory and image instructions — including safety work the hardware got for free."
+      "<b>Emit SPIR-V.</b> The current backend is about 404 KB across 18 files. It declares types and capabilities, then lowers flow, ALU, memory, image and mesh instructions — including safety work the hardware got for free."
     ];
 
     body.insertBefore(s, body.firstChild);

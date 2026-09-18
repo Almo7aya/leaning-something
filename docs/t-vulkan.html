@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>The Vulkan backend — KytyPS5</title>
 <meta name="description" content="Pipelines, image layout and getting a finished frame onto the screen.">
-<link rel="stylesheet" href="assets/viz.css?v=23">
-<link rel="stylesheet" href="assets/atlas.css?v=23">
-<link rel="stylesheet" href="assets/lab.css?v=23">
-<link rel="stylesheet" href="assets/tutor.css?v=23">
-<link rel="stylesheet" href="assets/app.css?v=23">
-<link rel="stylesheet" href="assets/highlight.css?v=23">
+<link rel="stylesheet" href="assets/viz.css?v=26">
+<link rel="stylesheet" href="assets/atlas.css?v=26">
+<link rel="stylesheet" href="assets/lab.css?v=26">
+<link rel="stylesheet" href="assets/tutor.css?v=26">
+<link rel="stylesheet" href="assets/app.css?v=26">
+<link rel="stylesheet" href="assets/highlight.css?v=26">
 </head>
 <body>
 
@@ -39,8 +39,8 @@ struct GraphicContext {
     bool     memory_budget_ext_enabled;
     bool     rt_extensions_enabled;
     bool     <b>compute_subgroup_size_control_enabled</b>;
-    bool     compute_wave64_supported;
     bool     sample_rate_shading_enabled;
+    bool     <b>mesh_shader_enabled</b>;          <i>// VK_EXT_mesh_shader, for merged geometry stages</i>
     uint32_t subgroup_size, min_subgroup_size, max_subgroup_size;
     uint32_t max_push_descriptors;
     vk::ShaderStageFlags required_subgroup_size_stages;
@@ -65,48 +65,53 @@ struct GraphicContext {
     <table>
       <thead><tr><th>Cache</th><th>Keyed by</th><th>Notes</th></tr></thead>
       <tbody>
-        <tr><td><code>TextureCache</code> 75 KB</td><td>address + format + extent + binding type</td><td>Aliasing, depth/stencil pairing, mip expansion, upload, download and LRU collection. It is owned with the buffer cache by <code>GpuResourceManager</code>.</td></tr>
-        <tr><td><code>BufferCache</code> 32 KB</td><td>guest address range</td><td>Page-indexed vertex, index, uniform and storage buffers, batched uploads/downloads, LRU collection and the BDA fault path.</td></tr>
-        <tr><td><code>PipelineCache</code> 23 KB</td><td>shader IDs + full static state + attachment formats</td><td>Owns in-process program/pipeline maps and a per-game Vulkan driver cache saved to disk.</td></tr>
+        <tr><td><code>TextureCache</code> 77 KB</td><td>address + format + extent + binding type</td><td>Aliasing, depth/stencil pairing, mip expansion, DCC/HTile metadata clears, upload, download and LRU collection. It is owned with the buffer cache by <code>GpuResourceManager</code>.</td></tr>
+        <tr><td><code>BufferCache</code> 28 KB</td><td>guest address range</td><td>Page-indexed vertex, index, uniform and storage buffers, batched uploads/downloads, page tracking for DMA fills and copies, LRU collection and the BDA fault path.</td></tr>
+        <tr><td><code>PipelineCache</code> 36 KB</td><td>shader IDs + non-dynamic static state + attachment formats</td><td>Owns the program cache (translation → per-specialization SPIR-V), the pipeline map, and a per-game Vulkan driver cache saved to disk. Logs compiled shader counts per guest stage.</td></tr>
         <tr><td><code>DescriptorHeap</code> 3 KB</td><td>descriptor-set layout</td><td>Allocates sets in batches of 32 and retires whole Vulkan descriptor pools against timeline ticks.</td></tr>
-        <tr><td><code>SamplerCache</code> 7 KB</td><td>the guest S#</td><td>Small and simple by comparison.</td></tr>
-        <tr><td><code>FaultManager</code> 8 KB</td><td>faulted BDA page ranges</td><td>Nested in <code>BufferCache</code>; processes RDNA2 FLAT/BDA misses through a GPU fault buffer and page table.</td></tr>
+        <tr><td><code>SamplerCache</code> 6.5 KB</td><td>the guest S#</td><td>Small and simple by comparison.</td></tr>
+        <tr><td><code>FaultManager</code> 7 KB</td><td>faulted BDA page ranges</td><td>Nested in <code>BufferCache</code>; processes RDNA2 FLAT/BDA misses through a GPU fault buffer and page table, including faults at the very edge of a mapping.</td></tr>
       </tbody>
     </table>
   </div>
 
   <h4 id="the-pipeline-key">The pipeline key</h4>
-  <p>Vulkan bakes fixed-function state into the pipeline object, so every state difference needs a distinct pipeline. Kyty packs the whole lot into one byte-comparable struct:</p>
+  <p>Vulkan bakes fixed-function state into the pipeline object, so every state difference needs a distinct pipeline — unless the state is declared <em>dynamic</em> and set per draw instead. Kyty packs everything that is not dynamic into one byte-comparable struct:</p>
 
-  <div class="filename">…/pipeline/pipelineCache.h:34</div>
+  <div class="filename">…/pipeline/pipelineCache.h:35</div>
 <pre><b>#pragma pack(push, 1)</b>
 struct PipelineStaticParameters {
-    float                 viewport_scale[3], viewport_offset[3];
-    bool                  negative_one_to_one, depth_clip_enable;
-    int                   scissor_ltrb[4];
-    vk::PrimitiveTopology topology;
-    uint32_t              samples;
-    bool                  sample_shading_enable, with_depth, depth_test_enable, depth_write_enable;
-    vk::CompareOp         depth_compare_op;
-    bool                  depth_bounds_test_enable;
-    float                 depth_min_bounds, depth_max_bounds;
-    bool                  stencil_test_enable;
-    PipelineStencilStaticState stencil_front, stencil_back;
-    uint32_t              color_count;
-    uint32_t              color_mask[RENDER_COLOR_ATTACHMENTS_MAX];
-    bool                  cull_front, cull_back, face;
-    uint8_t               color_srcblend[…], color_comb_fcn[…], color_destblend[…];
-    uint8_t               alpha_srcblend[…], alpha_comb_fcn[…], alpha_destblend[…];
-    bool                  separate_alpha_blend[…], blend_enable[…], blend_bypass[…];
-    float                 blend_color_red, green, blue, alpha;
+    bool                       negative_one_to_one, depth_clip_enable;
+    vk::PrimitiveTopology      topology;
+    bool                       primitive_restart_enable;
+    uint32_t                   samples;
+    bool                       sample_shading_enable;
+    bool                       depth_bounds_test_enable;
+    float                      depth_min_bounds, depth_max_bounds;
+    uint32_t                   color_mask[RENDER_COLOR_ATTACHMENTS_MAX];
+    bool                       cull_front, cull_back, face;
+    bool                       provoking_vtx_last;
+    vk::PolygonMode            <b>polygon_mode</b>;                 <i>// guest fill / line / point modes</i>
+    uint8_t                    color_srcblend[…], color_comb_fcn[…], color_destblend[…];
+    uint8_t                    alpha_srcblend[…], alpha_comb_fcn[…], alpha_destblend[…];
+    bool                       separate_alpha_blend[…], blend_enable[…];
 };
 <b>#pragma pack(pop)</b>
 
 static_assert(std::is_trivially_copyable_v&lt;PipelineStaticParameters&gt;);
 static_assert(alignof(PipelineStaticParameters) == 1);
-static_assert(sizeof(PipelineStaticParameters) == /* an explicit sum of every member */);</pre>
+static_assert(<b>sizeof(PipelineStaticParameters) == 125</b>);
 
-  <p>The packing and the size assertion exist because the hash walks the struct byte by byte. Padding bytes would be uninitialised, so identical states could hash differently — producing a slow, silent pipeline explosion. The <code>static_assert</code> makes any accidental padding a build error.</p>
+struct GraphicsPipelineKey {
+    PipelineRenderingState   rendering;      <i>// colour formats, depth/stencil format, colour count</i>
+    uint64_t                 vs_shader_id, ps_shader_id;
+    PipelineVertexInputState vertex_input;   <i>// bindings (stride, instance) and attributes (offset, binding)</i>
+    PipelineStaticParameters static_params;
+};</pre>
+
+  <p>The packing and the size assertion exist because <code>operator==</code> is a <code>memcmp</code> and the hash walks the struct byte by byte. Padding bytes would be uninitialised, so identical states could hash differently — producing a slow, silent pipeline explosion. The <code>static_assert</code> makes any accidental padding a build error.</p>
+
+  <p>Viewport, scissor, depth test/write/compare/bias, the whole stencil state and blend constants are Vulkan dynamic state set on the command buffer per draw, so they are not in the key. Moving stencil to dynamic state shrank the struct from 166 to 125 bytes. Fewer distinct keys means fewer first-encounter compiles.</p>
 
   <p><code>PipelineCache</code> now has two levels. Kyty's maps avoid rebuilding a program or
   pipeline during one run; a per-game <code>VkPipelineCache</code> is also loaded and saved so the
@@ -148,18 +153,18 @@ private:
   <h4 id="what-happens-on-one-draw">What happens on one draw</h4>
   <p>Following the real call chain:</p>
   <div class="stack">
-    <div class="layer g"><span class="nm">CpOpDrawIndexAuto</span><span class="chip guest">guest</span><span class="ds"><code>pm4Handlers.cpp:2084</code> — unpack <code>index_count</code> and <code>flags</code> from the packet body.</span></div>
+    <div class="layer g"><span class="nm">CpOpDrawIndexAuto</span><span class="chip guest">guest</span><span class="ds"><code>pm4Handlers.cpp</code> — unpack <code>index_count</code> and <code>flags</code> from the packet body into a <code>DrawAutoArgs</code>.</span></div>
     <div class="arrow">↓</div>
-    <div class="layer k"><span class="nm">CommandProcessor::DrawIndexAuto</span><span class="chip kyty">kyty</span><span class="ds"><code>graphicsRun.cpp:1239</code> — apply predication, resolve the current register state, forward to the executor.</span></div>
+    <div class="layer k"><span class="nm">CommandProcessor::DrawIndexAuto(DrawAutoArgs)</span><span class="chip kyty">kyty</span><span class="ds"><code>graphicsRun.cpp</code> — apply predication, resolve the current register state, forward to the executor. (The argument list was collapsed into one struct in September 2026, which also fixed the PS5 NGG vertex/instance offsets.)</span></div>
     <div class="arrow">↓</div>
-    <div class="layer h"><span class="nm">RenderExecutor::DrawAuto</span><span class="chip host">host</span><span class="ds"><code>renderDraw.cpp:1281</code> — set debug info, build a <code>DrawCallInfo</code>.</span></div>
+    <div class="layer h"><span class="nm">RenderExecutor::DrawAuto</span><span class="chip host">host</span><span class="ds"><code>renderDraw.cpp</code> — set debug info, build a <code>DrawCallInfo</code>.</span></div>
     <div class="arrow">↓</div>
-    <div class="layer h"><span class="nm">PrepareDrawRenderState</span><span class="chip host">host</span><span class="ds"><code>renderDraw.cpp:812</code> — resolve colour and depth targets, then <code>ShaderCompileInfoVS</code> and <code>ShaderCompileInfoPS</code> (cache hit or recompile), then materialise resources.</span></div>
+    <div class="layer h"><span class="nm">PrepareDrawRenderState</span><span class="chip host">host</span><span class="ds"><code>renderDraw.cpp</code> — phases <code>ResolveRenderColorTarget</code>, <code>ResolveRenderDepthTarget</code>, then <code>GetGraphicsPrograms</code>: the pipeline cache translates on a miss, materialises the resource snapshot, and compiles the specialization if it is new.</span></div>
     <div class="arrow">↓</div>
-    <div class="layer h"><span class="nm">ExecutePreparedDraw</span><span class="chip host">host</span><span class="ds"><code>renderDraw.cpp:1063</code> — <code>PrepareBindings</code>, then <code>CreateGraphicsPipeline</code> (line 1085), then bind and record <code>vkCmdDraw</code>.</span></div>
+    <div class="layer h"><span class="nm">ExecutePreparedDraw</span><span class="chip host">host</span><span class="ds"><code>renderDraw.cpp</code> — phases <code>PrepareBindings</code>, <code>PrepareVertexBuffers</code>, <code>CreatePipeline</code>, <code>BeginRendering</code>, then set the dynamic state, bind and record <code>vkCmdDraw</code>; <code>DrawComplete</code> closes the log.</span></div>
   </div>
 
-  <p>Each step logs its phase name via <code>LogDrawPhase</code>, so a crash or hang inside a draw can be localised from the log alone.</p>
+  <p>Each phase name is logged via <code>LogDrawPhase</code>, so a crash or hang inside a draw can be localised from the log alone. Unsupported primitive topologies are now skipped with a log line rather than aborting the draw.</p>
 
   <h4 id="texture-cache-internals-worth-knowing">Texture cache internals worth knowing</h4>
 <pre>enum class BindingType : uint8_t { Texture, Storage, RenderTarget, DepthTarget, VideoOut };
@@ -168,8 +173,7 @@ ImageId       <b>FindImage</b>(ImageDesc&amp; desc, bool exact_format = false);
 ImageId       FindImageFromRange(uint64_t address, uint64_t size, bool ensure_valid = true);
 vk::ImageView FindTexture(ImageId id, const ImageDesc&amp; desc);
 void          MarkGpuWritten(ImageId id);
-bool          <b>InvalidateMemoryFromGPU</b>(uint64_t address, uint64_t size, bool formatted_buffer_write = false);
-bool          SynchronizeImageToBuffer(uint64_t address, uint64_t size);
+void          <b>InvalidateMemoryFromGPU</b>(uint64_t address, uint64_t size);
 void          <b>RunGarbageCollector</b>();</pre>
 
   <p>Aliasing is the routine case, not the exception — games reuse memory aggressively, so two images legitimately overlap:</p>
@@ -196,7 +200,7 @@ Common::LeastRecentlyUsedCache&lt;ImageId, uint64_t&gt; m_lru_cache;</pre>
     </ul>
   </div>
 
-<p class="deck">Guest memory holds swizzled data; Vulkan wants something else. Converting between them is 59 KB of address arithmetic plus a family of compute shaders.</p>
+<p class="deck">Guest memory holds swizzled data; Vulkan wants something else. Converting between them is about 51 KB of address arithmetic in <code>tile.cpp</code>, 36 KB of GPU-side orchestration in <code>tiler.cpp</code>, plus a family of compute shaders.</p>
 
   <figure data-viz="tiling"></figure>
 
@@ -333,10 +337,11 @@ public:
       <thead><tr><th>File</th><th>Role</th></tr></thead>
       <tbody>
         <tr><td><code>presentation/videoOut.cpp</code> 61 KB</td><td>The whole flip model, buffer sets, attributes, events, output modes, colour settings.</td></tr>
-        <tr><td><code>presentation/window/vulkanWindow.cpp</code> 43 KB</td><td>Instance and device creation, extension and feature selection, queue setup.</td></tr>
-        <tr><td><code>presentation/window/swapchain.cpp</code> 33 KB</td><td>Swapchain lifecycle, format selection, present.</td></tr>
-        <tr><td><code>presentation/window/window.cpp</code> 31 KB</td><td>SDL2 window and the main-thread event loop; keyboard, mouse and gamepad handling.</td></tr>
-        <tr><td><code>presentation/renderDoc.cpp</code> 12 KB</td><td>Loads the RenderDoc API at runtime for frame capture (<code>--rd</code>).</td></tr>
+        <tr><td><code>presentation/window/vulkanWindow.cpp</code> 52 KB</td><td>Instance and device creation, extension and feature selection (mesh shaders, atomics, depth features), <code>--gpu</code> device choice, queue setup.</td></tr>
+        <tr><td><code>presentation/window/swapchain.cpp</code> 33 KB</td><td>Swapchain lifecycle, format selection, present; waits for image acquisition before the layout transition.</td></tr>
+        <tr><td><code>presentation/window/window.cpp</code> 32 KB + <code>hostInput.cpp</code> 14 KB</td><td>SDL2 window and the main-thread event loop; keyboard, mouse, touchpad emulation and gamepad handling.</td></tr>
+        <tr><td><code>presentation/systemOverlay.cpp</code> 39 KB</td><td>The imgui overlay drawn over the game: the IME keyboard and system error dialogs, which stay open until dismissed and keep controller focus.</td></tr>
+        <tr><td><code>presentation/renderDoc.cpp</code> 5 KB</td><td>Loads the RenderDoc API at runtime for frame capture (<code>--rd</code>); captures start and stop on the present thread so a capture is a whole guest frame.</td></tr>
       </tbody>
     </table>
   </div>
@@ -400,16 +405,16 @@ public:
 
 </main>
 
-<script src="assets/topics.js?v=23" defer></script>
-<script src="assets/search-index.js?v=23" defer></script>
-<script src="assets/app.js?v=23" defer></script>
-<script src="assets/viz.js?v=23" defer></script>
-<script src="assets/atlas.js?v=23" defer></script>
-<script src="assets/lab.js?v=23" defer></script>
-<script src="assets/figs.js?v=23" defer></script>
-<script src="assets/figures.js?v=23" defer></script>
-<script src="assets/highlight.js?v=23" defer></script>
-<script src="assets/tutor.js?v=23" defer></script>
+<script src="assets/topics.js?v=26" defer></script>
+<script src="assets/search-index.js?v=26" defer></script>
+<script src="assets/app.js?v=26" defer></script>
+<script src="assets/viz.js?v=26" defer></script>
+<script src="assets/atlas.js?v=26" defer></script>
+<script src="assets/lab.js?v=26" defer></script>
+<script src="assets/figs.js?v=26" defer></script>
+<script src="assets/figures.js?v=26" defer></script>
+<script src="assets/highlight.js?v=26" defer></script>
+<script src="assets/tutor.js?v=26" defer></script>
 </body>
 </html>
 

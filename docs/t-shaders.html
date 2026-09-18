@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Shaders: RDNA 2 → SPIR-V — KytyPS5</title>
 <meta name="description" content="Recompiling compiled GPU binaries into something Vulkan will accept — and recovering the control flow that was thrown away.">
-<link rel="stylesheet" href="assets/viz.css?v=23">
-<link rel="stylesheet" href="assets/atlas.css?v=23">
-<link rel="stylesheet" href="assets/lab.css?v=23">
-<link rel="stylesheet" href="assets/tutor.css?v=23">
-<link rel="stylesheet" href="assets/app.css?v=23">
-<link rel="stylesheet" href="assets/highlight.css?v=23">
+<link rel="stylesheet" href="assets/viz.css?v=26">
+<link rel="stylesheet" href="assets/atlas.css?v=26">
+<link rel="stylesheet" href="assets/lab.css?v=26">
+<link rel="stylesheet" href="assets/tutor.css?v=26">
+<link rel="stylesheet" href="assets/app.css?v=26">
+<link rel="stylesheet" href="assets/highlight.css?v=26">
 </head>
 <body>
 
@@ -25,11 +25,11 @@
   <section class="band band-read">
     <div class="band-h"><span class="band-t">Read</span></div>
     <div class="prose">
-  <p class="deck">At snapshot <code>9992ab18</code>, the recompiler is about 28,700 lines across 80 files. It is now organised as an explicit compiler pipeline: <code>frontend/decode</code>, <code>frontend/cfg</code>, <code>frontend/translate</code>, a typed value IR and its passes, then <code>backend/spirv</code>.</p>
+  <p class="deck">At <code>main</code> commit <code>5b7d334</code> (18 September 2026), the recompiler is about 29,300 lines across 84 files under <code>recompiler/</code>. It is organised as an explicit compiler pipeline: <code>frontend/decode</code>, <code>frontend/cfg</code>, <code>frontend/translate</code>, a typed value IR and its passes, then <code>backend/spirv</code>.</p>
 
   <div class="callout k">
-    <span class="lbl">Important change from older Kyty material</span>
-    <p>The old decompiler/emitter layout and the separate scalar-provenance IR have been removed. <code>TranslateProgram()</code> now builds the typed IR directly through encoding-family opcode dispatchers, and SRT/resource analysis follows values in that IR. Do not look for <code>ScalarProvenance.cpp</code>, <code>ShaderLaneMaskMode</code>, or an <code>ir.provenance</code> field; none exists on current <code>main</code>.</p>
+    <span class="lbl">How to read the recompiler</span>
+    <p><code>TranslateProgram()</code> builds a typed IR through encoding-family opcode dispatchers; SRT and resource analysis follow values in that IR. Failures <code>EXIT</code>. The pipeline is split so one translation can be specialised for many resource snapshots. Merged geometry stages compile as <code>ShaderType::Mesh</code> Vulkan mesh shaders.</p>
   </div>
 
   <h4 id="why-it-is-hard-restated-precisely">Why it is hard, restated precisely</h4>
@@ -44,33 +44,40 @@
   <figure data-viz="shaderflow"></figure>
 
   <h4 id="the-pipeline">The current pipeline</h4>
-  <p><code>TryRecompile()</code> is the authoritative reading map. It logs the expensive outer phases and calls the passes in this order:</p>
+  <p>Two functions in <code>ShaderRecompiler.cpp</code> are the authoritative reading map. <code>TranslateProgram()</code> runs once per shader binary and produces an immutable <em>plan</em>; <code>CompileProgram()</code> runs once per resource specialization and emits SPIR-V. Both log the expensive phases with the shader hash:</p>
 
-  <div class="filename">src/graphics/shader/recompiler/ShaderRecompiler.cpp:475</div>
-<pre>DecodeProgram(code, decoded, error);
-CFG::BuildGraph(decoded, cfg, error);
-CFG::Structurize(cfg, &amp;structure_error);          <i>// or dispatcher fallback</i>
-Frontend::TranslateProgram(decoded, cfg, options, ir, error);
+  <div class="filename">src/graphics/shader/recompiler/ShaderRecompiler.cpp — TranslateProgram()</div>
+<pre>Decoder::DecodeProgram(code, decoded);            <i>// or DecodeFusedProgram() for ShaderType::Mesh</i>
+auto cfg = CFG::BuildGraph(decoded);
+if (cfg.irreducible) dispatcher_fallback = true;
+else if (!CFG::Structurize(cfg)) { cfg = unstructured_cfg; dispatcher_fallback = true; }
+embedded_fetch = DetectEmbeddedVertexFetch(decoded, ...);   <i>// vertex stage, fetch_embedded</i>
+auto ir = Frontend::TranslateProgram(decoded, cfg, translate_options);
 
 IR::RewriteToSsa(ir.blocks);
 IR::ConstantPropagationPass(ir.blocks);
 IR::ResolveControlFlowIdentities(ir);
 IR::RemoveIdentities(ir.blocks);
 IR::EliminateDeadCode(ir.blocks);
-IR::EliminateReadLane(ir, ir.wave_size);
-IR::InsertSharedMemoryBarriers(...);               <i>// compute wave64 LDS</i>
+if (IR::EliminateReadLane(ir, ir.wave_size).rewritten_reads != 0) { <i>/* simplify again */</i> }
 
-IR::BuildSrtPlan(ir, error);
-IR::TrackResources(ir, error);
-IR::MaterializeResources(ir, runtime, resources, error);
-IR::SpecializeResources(ir, resources, error);
-IR::CollectShaderInfo(ir, info_options, error);
-IR::AllocateBindings(ir, push_constant_offset, error);
-Spirv::AnalyzeProgramRequirements(ir, error);
-Spirv::EmitProgram(ir, resources, input_info, spirv, error);</pre>
+IR::BuildSrtPlan(ir);      IR::EliminateDeadCode(ir.blocks);
+IR::TrackResources(ir);    IR::EliminateDeadCode(ir.blocks);
+return TranslateResult{ std::move(ir), decoded_dump, cfg_dump };</pre>
+
+  <div class="filename">… — CompileProgram(translated, options, specialization, push_data_start_dword)</div>
+<pre>IR::ApplyResourceSpecialization(ir, specialization);   <i>// the snapshot chosen at draw time</i>
+IR::RemoveIdentities(ir.blocks);
+IR::EliminateDeadCode(ir.blocks);
+IR::CollectShaderInfo(ir, info_options);
+IR::AllocateBindings(ir, push_data_start_dword);
+Spirv::AnalyzeProgramRequirements(ir);
+auto spirv = Spirv::EmitProgram(ir, options.input_info);</pre>
+
+  <p>Materialisation happens in the renderer's pipeline cache between the two functions above — see <a href="t-registers.html#why-compilation-and-binding-are-separate">topic 15</a>.</p>
 
   <div class="fig">
-    <div class="fig-head"><span>The eleven current phases</span><span>click a stage</span></div>
+    <div class="fig-head"><span>The current phases</span><span>click a stage</span></div>
     <div class="fig-body">
       <div class="pipe" id="pipe" role="tablist"></div>
       <div class="step-panel" id="pipe-panel"></div>
@@ -84,33 +91,49 @@ Spirv::EmitProgram(ir, resources, input_info, spirv, error);</pre>
   <h4 id="the-frontend">Decode, recover control flow, translate</h4>
   <p><code>frontend/decode/ShaderDecoder.cpp</code> turns variable-length encodings into typed instructions from the SOP, VOP, SMEM, buffer, image, FLAT, LDS, and export families. <code>frontend/cfg/ShaderCFG.cpp</code> splits those instructions into blocks, computes graph facts, detects irreducible regions, and attempts to recover the merge and continue blocks SPIR-V requires.</p>
 
-  <p>Irreducibility or a failed <code>Structurize()</code> is a supported outcome. Kyty restores the unstructured graph and sets <code>dispatcher_fallback</code>; the SPIR-V backend then represents the shader as a loop around a program-counter dispatcher. This is slower, but it gives unsupported graph shapes an explicit fallback instead of silently miscompiling them.</p>
+  <p>Irreducibility or a failed <code>Structurize()</code> is a supported outcome. Kyty restores the unstructured graph, sets <code>dispatcher_fallback</code> and records a <code>fallback_reason</code>; the SPIR-V backend then represents the shader as a loop around a program-counter dispatcher. This is slower, but it gives unsupported graph shapes an explicit fallback instead of silently miscompiling them. <code>LogDispatcherFallback()</code> prints the phase (build or structurize), the failure kind and the block, which is the line to grep for.</p>
 
-  <p><code>frontend/translate</code> is now a real frontend layer. <code>Translate.cpp</code> owns program setup while category files such as <code>Scalar.cpp</code>, <code>Vector.cpp</code>, and <code>Memory.cpp</code> dispatch decoded opcodes into typed IR operations.</p>
+  <p><code>frontend/translate</code> is a real frontend layer. <code>Translate.cpp</code> owns program setup while category files such as <code>Scalar.cpp</code>, <code>Vector.cpp</code>, and <code>Memory.cpp</code> dispatch decoded opcodes into typed IR operations. The opcode coverage grows almost daily; the September 2026 commits alone added buffer/image atomics (<code>BUFFER_ATOMIC_CMPSWAP</code>, the <code>_X2</code> swap and OR variants, <code>IMAGE_ATOMIC_SWAP</code>), DPP row-xmask, conditional 64-bit scalar moves, <code>V_CMP_LT_U64</code>, <code>S_FLBIT_I32_B32</code> and VOP3 FMAC source modifiers.</p>
+
+  <h4 id="mesh-shaders">Merged geometry stages become mesh shaders</h4>
+  <p>RDNA 2 runs a merged ES/GS ("NGG") stage that has no fixed-function equivalent in Vulkan's classic pipeline. Since September 2026 Kyty compiles that stage as a <code>VK_EXT_mesh_shader</code> mesh shader: <code>DecodeFusedProgram()</code> joins the front and back stage code into one instruction stream with an ordinary CFG edge between them, <code>ShaderType::Mesh</code> carries it through translation, and <code>backend/spirv/spirvEmitterMesh.cpp</code> emits the mesh entry point. The pipeline cache checks the guest's thread, vertex, primitive and LDS limits against the device's mesh-shader properties and stops with <code>mesh shader exceeds host limits</code> when they do not fit; if the extension is missing, that path is an <code>EXIT_NOT_IMPLEMENTED</code>.</p>
 
   <span id="stage-4-the-ir"></span>
   <h4 id="the-typed-ir">One typed value IR</h4>
-  <p>The current <code>IR::Program</code> owns blocks and typed values, decoded memory/export metadata, descriptor sources and pass results. It does not carry the old lane-mask mode or scalar-provenance structures:</p>
+  <p>The current <code>IR::Program</code> derives from <code>IR::ResourcePlan</code>. The plan is the part the shader cache keeps for the lifetime of the run — stage, hash, descriptor sources, SRT reads, the values they depend on, the uniform-branch skeleton around them — while the program adds the blocks that exist only during translation and emission. Neither carries the old lane-mask mode or scalar-provenance structures:</p>
 
-  <div class="filename">…/ir/ShaderIR.h:485</div>
-<pre>struct Program {
-    ShaderType stage;
-    uint64_t shader_hash;
-    uint32_t wave_size, user_data_base, user_data_count, scratch_dwords;
-    bool dispatcher_fallback;
-    CFG::FailureKind cfg_failure_kind;
-    std::vector&lt;std::unique_ptr&lt;Block&gt;&gt; block_storage;
-    BlockList blocks;
-    std::vector&lt;MemoryInfo&gt; memory_info;
+  <div class="filename">…/ir/ShaderIR.h — ResourcePlan and Program</div>
+<pre><i>// Immutable runtime resource analysis retained by the shader cache.</i>
+struct ResourcePlan {
+    ShaderType stage;  uint64_t shader_hash;
+    uint32_t user_data_base, user_data_count = 64;
+    std::list&lt;Inst&gt;               value_storage;
+    std::vector&lt;MemoryInfo&gt;       memory_info;
     std::vector&lt;DescriptorSource&gt; descriptor_sources;
-    std::vector&lt;SrtRead&gt; srt_reads;
-    std::vector&lt;Value&gt; dynamic_reads;
-    ShaderInfo info;
-    BindingLayout bindings;
+    std::vector&lt;ResourceBlock&gt;    control_flow;
+    std::vector&lt;uint32_t&gt;         materialization_sources;
+    std::vector&lt;SrtRead&gt;          srt_reads;
+    std::vector&lt;uint8_t&gt;          clean_flat_slots;
+    bool requires_specialization_memory, srt_plan_complete, resource_tracking_complete;
+    ShaderInfo      info;
+    UniformFillPlan uniform_fill;
+};
+
+struct Program : ResourcePlan {
+    std::vector&lt;std::unique_ptr&lt;Block&gt;&gt; block_storage;
+    BlockList        blocks;
+    uint32_t         wave_size = 64, scratch_dwords = 0;
+    bool             dispatcher_fallback = false;
+    CFG::FailureKind cfg_failure_kind;
+    std::string      fallback_reason;
+    std::vector&lt;BlockInfo&gt;  block_info;
+    std::vector&lt;ExportInfo&gt; export_info;
+    std::vector&lt;Value&gt;      dynamic_reads;
+    BindingLayout    bindings;
     std::optional&lt;SpirvRequirements&gt; spirv_requirements;
 };</pre>
 
-  <p>Translation initially permits register-like identities and control-flow joins. <code>RewriteToSsa()</code> establishes SSA form, then propagation, identity removal, and dead-code elimination simplify it. <code>EliminateReadLane()</code> removes cross-lane reads when a direct value is provably safe; if it rewrites anything, the simplification sequence runs again. Compute shaders also receive explicit shared-memory barriers where wave64 LDS semantics require them.</p>
+  <p>Translation initially permits register-like identities and control-flow joins. <code>RewriteToSsa()</code> establishes SSA form, then propagation, identity removal, and dead-code elimination simplify it. <code>EliminateReadLane()</code> removes cross-lane reads when a direct value is provably safe; if it rewrites anything, the simplification sequence runs again. Once emission is done the renderer keeps only a <code>CompiledShaderInfo</code> (stage, hash, wave size, <code>ShaderInfo</code>, <code>BindingLayout</code>) next to the plan; the blocks are discarded.</p>
 
   <span id="stages-5-8-resources"></span>
   <span id="stage-9-bindings"></span>
@@ -118,34 +141,37 @@ Spirv::EmitProgram(ir, resources, input_info, spirv, error);</pre>
   <h4 id="resources-and-bindings">SRT planning, resources, and bindings</h4>
   <p><code>BuildSrtPlan()</code> walks typed values to identify reachable shader-resource-table reads. Constant reads receive flattened offsets while genuinely dynamic reads stay explicit. <code>TrackResources()</code> then classifies buffers, images, samplers, access modes, formats, and sampled pairs.</p>
 
-  <p>Concrete resource data can come from a caller-supplied <code>ResourceSnapshot</code> or from <code>MaterializeResources()</code> reading current user data and guest memory. <code>SpecializeResources()</code> applies those facts to the IR; compilation and per-draw resource state therefore remain separate concerns.</p>
+  <p>Concrete resource data comes from <code>MaterializeResources()</code> (in <code>ir/passes/ResourceMaterialization.cpp</code>) reading current user data and guest memory into a <code>ResourceSnapshot</code> and a <code>ResourceSpecialization</code>. It runs in the renderer's pipeline cache on every draw, not inside the recompiler; <code>CompileProgram()</code> then calls <code>ApplyResourceSpecialization()</code> to bake those facts into the IR. It also skips resources that sit in uniform branches the current user data never takes, and detects whole-buffer fills from uniform stores so the renderer can replace a dispatch with a native clear. Compilation and per-draw resource state therefore remain separate concerns.</p>
 
   <p><code>AllocateBindings()</code> covers ordinary buffers/images/samplers plus emulator support bindings:</p>
-<pre>enum class DescriptorBindingKind {
-    Buffers,
-    Sampled1D, Sampled2D, Sampled3D, ...,
-    Storage1D, Storage2D, Storage3D, ...,
-    Samplers, Gds,
+<pre>enum class DescriptorBindingKind : uint32_t {
+    Buffers  = 0u,
+    <i>// … a dense range of typed image bindings (up to 64 images) …</i>
+    Samplers = FirstImageBinding + ImageBindingCount,   <i>// 44</i>
+    Gds,
     <b>BdaPagetable, FaultBuffer</b>,
-    <b>FlattenedSrt, UserData</b>, Count,
+    <b>FlattenedSrt, ShaderData</b>,
+    Count,                                              <i>// 50</i>
 };</pre>
 
-  <p><code>BdaPagetable</code> and <code>FaultBuffer</code> support buffer-device-address translation and recoverable RDNA2 FLAT-access faults. <code>FlattenedSrt</code> and <code>UserData</code> expose data that the guest ABI expected in scalar registers or tables. Finally, <code>AnalyzeProgramRequirements()</code> records the subgroup, derivative, LDS, scratch, and pixel-mask features emission must request.</p>
+  <p><code>BdaPagetable</code> and <code>FaultBuffer</code> support buffer-device-address translation and recoverable RDNA2 FLAT-access faults. <code>FlattenedSrt</code> and <code>ShaderData</code> expose data that the guest ABI expected in scalar registers or tables; <code>PushData</code> is 32 dwords of push constants, the first six of which a mesh draw uses for its own parameters. Finally, <code>AnalyzeProgramRequirements()</code> records the subgroup, derivative, LDS, scratch, and pixel-mask features emission must request.</p>
 
   <span id="stage-11-spir-v-emission"></span>
   <h4 id="spir-v-emission">SPIR-V emission</h4>
-  <p><code>backend/spirv</code> is about 360 KB across 15 files. It is split by responsibility rather than by the old “ops” filenames:</p>
+  <p><code>backend/spirv</code> is about 404 KB across 18 files. It is split by responsibility rather than by the old “ops” filenames:</p>
 
   <div class="tw">
     <table>
       <thead><tr><th class="num">Approx. size</th><th>File</th><th>Handles</th></tr></thead>
       <tbody>
-        <tr><td class="num">60 KB</td><td><code>spirvEmitterMemory.cpp</code></td><td>Buffer, scalar-memory, FLAT/BDA, LDS, atomics, and safety checks.</td></tr>
+        <tr><td class="num">59 KB</td><td><code>spirvEmitterMemory.cpp</code></td><td>Buffer, scalar-memory, FLAT/BDA, LDS, atomics, and safety checks.</td></tr>
         <tr><td class="num">42 KB</td><td><code>spirvEmitterImage.cpp</code></td><td>Image sampling, loading, storage, dimensions, and formats.</td></tr>
-        <tr><td class="num">38 KB</td><td><code>spirvEmitterModule.cpp</code></td><td>Capabilities, types, interfaces, descriptors, and entry-point setup.</td></tr>
-        <tr><td class="num">38 KB</td><td><code>spirvEmitterInternal.h</code></td><td>Shared emitter state and lowering helpers.</td></tr>
+        <tr><td class="num">39 KB</td><td><code>spirvEmitterModule.cpp</code></td><td>Capabilities, types, interfaces, descriptors, and entry-point setup.</td></tr>
+        <tr><td class="num">37 KB</td><td><code>spirvEmitterInternal.h</code></td><td>Shared emitter state and lowering helpers.</td></tr>
         <tr><td class="num">35 KB</td><td><code>spirvEmitterAlu.cpp</code></td><td>Scalar/vector arithmetic, comparisons, conversion, and packing.</td></tr>
         <tr><td class="num">31 KB</td><td><code>spirvEmitterFlow.cpp</code></td><td>Structured control flow and the dispatcher fallback.</td></tr>
+        <tr><td class="num">31 KB</td><td><code>spirvEmitterProgram.cpp</code></td><td>Entry-point bodies per stage, exports, and the mesh/vertex handoff.</td></tr>
+        <tr><td class="num">10 KB</td><td><code>spirvEmitterMesh.cpp</code></td><td>Mesh-shader output assembly for merged geometry stages (new).</td></tr>
       </tbody>
     </table>
   </div>
@@ -155,7 +181,7 @@ Spirv::EmitProgram(ir, resources, input_info, spirv, error);</pre>
   <p>RDNA 2 has no conventional fixed-function vertex-input stage. A fetch prologue may load attributes into registers before the main vertex shader. When <code>fetch_embedded</code> is set, <code>DetectEmbeddedVertexFetch()</code> analyses the decoded instructions <em>before translation</em> and builds a <code>Frontend::EmbeddedFetchPlan</code>. That plan is passed through <code>TranslateOptions::embedded_fetch</code>, so translation emits the correct vertex-input operations directly; there is no later <code>RewriteEmbeddedVertexFetches()</code> pass.</p>
 
   <h4 id="where-the-test-weight-is">Where the test weight is</h4>
-  <p><code>ShaderRecompilerComputeTests.cpp</code> is now about 1.13 MB and <code>shaderCfgTests.cpp</code> about 595 KB. The focused resource, scalar-tracing, stage-runtime, and vertex-metadata tests remain alongside them. The growth is useful evidence: shader behavior is specified most reliably by executable cases because a miscompile can produce only a visual error.</p>
+  <p><code>ShaderRecompilerComputeTests.cpp</code> is now about 1.43 MB and <code>shaderCfgTests.cpp</code> about 640 KB. The focused resource-tracking, resource-materialization (new, replacing the stage-runtime tests), scalar-tracing and vertex-metadata tests sit alongside them. The growth is useful evidence: shader behavior is specified most reliably by executable cases because a miscompile can produce only a visual error. Almost every shader commit in September 2026 lands with a new case in one of these two files.</p>
 
   <div class="learn">
     <div class="lh">Learn more · shader compilation</div>
@@ -214,7 +240,7 @@ Spirv::EmitProgram(ir, resources, input_info, spirv, error);</pre>
         </li>
         <li class="check-item">
           <input type="checkbox">
-          <label>Follow a descriptor source through <code>BuildSrtPlan</code>, resource materialization, binding allocation, and emission.</label>
+          <label>Follow a descriptor source through <code>BuildSrtPlan</code>, <code>MaterializeResources</code> in the pipeline cache, <code>ApplyResourceSpecialization</code>, binding allocation, and emission.</label>
         </li>
       </ul>
     </div>
@@ -227,15 +253,15 @@ Spirv::EmitProgram(ir, resources, input_info, spirv, error);</pre>
 
 </main>
 
-<script src="assets/topics.js?v=23" defer></script>
-<script src="assets/search-index.js?v=23" defer></script>
-<script src="assets/app.js?v=23" defer></script>
-<script src="assets/viz.js?v=23" defer></script>
-<script src="assets/atlas.js?v=23" defer></script>
-<script src="assets/lab.js?v=23" defer></script>
-<script src="assets/figs.js?v=23" defer></script>
-<script src="assets/figures.js?v=23" defer></script>
-<script src="assets/highlight.js?v=23" defer></script>
-<script src="assets/tutor.js?v=23" defer></script>
+<script src="assets/topics.js?v=26" defer></script>
+<script src="assets/search-index.js?v=26" defer></script>
+<script src="assets/app.js?v=26" defer></script>
+<script src="assets/viz.js?v=26" defer></script>
+<script src="assets/atlas.js?v=26" defer></script>
+<script src="assets/lab.js?v=26" defer></script>
+<script src="assets/figs.js?v=26" defer></script>
+<script src="assets/figures.js?v=26" defer></script>
+<script src="assets/highlight.js?v=26" defer></script>
+<script src="assets/tutor.js?v=26" defer></script>
 </body>
 </html>

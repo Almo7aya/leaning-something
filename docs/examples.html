@@ -5,11 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Examples — KytyPS5 Learning Platform</title>
 <meta name="description" content="Complete worked examples: implement a missing HLE function, follow a draw call end to end, translate a shader instruction, trace a memory allocation.">
-<link rel="stylesheet" href="assets/app.css?v=23">
-<link rel="stylesheet" href="assets/tutor.css?v=23">
-<link rel="stylesheet" href="assets/playground.css?v=23">
-<link rel="stylesheet" href="assets/examples.css?v=23">
-<link rel="stylesheet" href="assets/highlight.css?v=23">
+<link rel="stylesheet" href="assets/app.css?v=26">
+<link rel="stylesheet" href="assets/tutor.css?v=26">
+<link rel="stylesheet" href="assets/playground.css?v=26">
+<link rel="stylesheet" href="assets/examples.css?v=26">
+<link rel="stylesheet" href="assets/highlight.css?v=26">
 </head>
 <body>
 
@@ -425,9 +425,8 @@ rg "LIB_DEFINE" src/libs/libSystemService.cpp</code></pre>
         were all added recently — is a genuinely approachable contribution.
       </p>
       <div class="ex-callout">
-        <b>An unhandled IR opcode is now a hard failure</b> rather than a silent skip. If a shader
-        that used to render incorrectly now fails outright, that is the change — and the loud
-        failure is far more useful than the wrong pixels were.
+        <b>An unhandled IR opcode is a hard failure.</b> The emulator stops rather than drawing
+        the wrong pixels.
       </div>
     </div>
 
@@ -572,11 +571,11 @@ constexpr uint32_t IT_SET_CONTEXT_REG = 0x69;
 
 </main>
 
-<script src="assets/search-index.js?v=23" defer></script>
-<script src="assets/topics.js?v=23" defer></script><script src="assets/highlight.js?v=23" defer></script>
-<script src="assets/app.js?v=23" defer></script>
-<script src="assets/highlight.js?v=23" defer></script>
-<script src="assets/tutor.js?v=23" defer></script>
+<script src="assets/search-index.js?v=26" defer></script>
+<script src="assets/topics.js?v=26" defer></script>
+<script src="assets/app.js?v=26" defer></script>
+<script src="assets/highlight.js?v=26" defer></script>
+<script src="assets/tutor.js?v=26" defer></script>
 </body>
 </html>
 

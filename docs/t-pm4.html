@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PM4 &amp; the command processor — KytyPS5</title>
 <meta name="description" content="How a draw call travels from guest code into PM4 command packets, through a software command processor, and out to Vulkan.">
-<link rel="stylesheet" href="assets/viz.css?v=23">
-<link rel="stylesheet" href="assets/atlas.css?v=23">
-<link rel="stylesheet" href="assets/lab.css?v=23">
-<link rel="stylesheet" href="assets/tutor.css?v=23">
-<link rel="stylesheet" href="assets/app.css?v=23">
-<link rel="stylesheet" href="assets/highlight.css?v=23">
+<link rel="stylesheet" href="assets/viz.css?v=26">
+<link rel="stylesheet" href="assets/atlas.css?v=26">
+<link rel="stylesheet" href="assets/lab.css?v=26">
+<link rel="stylesheet" href="assets/tutor.css?v=26">
+<link rel="stylesheet" href="assets/app.css?v=26">
+<link rel="stylesheet" href="assets/highlight.css?v=26">
 </head>
 <body>
 
@@ -176,7 +176,7 @@ void GraphicsInitJmpTables();</pre>
     return 2;                                        <i>// consumed 2 body dwords</i>
 }</pre>
 
-  <p>That is the pattern for all 174 KB of <code>pm4Handlers.cpp</code>: assert on what is not understood, unpack the fields, call into <code>CommandProcessor</code>, report the size.</p>
+  <p>That is the pattern for all 144 KB of <code>pm4Handlers.cpp</code>: assert on what is not understood, unpack the fields, call into <code>CommandProcessor</code>, report the size.</p>
 
   <h4 id="mechanisms-a-real-command-processor-has">Mechanisms a real command processor has</h4>
   <div class="tw">
@@ -338,17 +338,16 @@ Pm4ProcessResult Process(Pm4Execution&amp; execution, uint32_t* buffer, uint32_t
 
 </main>
 
-<script src="assets/topics.js?v=23" defer></script>
-<script src="assets/search-index.js?v=23" defer></script>
-<script src="assets/highlight.js?v=23" defer></script>
-<script src="assets/app.js?v=23" defer></script>
-<script src="assets/viz.js?v=23" defer></script>
-<script src="assets/atlas.js?v=23" defer></script>
-<script src="assets/lab.js?v=23" defer></script>
-<script src="assets/figs.js?v=23" defer></script>
-<script src="assets/figures.js?v=23" defer></script>
-<script src="assets/highlight.js?v=23" defer></script>
-<script src="assets/tutor.js?v=23" defer></script>
+<script src="assets/topics.js?v=26" defer></script>
+<script src="assets/search-index.js?v=26" defer></script>
+<script src="assets/highlight.js?v=26" defer></script>
+<script src="assets/app.js?v=26" defer></script>
+<script src="assets/viz.js?v=26" defer></script>
+<script src="assets/atlas.js?v=26" defer></script>
+<script src="assets/lab.js?v=26" defer></script>
+<script src="assets/figs.js?v=26" defer></script>
+<script src="assets/figures.js?v=26" defer></script>
+<script src="assets/tutor.js?v=26" defer></script>
 </body>
 </html>
 

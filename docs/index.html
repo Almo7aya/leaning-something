@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>KytyPS5 — Learning Platform</title>
 <meta name="description" content="Learn how a PlayStation 5 emulator works, from the runtime linker to the shader recompiler — read it, watch it, drive it, then change it.">
-<link rel="stylesheet" href="assets/tutor.css?v=23">
-<link rel="stylesheet" href="assets/app.css?v=23">
-<link rel="stylesheet" href="assets/highlight.css?v=23">
+<link rel="stylesheet" href="assets/tutor.css?v=26">
+<link rel="stylesheet" href="assets/app.css?v=26">
+<link rel="stylesheet" href="assets/highlight.css?v=26">
 </head>
 <body>
 
@@ -23,9 +23,12 @@
   <div class="callout g" style="margin-top:24px">
     <span class="lbl">Current-source checkpoint</span>
     <p>Source-specific paths and explanations were checked against KytyPS5
-      <code>main</code> at <code>9992ab18</code> (30 August 2026). This includes the rewritten
-      shader frontend/typed SSA/backend pipeline, Vulkan 1.3 renderer, current
-      Windows/Linux/macOS builds, launcher settings and expanded regression suite.</p>
+      <code>main</code> at commit <code>5b7d334</code> (18 September 2026). This includes the
+      two-stage shader recompiler (translate once, compile per resource snapshot), mesh-shader
+      geometry stages, the slimmer pipeline key, the cross-vendor TLS patch, the DualSense
+      HIDAPI input path and the sixteen-executable regression suite.
+      <a href="upstream-changes.html">The tree at HEAD</a> is the themed reading map
+      for that commit, with the topic that owns each piece.</p>
   </div>
 
   <!-- filled in by app.js: resume where you left off, or start at the beginning -->
@@ -123,12 +126,11 @@
 
 </main>
 
-<script src="assets/topics.js?v=23" defer></script>
-<script src="assets/search-index.js?v=23" defer></script>
-<script src="assets/highlight.js?v=23" defer></script>
-<script src="assets/app.js?v=23" defer></script>
-<script src="assets/highlight.js?v=23" defer></script>
-<script src="assets/tutor.js?v=23" defer></script>
+<script src="assets/topics.js?v=26" defer></script>
+<script src="assets/search-index.js?v=26" defer></script>
+<script src="assets/highlight.js?v=26" defer></script>
+<script src="assets/app.js?v=26" defer></script>
+<script src="assets/tutor.js?v=26" defer></script>
 </body>
 </html>
 

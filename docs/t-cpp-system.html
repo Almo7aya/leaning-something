@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>The system around the GPU — KytyPS5</title>
 <meta name="description" content="Everything that is not graphics: the boot order, audio, video, network, input, the file sandbox, and the Qt launcher — and the pattern every one of them follows.">
-<link rel="stylesheet" href="assets/viz.css?v=23">
-<link rel="stylesheet" href="assets/atlas.css?v=23">
-<link rel="stylesheet" href="assets/lab.css?v=23">
-<link rel="stylesheet" href="assets/tutor.css?v=23">
-<link rel="stylesheet" href="assets/app.css?v=23">
-<link rel="stylesheet" href="assets/highlight.css?v=23">
+<link rel="stylesheet" href="assets/viz.css?v=26">
+<link rel="stylesheet" href="assets/atlas.css?v=26">
+<link rel="stylesheet" href="assets/lab.css?v=26">
+<link rel="stylesheet" href="assets/tutor.css?v=26">
+<link rel="stylesheet" href="assets/app.css?v=26">
+<link rel="stylesheet" href="assets/highlight.css?v=26">
 </head>
 <body>
 
@@ -46,19 +46,19 @@ subsystems.Initialize&lt;Libs::Graphics::Lifecycle&gt;();</pre>
   <p>Read the explicit sequence as the dependency contract: config first (everything reads it), logging second (everything writes it), then timer, pthread, profiler, network, memory, files, input, audio and finally graphics. Each <code>Lifecycle</code> supplies a name and <code>static constexpr</code> callbacks; successful shutdown and emergency-shutdown callbacks are recorded and later invoked in reverse order. This pattern is introduced in <a href="t-cpp-language.html">topic C1</a>.</p>
 
   <h4 id="audio">Audio — the busiest non-GPU thread</h4>
-  <p>Three files, roughly 150 KB, one job: turn what the game hands the <em>port</em> API into samples on the output. The console's audio surface has two halves:</p>
+  <p>Three files, roughly 165 KB, one job: turn what the game hands the <em>port</em> API into samples on the output. The console's audio surface has two halves:</p>
   <ul>
-    <li><strong>Ports &amp; the DSP graph</strong> — <code>audio.cpp</code> (85 KB) implements the port lifecycle (<code>AcmContextCreate</code>, <code>Ngs2SystemCreate</code>, racks, ports) and mixes on a <strong>dedicated thread</strong>. The guest submits fixed-size blocks and <em>expects the call to block when buffers are full</em> — that back-pressure is how games pace themselves against the audio clock.</li>
-    <li><strong>Decode</strong> — <code>ajm.cpp</code> (51 KB) models a fixed-function hardware block. The guest submits a <em>batch of jobs</em> describing input/output buffers and a codec; Kyty parses that job format and routes each job to LibAtrac9 (ATRAC9) or FFmpeg (AAC, MP3).</li>
+    <li><strong>Ports &amp; the DSP graph</strong> — <code>audio.cpp</code> (94 KB) implements the port lifecycle (<code>AcmContextCreate</code>, <code>Ngs2SystemCreate</code>, racks, ports) and mixes on a <strong>dedicated thread</strong>. The guest submits fixed-size blocks and <em>expects the call to block when buffers are full</em> — that back-pressure is how games pace themselves against the audio clock. AudioOut2 ports may now be 12-channel (7.1.4); Kyty downmixes them to what SDL can open, and the matrix is documented in the source.</li>
+    <li><strong>Decode</strong> — <code>ajm.cpp</code> (45 KB) models a fixed-function hardware block. The guest submits a <em>batch of jobs</em> describing input/output buffers and a codec; Kyty parses that job format and routes each job through the small decoder interface in <code>libs/ajm/decoder.h</code> to LibAtrac9 (ATRAC9) or FFmpeg (AAC, MP3). Separating the interface from the job parser (September 2026) is what let the older Audiodec API reuse the same AAC decoder.</li>
   </ul>
 
   <p>The interesting design point: the guest API is not "give me decoded PCM". It is "here are buffers and a codec description, process them asynchronously". So <code>ajm.cpp</code> is a little command processor, exactly like the GPU's <code>CommandProcessor</code> — decode jobs are just another stream of work.</p>
 
   <h4 id="video">Video — FFmpeg behind a console API</h4>
-  <p>Two layers: <code>avPlayer.cpp</code> (56 KB) for full-motion-video playback, and <code>libVideoDec2.cpp</code> (23 KB) plus <code>videoDec2Decoder.cpp</code> for the general video-decode API. Both sit on FFmpeg; the README credits <code>shadPS4</code> as a reference for the AVPlayer implementation. Games use these for cutscenes — the part of the run where the GPU thread is suddenly rendering video frames instead of the game.</p>
+  <p>Two layers: <code>avPlayer.cpp</code> (69 KB) for full-motion-video playback, and <code>libVideoDec2.cpp</code> (23 KB) plus <code>videoDec2Decoder.cpp</code> for the general video-decode API. Both sit on FFmpeg; the README credits <code>shadPS4</code> as a reference for the AVPlayer implementation. Games use these for cutscenes — the part of the run where the GPU thread is suddenly rendering video frames instead of the game.</p>
 
   <h4 id="network">Network — real sockets, offline-safe PlayStation</h4>
-  <p><code>libNet.cpp</code> (124 KB) plus <code>network.cpp</code> (100 KB) implement sockets, resolvers, SSL and HTTP shims. The subtle part is the <strong>NP surface</strong> — PlayStation Network APIs that a game will call at boot. Kyty stubs these <em>carefully enough that the game continues offline</em> rather than hanging on a login that will never succeed. That is the "pragmatic stub" philosophy from topic 12 applied to an entire service:</p>
+  <p><code>libNet.cpp</code> (117 KB) plus <code>network.cpp</code> (99 KB) implement sockets, resolvers, SSL and HTTP shims — increasingly by forwarding straight to the host socket API and translating error codes, rather than by re-implementing behaviour. The subtle part is the <strong>NP surface</strong> — PlayStation Network APIs that a game will call at boot. Kyty stubs these <em>carefully enough that the game continues offline</em> rather than hanging on a login that will never succeed. That is the "pragmatic stub" philosophy from topic 12 applied to an entire service:</p>
 
   <div class="filename">src/libs/network.h — a slice of the surface</div>
 <pre>int KYTY_SYSV_ABI NetResolverCreate(const char* name, int memid, int flags);
@@ -73,6 +73,8 @@ int KYTY_SYSV_ABI SslTerm(int ssl_ctx_id);
 
   <h4 id="input">Input — SDL events become DualSense state</h4>
   <p><code>libPad.cpp</code>, <code>libs/controller.cpp</code>, and <code>presentation/window/hostInput.cpp</code> form a clean mapping example. SDL's event loop runs on the main thread; controller, keyboard, and mouse input become the <code>padData.h</code> state returned to the game. Repeatable <code>--keymap Control=Input</code> arguments customize PC controls, and guest vibration commands travel back to the physical controller through SDL rumble.</p>
+
+  <p>The mapping now runs in both directions for more than rumble. Since SDL's DualSense HIDAPI driver was switched on (September 2026), <code>PadSetLightBar</code> really drives the LED and <code>PadSetTriggerEffect</code> translates the guest's mode and parameters into a DualSense trigger block; before that both validated their arguments and returned <code>OK</code> without touching the pad. The touchpad is emulated from the mouse, a DualShock 4 is routed down the same pad path, and pads are released on exit. Escape no longer quits the emulator — that turned out to be a common accident in games that use it.</p>
 
   <h4 id="the-file-sandbox">The file sandbox — guest paths, host files</h4>
   <p>The game believes it lives on a console with <code>/app0</code>, <code>/download0</code>, <code>/temp0</code> and <code>/savedata0</code>. The emulator synthesises that tree from host directories at boot:</p>
@@ -91,7 +93,9 @@ int KYTY_SYSV_ABI SslTerm(int ssl_ctx_id);
   <p><code>kernel/fileSystem.cpp</code> holds the mount table and <code>GetRealFilename()</code>, which every guest path passes through before touching the host. Two bugs live here in the real world: <strong>case sensitivity</strong> (the console is case-insensitive, Linux is not — so lookups fall back to a case-folded scan) and <strong>path translation</strong> (a game asking for <code>/app0/eboot.bin</code> is handed a host path by the loader, never the guest path).</p>
 
   <h4 id="the-launcher">The launcher — Qt in front of the emulator</h4>
-  <p><code>src/launcher/</code> is a small Qt application that searches the configured game folders recursively for directories containing <code>eboot.bin</code>, lists them, and runs <code>kyty_emulator --game &lt;path&gt;</code>. It is deliberately thin — all the interesting state lives in <code>emulator.cpp</code> and the config layer (<code>common/emulatorConfig.cpp</code>, which both the launcher and the emulator read).</p>
+  <p><code>src/launcher/</code> is a small Qt 6 application (25 files, about 4,400 lines) that searches the configured game folders recursively for directories containing <code>eboot.bin</code>, lists them with their compatibility status, and runs <code>kyty_emulator --game &lt;path&gt;</code> with the flags from a per-game or global configuration. It is deliberately thin — all the interesting state lives in <code>emulator.cpp</code> and the config layer (<code>common/emulatorConfig.cpp</code>, which both the launcher and the emulator read).</p>
+
+  <p>It has grown a few conveniences recently: a release update checker (<code>updateChecker.cpp</code>, which reads the website feed and cross-checks GitHub release dates), a theme with a proper light mode (<code>launcherTheme.cpp</code> + <code>styles/launcher.qss</code>) and settings grouped into resizable sections, GPU selection (<code>gpu_index</code>, mirroring <code>--gpu</code>), the linear-image readback toggle, and 1440p/2160p output resolutions. Two defaults differ from the command line: the launcher turns shader validation on and asks <code>spirv-opt</code> for <code>Performance</code>, while a bare <code>kyty_emulator</code> run uses neither.</p>
 
   <div class="callout k">
     <span class="lbl">The one pattern</span>
@@ -113,7 +117,7 @@ int KYTY_SYSV_ABI SslTerm(int ssl_ctx_id);
   <section class="band band-watch">
     <div class="band-h"><span class="band-t">Watch</span></div>
     <p class="band-why">
-      The library map from topic 12, in one picture: every file in <code>src/libs/</code>, grouped by what it does — the graphics driver dominating by volume, and the rest of the system in the middle.
+      The call path from topic 12, in one picture: how a guest call reaches a function in <code>src/libs/</code> and returns — the same route for every one of the libraries above.
     </p>
     <div data-viz="hlemodule"></div>
   </section>
@@ -167,15 +171,15 @@ int KYTY_SYSV_ABI SslTerm(int ssl_ctx_id);
 
 </main>
 
-<script src="assets/topics.js?v=23" defer></script>
-<script src="assets/search-index.js?v=23" defer></script>
-<script src="assets/app.js?v=23" defer></script>
-<script src="assets/viz.js?v=23" defer></script>
-<script src="assets/atlas.js?v=23" defer></script>
-<script src="assets/lab.js?v=23" defer></script>
-<script src="assets/figs.js?v=23" defer></script>
-<script src="assets/figures.js?v=23" defer></script>
-<script src="assets/highlight.js?v=23" defer></script>
-<script src="assets/tutor.js?v=23" defer></script>
+<script src="assets/topics.js?v=26" defer></script>
+<script src="assets/search-index.js?v=26" defer></script>
+<script src="assets/app.js?v=26" defer></script>
+<script src="assets/viz.js?v=26" defer></script>
+<script src="assets/atlas.js?v=26" defer></script>
+<script src="assets/lab.js?v=26" defer></script>
+<script src="assets/figs.js?v=26" defer></script>
+<script src="assets/figures.js?v=26" defer></script>
+<script src="assets/highlight.js?v=26" defer></script>
+<script src="assets/tutor.js?v=26" defer></script>
 </body>
 </html>

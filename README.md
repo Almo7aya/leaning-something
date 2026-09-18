@@ -2,7 +2,8 @@
 
 Unofficial learning material for the [KytyPS5](https://github.com/KytyPS5/KytyPS5)
 PlayStation 5 emulator. The source-specific material was last checked against
-**`main` at `9992ab18` (2026-08-30), project version 0.2.2**.
+**`main` at commit `5b7d334` (18 September 2026)**. The material is pinned to a commit,
+not a release tag; the CMake project version at that commit is 0.3.0.
 
 **Read it online → [almo7aya.dev/leaning-something](https://almo7aya.dev/leaning-something/)**
 
@@ -11,19 +12,28 @@ you source. Use the link above.
 
 ---
 
-## The five documents
+## The platform
+
+`docs/index.html` is the front door. Every subject is one **topic page** carrying its
+explanation, the animation for that idea, an interactive tool and a checkpoint against the
+real source: 19 numbered topics in six parts (foundations, loading a game, memory, execution,
+graphics, working on it), a C++ appendix (C1–C8 plus a glossary), a set of whole-system
+simulations (one full run, a browser micro-emulator, a system explorer, the machine running),
+the Playground, and **[The tree at HEAD](https://almo7aya.dev/leaning-something/upstream-changes.html)**,
+a themed reading of `main` at `5b7d334` mapped onto the topics that own each piece.
+
+The five original long-form documents are still served while their content is ported into
+topics, and were updated to the same commit:
 
 | | Audience | Length |
 |---|---|---|
-| **[The Lab](https://almo7aya.dev/leaning-something/kytyps5-lab.html)** | Learn by experimenting — you drive it | 11 tools, open-ended |
-| **[The Visual Atlas](https://almo7aya.dev/leaning-something/kytyps5-atlas.html)** | Learn by watching — animation-led | 19 animations, ~40 minutes |
-| **[The Complete Book](https://almo7aya.dev/leaning-something/kytyps5-book.html)** | New to emulation — assumes nothing | 39 chapters, ~3–4 hours |
-| **[Architecture Guide](https://almo7aya.dev/leaning-something/kytyps5-guide.html)** | Already comfortable with systems programming | 15 sections, ~45 minutes |
-| **[Learning Path](https://almo7aya.dev/leaning-something/kytyps5-learning-path.html)** | Want to learn by doing | 7 levels, ~3 weeks part-time |
+| **[The Lab](https://almo7aya.dev/leaning-something/lab.html)** | Learn by experimenting — you drive it | 11 tools, open-ended |
+| **[The Visual Atlas](https://almo7aya.dev/leaning-something/atlas.html)** | Learn by watching — animation-led | 19 animations, ~40 minutes |
+| **[The Complete Book](https://almo7aya.dev/leaning-something/course.html)** | New to emulation — assumes nothing | 39 chapters, ~3–4 hours |
+| **[Architecture Guide](https://almo7aya.dev/leaning-something/tour.html)** | Already comfortable with systems programming | 15 sections, ~45 minutes |
+| **[Learning Path](https://almo7aya.dev/leaning-something/path.html)** | Want to learn by doing | 7 levels, ~3 weeks part-time |
 
-They overlap on purpose. The lab is the one to reach for if you want to poke at
-something until it makes sense; the atlas is the fastest way in if you prefer
-watching; the book is written to stand alone, so you never need to switch mid-topic.
+The old `kytyps5-*.html` file names redirect to these.
 
 ### The Lab
 
@@ -42,11 +52,7 @@ a real answer, and every one can be made to fail in the way the emulator would f
 | **isa2spirv** | Pick an instruction and toggle its modifiers; see bits, decoded struct, IR and emitted SPIR-V side by side |
 | **pm4build** | Append packets and run the buffer; draw without a render target and read the error you get |
 | **timeline** | Submit work against a monotonic GPU timeline, then watch completed ticks release retained resources |
-| **pipekey** | Toggle pipeline state and watch the packed key, the hash, and the cache multiply |
-
-Verified by an automated suite that drives every tool in headless Chrome and asserts on
-the computed results — 44 checks, including the arithmetic (a texel at (3,2) in a
-256-wide RGBA8 texture really is at byte 2060 linear and 2068 tiled).
+| **pipekey** | Toggle pipeline state and watch the packed key, the hash, and the cache multiply — now with the fields that are actually in the key |
 
 ### The Visual Atlas
 
@@ -54,20 +60,10 @@ Animation-led rather than prose-led. Nineteen explainers grouped into six parts 
 memory, startup, threads, GPU, presentation — each auto-playing while on screen and
 steppable by hand. The explanation lives in the caption, which changes with every step.
 
-Twelve of the nineteen are specific to this document and go deeper than the shared set:
-interpreter cost vs native execution, the calling-convention mismatch with a wrong-ABI
-demonstration, the `fs:[0]` byte-level rewrite, the exception handler's four branches,
-address bands filling with real allocations, 16 KB pages over 4 KB pages, ELF segments
-being mapped and patched and protected, NIDs resolving into GOT slots, a PM4 stream
-being consumed while the register file fills, 57 queues with one blocked submission,
-the pointer chase from user data to a bound Vulkan image, and the flip model.
-
 ### The Complete Book
 
-Part I teaches the background before any emulator code appears: what an emulator is,
-the PS5 as hardware, x86-64 calling conventions, virtual memory, ELF and dynamic
-linking, how a GPU actually draws, and Vulkan/SPIR-V. Parts II–VII then walk every
-layer of the emulator with real source excerpts (~120 code blocks).
+Part I teaches the background before any emulator code appears; Parts II–VII walk every
+layer of the emulator with real source excerpts.
 
 | Part | Chapters | Covers |
 |---|---|---|
@@ -79,66 +75,12 @@ layer of the emulator with real source excerpts (~120 code blocks).
 | VI · The rest | 34–36 | Audio/input/video, debugging, tests |
 | VII · Reference | 37–39 | Reading order, glossary, further reading |
 
-**Interactive pieces**
+### Architecture Guide and Learning Path
 
-- **PM4 packet decoder** — type a header dword, see the fields extracted
-- **GPU descriptor decoder** — decode V# / T# / S# resource descriptors field by field
-- **Calling convention comparison** — System V vs Microsoft x64, side by side
-- **ELF → memory diagram**, **boot stepper**, **shader pipeline stepper**,
-  **address-space map**, filterable nav and glossary
-
-## Animated explainers
-
-Nineteen animations in total: seven shared ones in `docs/assets/viz.js` used across all
-four documents, plus twelve deeper ones in `docs/assets/atlas.js` used by the atlas.
-Each is placed wherever the concept comes up. Each auto-plays while on screen, pauses when scrolled
-away, and can be stepped manually. All respect `prefers-reduced-motion`.
-
-| Animation | Explains | Appears in |
-|---|---|---|
-| **pipeline** | Game code → AGC builders → PM4 buffer → command processor → registers → draw → screen. Eight numbered stages with a token travelling the path. | book ch 3, guide §01, path L4 |
-| **gotplt** | How a console call reaches emulator code: the PLT jumps through a GOT slot, and the loader rewrites just that one pointer. The core HLE trick. | book ch 15, guide §04, path L2 |
-| **coherency** | Page faults as a notification channel — CPU writes, pages go dirty, upload, write-protect, fault, re-upload. | book ch 32, guide §05, path L6 |
-| **wave** | An `if` executing across 64 shader lanes, with the EXEC mask doing the branching. The clearest way to see why GPU control flow leaves no structure to recover. | book ch 7, guide §09, path L5 |
-| **tiling** | Memory order walking an 8×8 patch in linear vs tiled layout, showing why a 2×2 neighbourhood lands in one cache line. | book ch 29, guide §08 |
-| **threads** | Which of the three threads runs what, over the life of the process. | book ch 12, guide §03, path L1 |
-| **shaderflow** | The five forms shader code passes through: machine words → instructions → CFG → IR → SPIR-V. | book ch 30, guide §09, path L5 |
-
-The twelve atlas-only animations are listed, with what each explains, in the atlas's own
-[closing index](https://almo7aya.dev/leaning-something/kytyps5-atlas.html#index).
-
-Verified by rendering every widget in headless Chrome in both light and dark themes
-and stepping through all of its stages.
-
-**Further reading** is linked in context (15 boxes) and collected in chapter 39 —
-AMD's RDNA 2 ISA guide, the SPIR-V spec, Fabian Giesen's graphics pipeline series,
-Eli Bendersky on GOT/PLT, the fail0verflow PS4 talk, and others.
-
-### Architecture Guide
-
-A condensed tour: what the emulator does, a map of the codebase, boot, loader,
-memory, kernel layer, HLE libraries, the three graphics layers, presentation,
-build and tooling, a short learning path, and a glossary.
-
-### Learning Path
-
-Seven levels with 32 tickable tasks against the real repository. Progress is saved
-in your browser's local storage.
-
-| Level | Focus | Ends with |
-|---|---|---|
-| 0 | Build and a log you can grep | You can re-run and observe |
-| 1 | `main.cpp` → `emulator.cpp` | Add a config flag end to end |
-| 2 | One HLE function | **Implement a missing system call** |
-| 3 | The loader | Diagnose "game won't boot" |
-| 4 | One draw, packet → `vkCmdDraw` | Debug a wrong or missing draw |
-| 5 | One shader compiled | Debug a wrong-pixels bug |
-| 6 | CPU/GPU coherency | Work on texture corruption |
-
-Each level has an ordered reading list with file references, concrete exercises, and
-self-check questions with revealable answers. Three appendices: a symptom → flag →
-file **debugging playbook**, a **command cheat sheet**, and the codebase's **reading
-conventions**.
+The guide is a condensed tour: what the emulator does, a map of the codebase, boot, loader,
+memory, kernel layer, HLE libraries, the three graphics layers, presentation, build and
+tooling, a short learning path, and a glossary. The path is seven levels with 32 tickable
+tasks against the real repository; progress is saved in your browser's local storage.
 
 ---
 
@@ -146,23 +88,24 @@ conventions**.
 
 ```
 docs/                          served by GitHub Pages
-├─ index.html                  landing page
-├─ kytyps5-lab.html            the lab (11 interactive tools)
-├─ kytyps5-atlas.html          the visual atlas (19 animations)
-├─ kytyps5-book.html           the book
-├─ kytyps5-guide.html          the guide
-├─ kytyps5-learning-path.html  the workbook
+├─ index.html                  landing page and progress
+├─ t-*.html                    the topic pages (20 topics + C1–C8 + glossary)
+├─ upstream-changes.html       themed reading of KytyPS5 main at 5b7d334
+├─ lifetime / machine / system-explorer / browser-emulator .html   whole-system simulations
+├─ playground.html             decode your own command buffers, modules and logs
+├─ lab / atlas / course / tour / path / examples .html            the long-form documents
+├─ kytyps5-*.html              redirects from the old file names
 └─ assets/
-   ├─ viz.css / viz.js         the seven shared animations
-   ├─ atlas.css / atlas.js     twelve deeper animations for the atlas
-   ├─ lab.css / lab.js         eleven input-driven tools for the lab
-   └─ shot-*.jpg               emulator screenshots (lazy-loaded)
+   ├─ app.js, topics.js, search-index.js, tutor.js   the shell, the topic list, search, the tutor
+   ├─ viz.js / atlas.js / figs.js / figures.js       the animations
+   ├─ lab.js                                          the eleven input-driven tools
+   ├─ playground.js, system-explorer.js, browser-emulator.js, lifetime.js, machine.js
+   └─ shot-*.jpg                                      emulator screenshots (lazy-loaded)
+KytyPS5/                       a plain clone of the emulator (not tracked here) used to check the material
 ```
 
-No build step, no dependencies, no tracking. Each document carries its own inline CSS
-and page JavaScript; the shared pieces are the two `viz.*` files and the screenshots.
-The animations consume the host page's design tokens, so they theme themselves — light
-and dark both follow your system preference.
+No build step, no dependencies, no tracking. The animations consume the host page's design
+tokens, so they theme themselves — light and dark both follow your system preference.
 
 To add an animation anywhere, drop in `<figure data-viz="NAME"></figure>` and link
 `assets/viz.css` + `assets/viz.js` (plus the `atlas.*` pair for the deeper set).
@@ -172,21 +115,29 @@ To add an animation anywhere, drop in `<figure data-viz="NAME"></figure>` and li
 
 ## Upstream snapshot
 
-KytyPS5 changes quickly. This revision of the learning material includes the current
-shader pipeline (`frontend/decode` → `frontend/cfg` → `frontend/translate` → typed
-SSA IR passes → `backend/spirv`), Vulkan 1.3, timeline-based command-buffer reuse,
-the descriptor heap and GPU fault manager, current Windows/Linux/macOS build paths,
-etaHEN cheats, launcher configuration, keyboard/mouse DualSense mapping, and the
-expanded focused-test suite.
+Pinned to **`main` at `5b7d334` (18 September 2026)**. CMake project version 0.3.0.
+
+- Shader pipeline: `TranslateProgram()` (once per binary → immutable `ResourcePlan`) and
+  `CompileProgram()` (once per resource specialisation). Materialisation runs in the
+  pipeline cache. Failures `EXIT`; there is no error-string return.
+- Merged ES/GS geometry stages compile as `VK_EXT_mesh_shader` (`ShaderType::Mesh`).
+- `sizeof(PipelineStaticParameters) == 166` — non-dynamic state only.
+- TLS patch: `Jit::Call9` is `48 E8 … 48 89 C0`. POSIX builds use per-thread signal stacks.
+- Crash dump: `--- Guest fault context ---` (guest registers, code around PC, stack). Three
+  handler branches: illegal-instruction emulation, GPU fault, crash.
+- DualSense HIDAPI (light bar, adaptive triggers, touchpad), 12-channel AudioOut2,
+  `systemOverlay`, launcher update checker / theme / `--gpu`.
+- Sixteen test executables (~48,200 lines); ~980 `EXIT_NOT_IMPLEMENTED`, ~500 `EXIT`.
 
 Use `git -C KytyPS5 rev-parse HEAD` when following the exercises against a local
-checkout. If it is newer than `9992ab18`, search by type or function name rather
+checkout. If it is newer than `5b7d334`, search by type or function name rather
 than trusting a line number.
 
 ## Caveats
 
-- **Line references drift.** The checked snapshot is `9992ab18`; treat a reference
-  as "look for this function", not "go to this line".
+- **Line references drift.** The checked commit is `5b7d334`; treat a reference
+  as "look for this function", not "go to this line". Most pages now cite a function
+  or struct name instead of a line.
 - **These are unofficial.** A reading of the source, not maintainer-authored
   documentation. Where a document and the code disagree, the code is right.
 - **Outbound links need a connection.** The documents work offline; the
@@ -201,6 +152,3 @@ memory model and AVPlayer. Screenshots are from the KytyPS5 repository.
 
 Not affiliated with Sony Interactive Entertainment. No games or system software are
 distributed here.
-
-
-

@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>HLE libraries — KytyPS5</title>
 <meta name="description" content="The hand-written stand-ins for the console's system libraries — how one is structured and what is in them.">
-<link rel="stylesheet" href="assets/viz.css?v=23">
-<link rel="stylesheet" href="assets/atlas.css?v=23">
-<link rel="stylesheet" href="assets/lab.css?v=23">
-<link rel="stylesheet" href="assets/tutor.css?v=23">
-<link rel="stylesheet" href="assets/app.css?v=23">
-<link rel="stylesheet" href="assets/highlight.css?v=23">
+<link rel="stylesheet" href="assets/viz.css?v=26">
+<link rel="stylesheet" href="assets/atlas.css?v=26">
+<link rel="stylesheet" href="assets/lab.css?v=26">
+<link rel="stylesheet" href="assets/tutor.css?v=26">
+<link rel="stylesheet" href="assets/app.css?v=26">
+<link rel="stylesheet" href="assets/highlight.css?v=26">
 </head>
 <body>
 
@@ -25,12 +25,12 @@
   <section class="band band-read">
     <div class="band-h"><span class="band-t">Read</span></div>
     <div class="prose">
-<p class="deck">Every file in <code>src/libs/</code> has the same shape. Learn it once and all fifty-eight become readable.</p>
+<p class="deck">Every file in <code>src/libs/</code> has the same shape. Learn it once and all sixty-eight become readable — a standalone file such as <code>libCes.cpp</code> is the same pattern as the inlined <code>ContentExport</code> below.</p>
 
   <h4 id="a-complete-module-start-to-finish">A complete module, start to finish</h4>
   <p>This is <code>ContentExport</code> in full — the smallest real example in the tree:</p>
 
-  <div class="filename">src/libs/libs.cpp:111</div>
+  <div class="filename">src/libs/libs.cpp — namespace LibContentExport</div>
 <pre>namespace LibContentExport {
 
 <b>LIB_VERSION</b>("ContentExport", 1, "ContentExport", 1, 1);
@@ -88,13 +88,13 @@ static int <b>KYTY_SYSV_ABI</b> ContentExportInit2(const ContentExportInitParam2
         <tr><td><code>KYTY_SYSV_ABI</code></td><td>The guest calls this directly, so it needs a System V prologue. Forgetting it produces arguments read from the wrong registers — usually garbage pointers.</td></tr>
         <tr><td><code>PRINT_NAME()</code></td><td>Logs entry with a timestamp and thread ID when the module's thread-local flag is set. Free tracing, already wired up.</td></tr>
         <tr><td>Argument logging</td><td>Almost every function logs its inputs. When reverse-engineering behaviour, the log <em>is</em> the documentation.</td></tr>
-        <tr><td><code>LIB_DEFINE</code> + <code>LIB_FUNC</code></td><td>Registration. Called once from <code>Libs::InitAll</code>, before any guest code runs.</td></tr>
+        <tr><td><code>LIB_DEFINE</code> + <code>LIB_FUNC</code></td><td>Registration. <code>LIB_DEFINE(name)</code> expands to <code>void name(Loader::SymbolDatabase* s)</code>; <code>LIB_FUNC</code> fills a <code>SymbolResolve</code> with the NID, library, module and versions and calls <code>s-&gt;Add</code>. Called once from <code>Libs::InitAll</code>, before any guest code runs.</td></tr>
       </tbody>
     </table>
   </div>
 
   <h4 id="how-print-name-works">How <code>PRINT_NAME</code> works</h4>
-  <div class="filename">src/libs/libs.h:59</div>
+  <div class="filename">src/libs/libs.h:11</div>
 <pre>#define PRINT_NAME_ENABLED g_print_name
 
 #define LIB_NAME(l, m)                                                   \
@@ -130,58 +130,58 @@ static int <b>KYTY_SYSV_ABI</b> ContentExportInit2(const ContentExportInitParam2
       <tbody>
         <tr>
           <td><strong>Graphics driver (AGC)</strong></td>
-          <td><code>agc.cpp</code> 155 KB<br><code>libAgcDriver.cpp</code> 8 KB<br><code>agcRegisterDefaults.inc</code> 218 KB</td>
+          <td><code>agc.cpp</code> 152 KB<br><code>libAgcDriver.cpp</code> 12 KB<br><code>agcRegisterDefaults.inc</code> 216 KB</td>
           <td>Hundreds of command-buffer builder functions, plus a generated table of the register values the real driver writes at context reset. Games only set registers they change, so the defaults must match the hardware exactly or state leaks between draws. Covered in <a href="t-pm4.html">topic 14</a>.</td>
         </tr>
         <tr>
           <td><strong>Kernel surface</strong></td>
-          <td><code>libKernel.cpp</code> 113 KB</td>
+          <td><code>libKernel.cpp</code> 110 KB</td>
           <td>The parts of <code>libkernel</code> that did not earn a file in <code>src/kernel/</code>: time and clocks, process info, dynamic library queries, and a <code>Posix::</code> namespace aliasing the POSIX-named exports onto the same implementations.</td>
         </tr>
         <tr>
           <td><strong>Networking</strong></td>
-          <td><code>libNet.cpp</code> 124 KB<br><code>network.cpp</code> 100 KB</td>
-          <td>Sockets, resolvers, SSL and HTTP shims, plus the NP (PlayStation Network) surface stubbed carefully enough that games run offline rather than hanging on a login that will never succeed.</td>
+          <td><code>libNet.cpp</code> 117 KB<br><code>network.cpp</code> 99 KB</td>
+          <td>Sockets, resolvers, SSL and HTTP shims, plus the NP (PlayStation Network) surface stubbed carefully enough that games run offline rather than hanging on a login that will never succeed. The socket layer increasingly forwards to the host natively — <code>SO_ERROR</code>, <code>TCP_NODELAY</code>, listen/connect/accept and readiness checks all map straight onto the OS socket API with error-code translation.</td>
         </tr>
         <tr>
           <td><strong>Audio output</strong></td>
-          <td><code>audio.cpp</code> 85 KB<br><code>libAudio.cpp</code> 35 KB<br><code>libAudio2.cpp</code> 31 KB</td>
-          <td>Port management, mixing and output on a dedicated thread. The guest submits fixed-size blocks and expects the call to block when buffers are full — that back-pressure is part of how games pace themselves.</td>
+          <td><code>audio.cpp</code> 94 KB<br><code>libAudio.cpp</code> 37 KB<br><code>libAudio2.cpp</code> 32 KB</td>
+          <td>Port management, mixing and output on a dedicated thread. The guest submits fixed-size blocks and expects the call to block when buffers are full — that back-pressure is part of how games pace themselves. AudioOut2 now accepts 12-channel (7.1.4) ports and downmixes them for SDL.</td>
         </tr>
         <tr>
           <td><strong>Audio decode (AJM)</strong></td>
-          <td><code>ajm.cpp</code> 51 KB</td>
-          <td>Models a fixed-function hardware block. The guest submits a <em>batch of jobs</em> describing input/output buffers and codec parameters; Kyty parses that job format and routes each to LibAtrac9 (ATRAC9) or FFmpeg (AAC, MP3).</td>
+          <td><code>ajm.cpp</code> 45 KB<br><code>ajm/decoder.h</code> + one header per codec</td>
+          <td>Models a fixed-function hardware block. The guest submits a <em>batch of jobs</em> describing input/output buffers and codec parameters; Kyty parses that job format and routes each through a small decoder interface (<code>ajm/decoder.h</code>) to LibAtrac9 (ATRAC9) or FFmpeg (AAC, MP3). The same AAC decoder now serves the older Audiodec API.</td>
         </tr>
         <tr>
           <td><strong>Video</strong></td>
-          <td><code>avPlayer.cpp</code> 56 KB<br><code>libVideoDec2.cpp</code> 23 KB<br><code>videoDec2Decoder.cpp</code> 14 KB</td>
+          <td><code>avPlayer.cpp</code> 69 KB<br><code>libVideoDec2.cpp</code> 23 KB<br><code>videoDec2Decoder.cpp</code> 13.5 KB</td>
           <td>Full-motion-video playback and a general video-decode API, both on FFmpeg. The README credits shadPS4 as a reference for the AVPlayer implementation.</td>
         </tr>
         <tr>
           <td><strong>Async memory (AMPR)</strong></td>
-          <td><code>libAmpr.cpp</code> 100 KB</td>
+          <td><code>libAmpr.cpp</code> 93 KB</td>
           <td>The PS5's asynchronous mapping and paging engine. Like the GPU, it consumes a stream of command records rather than function calls, so Kyty parses the record formats and replays them against the memory manager.</td>
         </tr>
         <tr>
           <td><strong>Fonts</strong></td>
-          <td><code>libFont.cpp</code> 75 KB<br><code>libFontFt.cpp</code></td>
+          <td><code>libFont.cpp</code> 74 KB<br><code>libFontFt.cpp</code></td>
           <td>Glyph layout, metrics and rendering. Large because the API surface is large.</td>
         </tr>
         <tr>
           <td><strong>System services</strong></td>
-          <td><code>libSaveData</code> 29 KB<br><code>libSystemService</code> 20 KB<br><code>libUserService</code> 7 KB<br><code>libPlayGo</code> 13 KB<br><code>libDialog</code> 17 KB<br><code>libShare</code> 7 KB</td>
-          <td>Save-data mounting, user profiles, chunk-based install progress (games query how much of themselves has "downloaded"), message and error dialogs, share features.</td>
+          <td><code>libSaveData</code> 28 KB<br><code>libSystemService</code> 19 KB<br><code>libUserService</code> 7 KB<br><code>libPlayGo</code> 12 KB<br><code>libDialog</code> 6 KB + <code>dialog.cpp</code> 19 KB<br><code>libShare</code> 7 KB<br><code>libWebBrowserDialog</code>, <code>libConvertKeycode</code></td>
+          <td>Save-data mounting, user profiles, chunk-based install progress (games query how much of themselves has "downloaded"), message and error dialogs (drawn by the imgui system overlay and kept open until dismissed), share features. The last two are the newest files in the directory — a status stub and one keyboard-type query — and show how small a "library" can be.</td>
         </tr>
         <tr>
           <td><strong>Data formats</strong></td>
-          <td><code>libJson2</code> 27 KB<br><code>libPngDec</code> 12 KB<br><code>libRtc</code> 16 KB</td>
-          <td>JSON parsing, PNG decode via <code>stb</code>, real-time clock conversions.</td>
+          <td><code>libJson2</code> 29 KB<br><code>libPngDec</code> 11 KB<br><code>libRtc</code> 15 KB<br><code>libCes</code> 10 KB</td>
+          <td>JSON parsing, PNG decode via <code>stb</code>, real-time clock conversions, and — the newest file in the directory — <code>Ces</code>, the console's character-encoding service, implementing the Shift-JIS/CP932 ↔ UTF-8 conversions Japanese titles call.</td>
         </tr>
         <tr>
           <td><strong>Input</strong></td>
-          <td><code>libPad.cpp</code> 12 KB<br><code>controller.cpp</code> 13 KB</td>
-          <td>DualSense state, customizable keyboard/mouse mapping, and SDL rumble forwarding.</td>
+          <td><code>libPad.cpp</code> 12 KB<br><code>controller.cpp</code> 22 KB</td>
+          <td>DualSense state, customizable keyboard/mouse mapping, SDL rumble forwarding, and — since SDL's DualSense HIDAPI driver was enabled — the light bar, adaptive triggers and the touchpad (emulated from the mouse). A DualShock 4 takes the same pad path.</td>
         </tr>
         <tr>
           <td><strong>Guest <code>printf</code></strong></td>
@@ -190,7 +190,7 @@ static int <b>KYTY_SYSV_ABI</b> ContentExportInit2(const ContentExportInitParam2
         </tr>
         <tr>
           <td><strong>C runtime</strong></td>
-          <td><code>libC.cpp</code> 25 KB</td>
+          <td><code>libC.cpp</code> 22 KB</td>
           <td>The subset of libc the console exports as a module, including the C++ ABI hooks games call during static initialisation.</td>
         </tr>
       </tbody>
@@ -199,20 +199,22 @@ static int <b>KYTY_SYSV_ABI</b> ContentExportInit2(const ContentExportInitParam2
 
   <h4 id="loading-order">Loading order</h4>
   <p>Everything is registered from one function, before any guest code exists:</p>
-  <div class="filename">src/libs/libs.cpp:73</div>
+  <div class="filename">src/libs/libs.cpp — InitAll()</div>
 <pre>void InitAll(Loader::SymbolDatabase* s) {
-    LIB_LOAD(InitAudio_1);
-    LIB_LOAD(InitAmpr_1);
-    LIB_LOAD(InitAppContent_1);
-    LIB_LOAD(InitCoredump_1);
-    LIB_LOAD(LibContentDelete::InitContentDelete_1);
+    InitAudio_1(s);
+    InitConvertKeycode_1(s);
+    LibAmpr::InitAmpr_1(s);
+    InitAppContent_1(s);
+    Coredump::InitCoredump_1(s);
+    LibContentDelete::InitContentDelete_1(s);
     ...
-    LIB_LOAD(InitGraphicsDriver_1);
-    LIB_LOAD(InitLibKernel_1);
+    InitAgcDriver_1(s);
+    InitLibKernel_1(s);
     ...
-    LIB_LOAD(InitVideoOut_1);
+    LibGen5::InitVideoOut_1(s);
+    InitWebBrowserDialog_1(s);
 }</pre>
-  <p>Order does not matter here — they all write into the same database and no two register the same NID within the same library and version.</p>
+  <p>Order does not matter here — they all write into the same database and no two register the same NID within the same library and version. Each <code>LIB_DEFINE</code> lives in its own namespace.</p>
 
 <h4 id="event-queues-are-kqueue">Event queues are <code>kqueue</code></h4>
   <p>FreeBSD's <code>kqueue</code> is a unified event mechanism, and the PS5 exposes it almost unchanged. A game creates a queue, attaches sources, and blocks:</p>
@@ -259,7 +261,7 @@ struct KernelEvent {
     </table>
   </div>
 
-  <div class="filename">src/emulator.cpp:61</div>
+  <div class="filename">src/emulator.cpp — MountSandboxDirs()</div>
 <pre>static void MountSandboxDirs() {
     std::string title_id;
     if (!Loader::SystemContentParamSfoGetString("TITLE_ID", &amp;title_id) || title_id.empty()) {
@@ -341,16 +343,16 @@ struct KernelEvent {
 
 </main>
 
-<script src="assets/topics.js?v=23" defer></script>
-<script src="assets/search-index.js?v=23" defer></script>
-<script src="assets/app.js?v=23" defer></script>
-<script src="assets/viz.js?v=23" defer></script>
-<script src="assets/atlas.js?v=23" defer></script>
-<script src="assets/lab.js?v=23" defer></script>
-<script src="assets/figs.js?v=23" defer></script>
-<script src="assets/figures.js?v=23" defer></script>
-<script src="assets/highlight.js?v=23" defer></script>
-<script src="assets/tutor.js?v=23" defer></script>
+<script src="assets/topics.js?v=26" defer></script>
+<script src="assets/search-index.js?v=26" defer></script>
+<script src="assets/app.js?v=26" defer></script>
+<script src="assets/viz.js?v=26" defer></script>
+<script src="assets/atlas.js?v=26" defer></script>
+<script src="assets/lab.js?v=26" defer></script>
+<script src="assets/figs.js?v=26" defer></script>
+<script src="assets/figures.js?v=26" defer></script>
+<script src="assets/highlight.js?v=26" defer></script>
+<script src="assets/tutor.js?v=26" defer></script>
 </body>
 </html>
 

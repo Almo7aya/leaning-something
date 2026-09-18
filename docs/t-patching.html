@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Patching guest instructions — KytyPS5</title>
 <meta name="description" content="Some guest instructions cannot run as written on the host. The loader rewrites them before execution.">
-<link rel="stylesheet" href="assets/viz.css?v=23">
-<link rel="stylesheet" href="assets/atlas.css?v=23">
-<link rel="stylesheet" href="assets/lab.css?v=23">
-<link rel="stylesheet" href="assets/tutor.css?v=23">
-<link rel="stylesheet" href="assets/app.css?v=23">
-<link rel="stylesheet" href="assets/highlight.css?v=23">
+<link rel="stylesheet" href="assets/viz.css?v=26">
+<link rel="stylesheet" href="assets/atlas.css?v=26">
+<link rel="stylesheet" href="assets/lab.css?v=26">
+<link rel="stylesheet" href="assets/tutor.css?v=26">
+<link rel="stylesheet" href="assets/app.css?v=26">
+<link rel="stylesheet" href="assets/highlight.css?v=26">
 </head>
 <body>
 
@@ -35,8 +35,9 @@
 
   <p>The fix replaces those exact nine bytes with a call to a generated stub, then moves the result into whatever register the original targeted:</p>
 
-  <div class="filename">src/loader/runtimeLinker.cpp:1337</div>
-<pre>const uint8_t tls_pattern[5] = {0x64, 0x48, 0x8B, 0x00, 0x25};
+  <div class="filename">src/loader/runtimeLinker.cpp — PatchProgram()</div>
+<pre>const uint8_t tls_pattern[5]       = {0x64, 0x48, 0x8B, 0x00, 0x25};
+const uint8_t zero_displacement[4] = {};
 
 for (auto* ptr = start_ptr; ptr &lt;= end_ptr; ptr++) {
     auto*  inst_ptr     = ptr;
@@ -49,35 +50,41 @@ for (auto* ptr = start_ptr; ptr &lt;= end_ptr; ptr++) {
     const uint8_t modrm = inst_ptr[3];
     if (memcmp(inst_ptr, tls_pattern, 3) == 0 &amp;&amp; (modrm &amp; 0xc7u) == 0x04u &amp;&amp;
         inst_ptr[4] == tls_pattern[4] &amp;&amp;
-        *reinterpret_cast&lt;const uint32_t*&gt;(inst_ptr + 5) == 0) {
+        memcmp(inst_ptr + 5, zero_displacement, sizeof(zero_displacement)) == 0) {
 
         const auto reg = (modrm &gt;&gt; 3u) &amp; 7u;      <i>// which register was the destination</i>
         EXIT_NOT_IMPLEMENTED(reg == 4u);          <i>// rsp would be nonsense</i>
 
-        auto* code = new (ptr) <b>Jit::Call9</b>;
+        <i>// the stub is written at inst_ptr, AFTER any 0x66 prefixes — they are left in place</i>
+        auto* code = new (inst_ptr) <b>Jit::Call9</b>;
         code-&gt;SetFunc(reg == 0 ? program-&gt;tls.handler_vaddr
                                : program-&gt;tls.handler_vaddr + Jit::TlsRegStub::GetOffset(reg));
-        ...
+        ptr += prefix_count + Jit::Call9::GetSize() - 1;
     }
 }</pre>
 
   <p><code>Jit::Call9</code> is exactly nine bytes, so the replacement is size-neutral and no addresses shift:</p>
 
-  <div class="filename">src/loader/jit.h:68</div>
+  <div class="filename">src/loader/jit.h — struct Call9</div>
 <pre>struct Call9 {
-    void SetFunc(Handler func) { <i>// compute a rip-relative displacement</i> }
+    void SetFunc(Handler func) { <i>// rel32 written at code[2], relative to &amp;code[6]</i> }
+    void SetOutputReg(uint8_t reg) { code[8] = 0xc0u | (reg &amp; 7u); }
     static uint64_t GetSize() { return 9; }
 
-    <i>// call func      E8 xx xx xx xx</i>
-    <i>// mov  rax,rax   48 89 C0</i>
-    <i>// nop            90</i>
-    uint8_t code[9] = {0xE8, 0, 0, 0, 0, 0x48, 0x89, 0xC0, 0x90};
+    <i>// rex.w call func   48 E8 xx xx xx xx</i>
+    <i>// mov  rax,rax      48 89 C0</i>
+    uint8_t code[9] = {0x48, 0xE8, 0, 0, 0, 0, 0x48, 0x89, 0xC0};
 };</pre>
 
   <p>The <code>mov rax,rax</code> byte is rewritten by <code>SetOutputReg</code> so the value lands in the register the original instruction wanted. For registers other than <code>rax</code> the stub jumps to a per-register variant at a fixed offset (<code>TlsRegStub::GetOffset(reg)</code>), each of which does <code>call handler; mov &lt;reg&gt;, rax</code>.</p>
 
+  <div class="callout h">
+    <span class="lbl">Why the call now starts with a REX.W byte</span>
+    <p>Older Kyty wrote <code>E8 … 90</code>: a plain five-byte <code>call</code> padded with a <code>nop</code>. The current stub is <code>48 E8 …</code> — a <code>REX.W</code> prefix, then the <code>call</code>, and no <code>nop</code>. The reason is cross-vendor: the compiler's <code>0x66</code> padding prefixes are no longer overwritten, and AMD processors honour a retained <code>0x66</code> operand-size prefix on a near <code>call</code>, which would turn it into a 16-bit <code>callw</code>. A leading <code>REX.W</code> neutralises the prefix on every x86-64 CPU, so the same patched bytes now behave identically on Intel and AMD.</p>
+  </div>
+
   <h4 id="what-the-handler-does">What the handler does</h4>
-  <div class="filename">src/loader/runtimeLinker.cpp:1296</div>
+  <div class="filename">src/loader/runtimeLinker.cpp — TlsMainGetAddr()</div>
 <pre>static KYTY_MS_ABI uint8_t* TlsMainGetAddr() {
     if (g_tls_cached_main_program == g_tls_main_program &amp;&amp; g_tls_cached_main_tcb != nullptr) {
         return g_tls_cached_main_tcb;                       <i>// fast path</i>
@@ -98,7 +105,7 @@ for (auto* ptr = start_ptr; ptr &lt;= end_ptr; ptr++) {
   <h4 id="problem-2-the-stack-canary">Problem 2 — the stack canary</h4>
   <p>Compiler stack-protector code stores a guard value through <code>fs:[0x28]</code>. With <code>fs</code> wrong, that becomes a write to address <code>0x28</code> and faults immediately:</p>
 
-  <div class="filename">src/loader/runtimeLinker.cpp:1313</div>
+  <div class="filename">src/loader/runtimeLinker.cpp — the fs:[0x28] pass</div>
 <pre>const uint8_t fs_store_pattern[8] = {0x64, 0xc7, 0x04, 0x25, 0x28, 0x00, 0x00, 0x00};
 
 for (auto* ptr = start_ptr; ptr &lt;= end_ptr; ptr++) {
@@ -120,7 +127,7 @@ for (auto* ptr = start_ptr; ptr &lt;= end_ptr; ptr++) {
   <p>Removing the canary weakens a security feature that is meaningless here — the guest is already running unsandboxed in the emulator's own process — so nothing is lost.</p>
 
   <h4 id="how-to-see-this-yourself">How to see this yourself</h4>
-  <p>Run any title and grep the log for <code>Patch tls at addr</code>. Take one of those addresses into a debugger and look at the nine bytes: you will find <code>E8 …</code> where the ELF file on disk has <code>64 48 8B 04 25 00 00 00 00</code>. Seeing that once makes the whole mechanism concrete in a way no description does.</p>
+  <p>Run any title and grep the log for <code>Patch tls at addr</code>. Take one of those addresses into a debugger and look at the nine bytes: you will find <code>48 E8 …</code> where the ELF file on disk has <code>64 48 8B 04 25 00 00 00 00</code>. Seeing that once makes the whole mechanism concrete in a way no description does.</p>
     </div>
   </section>
 
@@ -170,16 +177,16 @@ for (auto* ptr = start_ptr; ptr &lt;= end_ptr; ptr++) {
 
 </main>
 
-<script src="assets/topics.js?v=23" defer></script>
-<script src="assets/search-index.js?v=23" defer></script>
-<script src="assets/app.js?v=23" defer></script>
-<script src="assets/viz.js?v=23" defer></script>
-<script src="assets/atlas.js?v=23" defer></script>
-<script src="assets/lab.js?v=23" defer></script>
-<script src="assets/figs.js?v=23" defer></script>
-<script src="assets/figures.js?v=23" defer></script>
-<script src="assets/highlight.js?v=23" defer></script>
-<script src="assets/tutor.js?v=23" defer></script>
+<script src="assets/topics.js?v=26" defer></script>
+<script src="assets/search-index.js?v=26" defer></script>
+<script src="assets/app.js?v=26" defer></script>
+<script src="assets/viz.js?v=26" defer></script>
+<script src="assets/atlas.js?v=26" defer></script>
+<script src="assets/lab.js?v=26" defer></script>
+<script src="assets/figs.js?v=26" defer></script>
+<script src="assets/figures.js?v=26" defer></script>
+<script src="assets/highlight.js?v=26" defer></script>
+<script src="assets/tutor.js?v=26" defer></script>
 </body>
 </html>
 

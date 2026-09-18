@@ -1626,18 +1626,33 @@
 
   function renderHexdump() {
     var host = $("be-hexdump");
+    if (!host) return;
     if (!emu.memory || !emu.booted) { host.textContent = "data segment unavailable"; return; }
-    var lines = ["address     +0        +4        +8        +c       interpretation"];
-    for (var row = 0; row < 8; row++) {
-      var index = row * 2;
-      var addr = ADDR.entityX + index * 4;
-      var words = [
-        emu.read(ADDR.entityX + index * 4), emu.read(ADDR.entityY + index * 4),
-        emu.read(ADDR.entityVX + index * 4), emu.read(ADDR.entityVY + index * 4)
+    try {
+      var lines = [
+        "address     x          y          vx         vy         type act",
+        "player      " + hex(emu.read(ADDR.playerX)) + "  " + hex(emu.read(ADDR.playerY)) +
+          "  score=" + emu.read(ADDR.score) + "  health=" + emu.read(ADDR.health) +
+          "  tick=" + emu.read(ADDR.tick)
       ];
-      lines.push("0x" + hex(addr) + "  " + words.map(function (w) { return hex(w); }).join("  ") + "  entity[" + index + "] x/y/vx/vy");
+      var count = emu.read(ADDR.entityCount) || ENTITY_COUNT;
+      for (var index = 0; index < count; index++) {
+        var kind = emu.read(ADDR.entityType + index * 4);
+        var active = emu.read(ADDR.entityActive + index * 4);
+        lines.push(
+          "0x" + hex(ADDR.entityX + index * 4) + "  " +
+          hex(emu.read(ADDR.entityX + index * 4)) + "  " +
+          hex(emu.read(ADDR.entityY + index * 4)) + "  " +
+          hex(emu.read(ADDR.entityVX + index * 4)) + "  " +
+          hex(emu.read(ADDR.entityVY + index * 4)) + "  " +
+          (kind ? "sentry" : "signal") + "  " + (active ? "1" : "0") +
+          "  entity[" + index + "]"
+        );
+      }
+      host.textContent = lines.join("\n");
+    } catch (err) {
+      host.textContent = "could not read data segment: " + err.message;
     }
-    host.textContent = lines.join("\n");
   }
 
   function renderMemoryStats() {
@@ -1794,6 +1809,7 @@
     renderCpuStats();
     renderMemoryMap();
     renderPages();
+    renderHexdump();
     renderMemoryStats();
     renderExecutable();
     renderImports();

@@ -95,7 +95,7 @@
 
     { p: "Link", t: "Rewrite what cannot run", to: ["t-patching.html", "08 · Patching guest instructions"],
       stage: "patch", focus: "stage",
-      say: "Some instructions cannot execute as written. Guest code reads TLS through <code>fs:[0]</code>, which means something else on the host — so the loader edits those instructions in place, keeping them exactly the same length so nothing after them shifts." },
+      say: "Some instructions cannot execute as written. Guest code reads TLS through <code>fs:[0]</code>, which means something else on the host — so the loader rewrites those nine bytes in place to <code>48 E8 … 48 89 C0</code> (<code>Jit::Call9</code>), keeping them exactly the same length so nothing after them shifts." },
 
     { p: "Run", t: "Jump to the entry point", to: ["t-calling-conventions.html", "03 · Calling conventions & the ABI wall"],
       stage: "abi", focus: "stage",

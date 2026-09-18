@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Why there's no CPU emulator — KytyPS5</title>
 <meta name="description" content="Guest PS5 code runs natively on your CPU. There is no interpreter and no JIT. What that buys, and what it costs.">
-<link rel="stylesheet" href="assets/viz.css?v=23">
-<link rel="stylesheet" href="assets/atlas.css?v=23">
-<link rel="stylesheet" href="assets/lab.css?v=23">
-<link rel="stylesheet" href="assets/tutor.css?v=23">
-<link rel="stylesheet" href="assets/app.css?v=23">
-<link rel="stylesheet" href="assets/highlight.css?v=23">
+<link rel="stylesheet" href="assets/viz.css?v=26">
+<link rel="stylesheet" href="assets/atlas.css?v=26">
+<link rel="stylesheet" href="assets/lab.css?v=26">
+<link rel="stylesheet" href="assets/tutor.css?v=26">
+<link rel="stylesheet" href="assets/app.css?v=26">
+<link rel="stylesheet" href="assets/highlight.css?v=26">
 </head>
 <body>
 
@@ -53,7 +53,7 @@
         <tr><td><span class="chip host">good</span> Full CPU speed</td><td>No translation overhead. CPU-bound games can in principle exceed console performance on a fast PC.</td></tr>
         <tr><td><span class="chip host">good</span> Vastly less code</td><td>A competent x86-64 JIT is tens of thousands of lines on its own. Kyty spends that budget on graphics instead.</td></tr>
         <tr><td><span class="chip guest">hard</span> No instruction-level control</td><td>You cannot trap on a memory access by instrumenting code, because there is no code generation step. Kyty uses hardware page protection and the CPU's own fault mechanism instead — this is why the exception handler is load-bearing.</td></tr>
-        <tr><td><span class="chip guest">hard</span> Crashes are real crashes</td><td>A guest bug corrupts the emulator's own process. There is no sandbox. Hence the elaborate crash dump: faulting module, code bytes, all registers, stack walk.</td></tr>
+        <tr><td><span class="chip guest">hard</span> Crashes are real crashes</td><td>A guest bug corrupts the emulator's own process. There is no sandbox. Hence the forensic crash dump: the faulting guest thread, all registers, the code bytes around the fault, the top of the stack.</td></tr>
         <tr><td><span class="chip guest">hard</span> Host CPU features must match</td><td>If the guest uses an instruction your CPU lacks, it faults. Kyty catches that and emulates the instruction in software — see <a href="t-coherency.html">topic 10</a>.</td></tr>
         <tr><td><span class="chip guest">hard</span> ABI and OS assumptions leak</td><td>Guest code assumes System V registers, a working <code>fs</code> segment, 16 KB pages, and a FreeBSD kernel. None of that is true on Windows. <a href="t-calling-conventions.html">topic 03</a>, <a href="t-patching.html">topic 08</a> and <a href="t-address-space.html">topic 09</a> are about closing those gaps.</td></tr>
       </tbody>
@@ -155,17 +155,16 @@
 
 </main>
 
-<script src="assets/topics.js?v=23" defer></script>
-<script src="assets/search-index.js?v=23" defer></script>
-<script src="assets/highlight.js?v=23" defer></script>
-<script src="assets/app.js?v=23" defer></script>
-<script src="assets/viz.js?v=23" defer></script>
-<script src="assets/atlas.js?v=23" defer></script>
-<script src="assets/lab.js?v=23" defer></script>
-<script src="assets/figs.js?v=23" defer></script>
-<script src="assets/figures.js?v=23" defer></script>
-<script src="assets/highlight.js?v=23" defer></script>
-<script src="assets/tutor.js?v=23" defer></script>
+<script src="assets/topics.js?v=26" defer></script>
+<script src="assets/search-index.js?v=26" defer></script>
+<script src="assets/highlight.js?v=26" defer></script>
+<script src="assets/app.js?v=26" defer></script>
+<script src="assets/viz.js?v=26" defer></script>
+<script src="assets/atlas.js?v=26" defer></script>
+<script src="assets/lab.js?v=26" defer></script>
+<script src="assets/figs.js?v=26" defer></script>
+<script src="assets/figures.js?v=26" defer></script>
+<script src="assets/tutor.js?v=26" defer></script>
 </body>
 </html>
 

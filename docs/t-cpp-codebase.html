@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>The codebase map &amp; the toolbox — KytyPS5</title>
 <meta name="description" content="Which file does what, the entry points and boot sequence, and the third-party toolbox behind it all — one page to keep open while you read.">
-<link rel="stylesheet" href="assets/viz.css?v=23">
-<link rel="stylesheet" href="assets/atlas.css?v=23">
-<link rel="stylesheet" href="assets/lab.css?v=23">
-<link rel="stylesheet" href="assets/tutor.css?v=23">
-<link rel="stylesheet" href="assets/app.css?v=23">
-<link rel="stylesheet" href="assets/highlight.css?v=23">
+<link rel="stylesheet" href="assets/viz.css?v=26">
+<link rel="stylesheet" href="assets/atlas.css?v=26">
+<link rel="stylesheet" href="assets/lab.css?v=26">
+<link rel="stylesheet" href="assets/tutor.css?v=26">
+<link rel="stylesheet" href="assets/app.css?v=26">
+<link rel="stylesheet" href="assets/highlight.css?v=26">
 </head>
 <body>
 
@@ -37,10 +37,10 @@ src/loader/                   <i>ELF/SELF loading, the runtime linker, NIDs, JIT
                               <i>the red-zone patcher, guest instruction emulation</i>
 src/kernel/                   <i>the guest OS surface: memory, address space, threads,</i>
                               <i>event queues, semaphores, filesystem</i>
-src/libs/                     <i>the HLE libraries (58 files) — topic C5's translation table</i>
+src/libs/                     <i>the HLE libraries (70 files) — topic C5's translation table</i>
 src/graphics/                 <i>the GPU half: guest formats, Vulkan host, shader recompiler</i>
-src/launcher/                 <i>the Qt launcher that finds games and runs the emulator</i>
-tests/                        <i>focused gtest executables — topic C3</i></pre>
+src/launcher/                 <i>the Qt launcher that finds games, runs the emulator, checks for updates</i>
+tests/                        <i>16 focused test executables — topic C3</i></pre>
 
   <p>Within the graphics half, three directories mirror the three roles of a real GPU driver:</p>
 
@@ -49,9 +49,9 @@ tests/                        <i>focused gtest executables — topic C3</i></pre
       <thead><tr><th>Directory</th><th>Role</th><th>Key files</th></tr></thead>
       <tbody>
         <tr><td><code>graphics/guest_gpu/</code></td><td>how the <em>guest</em> sees the GPU — formats, the PM4 command processor, registers</td><td><code>command_processor/</code>, <code>gpu_defs.h</code>, <code>graphicsRun.cpp</code> (the GPU thread, topic C4)</td></tr>
-        <tr><td><code>graphics/host_gpu/</code></td><td>the <em>host</em> Vulkan renderer — context, pipeline cache, image/buffer caches, memory tracking</td><td><code>renderer/context.cpp</code>, <code>renderer/cache/</code>, <code>vulkanCommon.h</code>, <code>pageManager.cpp</code></td></tr>
-        <tr><td><code>graphics/shader/</code></td><td>RDNA2 → typed IR → SPIR-V</td><td><code>recompiler/frontend/{decode,cfg,translate}/</code>, <code>recompiler/ir/</code>, <code>recompiler/backend/spirv/</code>, and <code>ShaderRecompiler.cpp</code> (the compile pipeline)</td></tr>
-        <tr><td><code>graphics/presentation/</code></td><td>the window and swapchain — the actual frames on screen</td><td><code>presentation/window/</code></td></tr>
+        <tr><td><code>graphics/host_gpu/</code></td><td>the <em>host</em> Vulkan renderer — context, pipeline cache, image/buffer caches, memory tracking</td><td><code>renderer/context.cpp</code>, <code>renderer/cache/</code>, <code>renderer/pipeline/</code>, <code>vulkanCommon.h</code>, <code>pageManager.cpp</code></td></tr>
+        <tr><td><code>graphics/shader/</code></td><td>RDNA2 → typed IR → SPIR-V</td><td><code>recompiler/frontend/{decode,cfg,translate}/</code>, <code>recompiler/ir/</code>, <code>recompiler/backend/spirv/</code>, and <code>ShaderRecompiler.cpp</code> (<code>TranslateProgram</code> + <code>CompileProgram</code>)</td></tr>
+        <tr><td><code>graphics/presentation/</code></td><td>the window, swapchain and the imgui system overlay — the actual frames on screen</td><td><code>presentation/window/</code>, <code>videoOut.cpp</code>, <code>systemOverlay.cpp</code></td></tr>
       </tbody>
     </table>
   </div>
@@ -66,7 +66,7 @@ tests/                        <i>focused gtest executables — topic C3</i></pre
      └─ Init(...)                   <i>the subsystem sequence from topic C5</i>
      └─ MountSandboxDirs()          <i>/app0, /temp0, ... — topic C5</i>
      └─ LoadElf(eboot.bin)          <i>runtimeLinker: parse SELF/ELF, dynamic tags</i>
-     └─ Execute(...)                <i>emulator.cpp:152 — spawns the guest thread</i>
+     └─ Execute(...)                <i>emulator.cpp — spawns the guest thread</i>
         └─ RuntimeLinker::Execute() <i>preload, resolve relocations, apply patches,</i>
                                     <i>run initialisers, call the entry point (topic C2's asm)</i>
      └─ Graphics::WindowRun()       <i>main thread parks here forever</i></pre>
@@ -83,17 +83,18 @@ tests/                        <i>focused gtest executables — topic C3</i></pre
         <tr><td><code>SDL2</code></td><td>window, input, audio host layer</td><td><code>WindowRun</code>, <code>controller.cpp</code>, the audio backend</td></tr>
         <tr><td><code>FFmpeg</code></td><td>audio &amp; video decode</td><td><code>ajm.cpp</code>, <code>avPlayer.cpp</code>, <code>libVideoDec2</code></td></tr>
         <tr><td><code>Vulkan-Headers</code> + <code>SPIRV-Tools</code></td><td>the Vulkan API and SPIR-V validation/optimisation</td><td>the whole <code>host_gpu</code> layer; <code>spirv-tools-opt</code> in the link list</td></tr>
-        <tr><td><code>VulkanMemoryAllocator</code> (VMA)</td><td>GPU memory allocation</td><td>image/buffer allocation in <code>host_gpu</code></td></tr>
+        <tr><td><code>VulkanMemoryAllocator</code> (VMA)</td><td>GPU memory allocation</td><td>image/buffer allocation in <code>host_gpu</code>; wrapped entirely inside <code>vma.cpp</code></td></tr>
         <tr><td><code>fmt</code></td><td>type-safe printf-style formatting</td><td><code>LOGF</code>, <code>EXIT</code>, every string build — topic C3</td></tr>
         <tr><td><code>spdlog</code></td><td>the logging sinks behind <code>common/logging/</code></td><td>every log line, routed to console or file by <code>--printf-direction</code></td></tr>
-        <tr><td><code>magic_enum</code></td><td>enum → string, string → enum at compile time</td><td><code>Common::EnumName</code> (crash logs!), <code>--shader-optimization-type</code> parsing</td></tr>
+        <tr><td><code>magic_enum</code></td><td>enum → string, string → enum at compile time</td><td><code>magic_enum::enum_name</code> (relocation/crash logs), <code>magic_enum::enum_cast</code> for <code>--shader-optimization-type</code> parsing</td></tr>
         <tr><td><code>xxHash</code></td><td>fast, non-cryptographic hashing</td><td>shader and cache keys</td></tr>
         <tr><td><code>stb</code></td><td>single-header image decode</td><td><code>libPngDec</code></td></tr>
         <tr><td><code>nlohmann_json</code></td><td>JSON parsing</td><td><code>param.json</code>, <code>libJson2</code>, ETAHen/GoldHEN-style cheats</td></tr>
         <tr><td><code>Zydis</code> (fetched)</td><td>x86-64 disassembler</td><td><code>redZonePatcher.cpp</code> decodes guest instructions with it</td></tr>
         <tr><td><code>xbyak</code> (fetched)</td><td>x86-64 assembler</td><td><code>redZonePatcher.cpp</code> generates patch/trampoline code</td></tr>
+        <tr><td><code>Qt 6</code> (system)</td><td>the launcher UI</td><td><code>src/launcher/</code> — game list, per-game settings, input mapping, trophy viewer, compatibility database, update checker, theme</td></tr>
         <tr><td><code>LibAtrac9</code></td><td>the console's ATRAC9 audio codec</td><td>AJM decode jobs</td></tr>
-        <tr><td><code>imgui</code></td><td>immediate-mode UI</td><td>the IME overlay in <code>presentation/</code></td></tr>
+        <tr><td><code>imgui</code></td><td>immediate-mode UI</td><td>the system overlay in <code>presentation/systemOverlay.cpp</code> — the IME keyboard and the error dialogs drawn over the game</td></tr>
         <tr><td><code>tracy</code></td><td>frame profiler</td><td><code>--profiler-direction Network</code> (topic C3)</td></tr>
         <tr><td><code>winpthread</code></td><td>pthread shim on Windows</td><td>linked on <code>clang-cl</code> builds</td></tr>
         <tr><td><code>gtest</code></td><td>the test framework</td><td>the <code>kyty_tests</code> executables (topic C3)</td></tr>
@@ -173,7 +174,7 @@ tests/                        <i>focused gtest executables — topic C3</i></pre
         </li>
         <li class="check-item">
           <input type="checkbox">
-          <label>Find <code>Common::EnumName</code> in a crash log path — where does magic_enum's string output end up?</label>
+          <label>Find a <code>magic_enum::enum_name</code> call in <code>runtimeLinker.cpp</code> — where does its string output end up?</label>
         </li>
         <li class="check-item">
           <input type="checkbox">
@@ -185,15 +186,15 @@ tests/                        <i>focused gtest executables — topic C3</i></pre
 
 </main>
 
-<script src="assets/topics.js?v=23" defer></script>
-<script src="assets/search-index.js?v=23" defer></script>
-<script src="assets/app.js?v=23" defer></script>
-<script src="assets/viz.js?v=23" defer></script>
-<script src="assets/atlas.js?v=23" defer></script>
-<script src="assets/lab.js?v=23" defer></script>
-<script src="assets/figs.js?v=23" defer></script>
-<script src="assets/figures.js?v=23" defer></script>
-<script src="assets/highlight.js?v=23" defer></script>
-<script src="assets/tutor.js?v=23" defer></script>
+<script src="assets/topics.js?v=26" defer></script>
+<script src="assets/search-index.js?v=26" defer></script>
+<script src="assets/app.js?v=26" defer></script>
+<script src="assets/viz.js?v=26" defer></script>
+<script src="assets/atlas.js?v=26" defer></script>
+<script src="assets/lab.js?v=26" defer></script>
+<script src="assets/figs.js?v=26" defer></script>
+<script src="assets/figures.js?v=26" defer></script>
+<script src="assets/highlight.js?v=26" defer></script>
+<script src="assets/tutor.js?v=26" defer></script>
 </body>
 </html>

@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Concurrency &amp; the memory model — KytyPS5</title>
 <meta name="description" content="Four threads, one address space: who runs what, how work is handed off, and the C++ primitives — atomics, locks, condition variables, timeline semaphores — that make it safe.">
-<link rel="stylesheet" href="assets/viz.css?v=23">
-<link rel="stylesheet" href="assets/atlas.css?v=23">
-<link rel="stylesheet" href="assets/lab.css?v=23">
-<link rel="stylesheet" href="assets/tutor.css?v=23">
-<link rel="stylesheet" href="assets/app.css?v=23">
-<link rel="stylesheet" href="assets/highlight.css?v=23">
+<link rel="stylesheet" href="assets/viz.css?v=26">
+<link rel="stylesheet" href="assets/atlas.css?v=26">
+<link rel="stylesheet" href="assets/lab.css?v=26">
+<link rel="stylesheet" href="assets/tutor.css?v=26">
+<link rel="stylesheet" href="assets/app.css?v=26">
+<link rel="stylesheet" href="assets/highlight.css?v=26">
 </head>
 <body>
 
@@ -128,12 +128,12 @@ std::mutex m_mutex;   <i>// every allocation path takes this</i></pre>
     return true;   <i>// the fault was a coherency notification, not a bug</i>
 }</pre>
 
-  <p>This is concurrency working <em>through the memory system</em>: the page protection is the lock, the fault is the signal, and no queue or mutex is involved. It is the single most distinctive thing about this codebase, and it is why <code>reinterpret_cast</code> and page-granular thinking dominate.</p>
+  <p>This is concurrency working <em>through the memory system</em>: the page protection is the lock, the fault is the signal, and no queue or mutex is involved. On Linux and macOS the handler runs on a per-thread 64 KB alternate signal stack (<code>InitializeThreadSignalStack</code>) so the fault can still be delivered when the guest stack page is write-protected. It is the single most distinctive thing about this codebase, and it is why <code>reinterpret_cast</code> and page-granular thinking dominate.</p>
 
   <h4 id="fences-and-timeline-semaphores">The GPU's own clock: fences &amp; timeline semaphores</h4>
   <p>Between the GPU thread and the Vulkan driver, ordering is expressed with semaphores. The renderer submits with <em>wait ticks</em> and <em>signal ticks</em> — a Vulkan <strong>timeline semaphore</strong>, a monotonically increasing counter the GPU advances as work completes:</p>
 
-  <div class="filename">src/graphics/host_gpu/renderer/context.cpp — a submission with ticks</div>
+  <div class="filename">src/graphics/host_gpu/renderer/commandScheduler.cpp — a submission with ticks</div>
 <pre>n_info.waitSemaphoreValueCount   = submit.num_wait_semaphores;
 n_info.pWaitSemaphoreValues      = submit.wait_ticks.data();
 n_info.signalSemaphoreValueCount = submit.num_signal_semaphores;
@@ -232,15 +232,15 @@ n_info.pSignalSemaphoreValues    = submit.signal_ticks.data();</pre>
 
 </main>
 
-<script src="assets/topics.js?v=23" defer></script>
-<script src="assets/search-index.js?v=23" defer></script>
-<script src="assets/app.js?v=23" defer></script>
-<script src="assets/viz.js?v=23" defer></script>
-<script src="assets/atlas.js?v=23" defer></script>
-<script src="assets/lab.js?v=23" defer></script>
-<script src="assets/figs.js?v=23" defer></script>
-<script src="assets/figures.js?v=23" defer></script>
-<script src="assets/highlight.js?v=23" defer></script>
-<script src="assets/tutor.js?v=23" defer></script>
+<script src="assets/topics.js?v=26" defer></script>
+<script src="assets/search-index.js?v=26" defer></script>
+<script src="assets/app.js?v=26" defer></script>
+<script src="assets/viz.js?v=26" defer></script>
+<script src="assets/atlas.js?v=26" defer></script>
+<script src="assets/lab.js?v=26" defer></script>
+<script src="assets/figs.js?v=26" defer></script>
+<script src="assets/figures.js?v=26" defer></script>
+<script src="assets/highlight.js?v=26" defer></script>
+<script src="assets/tutor.js?v=26" defer></script>
 </body>
 </html>

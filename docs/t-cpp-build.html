@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Building, linking &amp; debugging — KytyPS5</title>
 <meta name="description" content="The toolchain, the compile-and-link pipeline, the EXIT macros, and how to read the crash log this project writes.">
-<link rel="stylesheet" href="assets/viz.css?v=23">
-<link rel="stylesheet" href="assets/atlas.css?v=23">
-<link rel="stylesheet" href="assets/lab.css?v=23">
-<link rel="stylesheet" href="assets/tutor.css?v=23">
-<link rel="stylesheet" href="assets/app.css?v=23">
-<link rel="stylesheet" href="assets/highlight.css?v=23">
+<link rel="stylesheet" href="assets/viz.css?v=26">
+<link rel="stylesheet" href="assets/atlas.css?v=26">
+<link rel="stylesheet" href="assets/lab.css?v=26">
+<link rel="stylesheet" href="assets/tutor.css?v=26">
+<link rel="stylesheet" href="assets/app.css?v=26">
+<link rel="stylesheet" href="assets/highlight.css?v=26">
 </head>
 <body>
 
@@ -66,7 +66,7 @@ cmake -S . -B _Build/windows -G Ninja ^
 cmake --build _Build/windows --target launcher
 cmake --install _Build/windows --prefix _Build/windows/install</pre>
 
-  <p><strong>Step 1 — dependencies.</strong> Everything the emulator links against lives in <code>3rdparty/</code> as git submodules: SDL2 (windows/input), FFmpeg (audio/video decode), SPIRV-Tools, VulkanMemoryAllocator, fmt, gtest, magic_enum, imgui, Zydis (x86 disassembler), xbyak (x86 assembler), LibAtrac9. This is the equivalent of <code>npm install</code> — except the versions are pinned as commits, like a lockfile.</p>
+  <p><strong>Step 1 — dependencies.</strong> Most of what the emulator links against lives in <code>3rdparty/</code> as git submodules: SDL2 (windows/input), FFmpeg (audio/video decode, now bundled as <code>ffmpeg-core</code> with a fallback to a system FFmpeg), SPIRV-Tools, VulkanMemoryAllocator, fmt, magic_enum, imgui, LibAtrac9, and more. Two more — Zydis (x86 disassembler) and xbyak (x86 assembler) — are pulled by CMake with <code>FetchContent</code> at configure time rather than as submodules. This is the equivalent of <code>npm install</code> — except the versions are pinned as commits, like a lockfile.</p>
 
   <p><strong>Step 2 — configure.</strong> CMake's configure pass does the <em>detection</em> work: verifies 64-bit (<code>if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8) message(FATAL_ERROR ...)</code>), detects endianness (<code>test_big_endian</code>), checks the compiler is Clang, finds <code>glslangValidator</code>, and generates two headers — <code>cmake_config.h</code> (compiler/linker/platform macros) and <code>kytyGitVersion.h</code> (the git hash from <code>generate_version.cmake</code>). Nothing compiles yet.</p>
 
@@ -136,26 +136,29 @@ COMMAND ${CMAKE_COMMAND} -DINPUT=${shader_spv} -DOUTPUT=${shader_header}
   <h4 id="reading-a-crash-log">Reading a crash log</h4>
   <p>Guest code runs natively, so when the game hits a bad pointer the host OS delivers an exception to the <em>emulator process</em>, and <code>KytyExceptionHandler</code> (in <code>runtimeLinker.cpp</code>) writes a forensic dump before dying. Read it in order, and every block has a job:</p>
 
-  <div class="filename">the shape of the dump — annotated</div>
-<pre>kyty_exception_handler: 0x0000000009006436_4e   <i>the host address that faulted</i>
-exception module: D:\Games\Example\eboot.bin   <i>which module owns it</i>
-code-32: 48 8b 5c 24 50 48 8b ...              <i>the 32 bytes around the fault, so you can</i>
-                                               <i>decode the instruction that died</i>
-exception: type=AccessViolation, av_type=Write, av_addr=0000000900_64364e,
-           native_code=00000000_c0000005     <i>read / write / execute, and the address</i>
-regs: rax=... rbx=... rcx=... rdx=...        <i>every register, because the instruction's</i>
-regs: rsi=... rdi=... rbp=... rsp=...        <i>operands live there</i>
-stack: [00]=... [01]=...                     <i>the first words of the stack</i>
-guest rax[0]: addr=..., off=..., module=...  <i>each register treated as a pointer into a</i>
-                                             <i>loaded game module, dumped and tagged</i>
-Stack trace [thread = 1]:                    <i>the guest's call stack, each frame with its</i>
-[0] 00000009006a_1234, off=00000000000012ab, eboot.bin   <i>module offset — the cause, not the symptom</i></pre>
+  <div class="filename">the shape of the dump — annotated (format since September 2026)</div>
+<pre>--- Guest fault context ---
+thread: GameMainThread                        <i>the guest pthread that faulted — or "(host thread)"</i>
+rax=0000000000000000 rbx=000000090009e000 ... <i>every register, four per line, because the</i>
+rsi=... rdi=... rbp=... rsp=0000000900c7f800  <i>instruction's operands live there</i>
+r8 =... r9 =... r10=... r11=...
+r12=... r13=... r14=... r15=...
+code (pc-48 .. pc+48, fault at byte 48):      <i>96 bytes around the fault, 16 per line; byte 48</i>
+ 48 8b 5c 24 50 48 8b 03 48 8b 04 18 48 89 04 24   <i>is the first byte of the instruction that died</i>
+ ...
+stack:                                        <i>32 qwords read upward from rsp — return</i>
+ 000000090009e000 0000000000000000 ...        <i>addresses in the 0x9… band are your callers</i>
+ ...
+--- Error ---                                  <i>then the ordinary EXIT report:</i>
+Unhandled host exception: type=1 code=3221225477 pc=0x00000009000a3b4c access=2 address=0x0000000000000000
+                                              <i>type 1 = access violation, 2 = illegal instruction;</i>
+                                              <i>access 1/2/3 = read/write/execute; address = what was touched</i></pre>
 
   <p>Three habits make this fast to read:</p>
   <ul>
-    <li><strong>The faulting address is usually a symptom.</strong> <code>av_addr</code> is where the write went — often a null, a stale pointer, or a mis-read argument. The <em>cause</em> is in the <code>Stack trace</code>, which names the module and offset of every caller. Translate the module+offset with the map file or a disassembler.</li>
-    <li><strong>The <code>code-32</code> bytes are the instruction.</strong> If you can decode them (objdump, a hex-to-instruction tool, Zydis is in-tree), you know exactly which machine instruction died and which register it needed.</li>
-    <li><strong>The emulator tells you when it is its own fault.</strong> A write to the special <code>g_invalid_memory</code> address prints <code>(Unpatched object)</code> — a known bug class in the patching layer, not a game bug. And on Windows, the <code>--redzone</code> flag (from <a href="t-cpp-asm.html">topic C2</a>) is how you opt into protecting the guest's System V red zone.</li>
+    <li><strong>The faulting address is usually a symptom.</strong> <code>address=</code> is where the write went — often a null, a stale pointer, or a mis-read argument. The <em>cause</em> is in the callers: the stack words that fall inside a loaded module's range are return addresses, and <code>RuntimeLinker::StackTrace()</code> (<code>Stack trace [thread = N]:</code> followed by <code>[i] address, off=…, module</code> lines) resolves them where the emulator prints it, such as on a guest <code>abort()</code>. Translate module+offset with the map file or a disassembler.</li>
+    <li><strong>The code bytes are the instruction.</strong> Byte 48 of the 96-byte window is the first byte of the instruction that faulted. If you can decode it (objdump, a hex-to-instruction tool, Zydis is in-tree), you know exactly which machine instruction died and which register it needed.</li>
+    <li><strong>The dump is deliberately guest-only.</strong> Every probe is explicit (<code>IsReadableRange</code>) so the dump cannot fault while dumping. On Windows, the <code>--redzone</code> flag (from <a href="t-cpp-asm.html">topic C2</a>) is how you opt into protecting the guest's System V red zone; a fault that disappears with it on is a red-zone clobber, not a game bug.</li>
   </ul>
 
   <p>This is the same output the bug-report template asks you to attach. When a game misbehaves, the log — not the screen — is the evidence.</p>
@@ -287,7 +290,7 @@ ctest --test-dir _Build/windows --output-on-failure</pre>
         </li>
         <li class="check-item">
           <input type="checkbox">
-          <label>On a real run's crash log, label each block from the Read band: faulting address, owner module, code-32, av_type, registers, guest stack trace with module offsets.</label>
+          <label>On a real run's crash log, label each block from the Read band: guest thread, registers, code around PC, stack from RSP, then the <code>Unhandled host exception</code> line.</label>
         </li>
       </ul>
     </div>
@@ -295,15 +298,15 @@ ctest --test-dir _Build/windows --output-on-failure</pre>
 
 </main>
 
-<script src="assets/topics.js?v=23" defer></script>
-<script src="assets/search-index.js?v=23" defer></script>
-<script src="assets/app.js?v=23" defer></script>
-<script src="assets/viz.js?v=23" defer></script>
-<script src="assets/atlas.js?v=23" defer></script>
-<script src="assets/lab.js?v=23" defer></script>
-<script src="assets/figs.js?v=23" defer></script>
-<script src="assets/figures.js?v=23" defer></script>
-<script src="assets/highlight.js?v=23" defer></script>
-<script src="assets/tutor.js?v=23" defer></script>
+<script src="assets/topics.js?v=26" defer></script>
+<script src="assets/search-index.js?v=26" defer></script>
+<script src="assets/app.js?v=26" defer></script>
+<script src="assets/viz.js?v=26" defer></script>
+<script src="assets/atlas.js?v=26" defer></script>
+<script src="assets/lab.js?v=26" defer></script>
+<script src="assets/figs.js?v=26" defer></script>
+<script src="assets/figures.js?v=26" defer></script>
+<script src="assets/highlight.js?v=26" defer></script>
+<script src="assets/tutor.js?v=26" defer></script>
 </body>
 </html>

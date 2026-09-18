@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Page faults &amp; CPU/GPU coherency — KytyPS5</title>
 <meta name="description" content="Guest and host share memory both believe they own. Faults are how the emulator finds out who touched what.">
-<link rel="stylesheet" href="assets/viz.css?v=23">
-<link rel="stylesheet" href="assets/atlas.css?v=23">
-<link rel="stylesheet" href="assets/lab.css?v=23">
-<link rel="stylesheet" href="assets/tutor.css?v=23">
-<link rel="stylesheet" href="assets/app.css?v=23">
-<link rel="stylesheet" href="assets/highlight.css?v=23">
+<link rel="stylesheet" href="assets/viz.css?v=26">
+<link rel="stylesheet" href="assets/atlas.css?v=26">
+<link rel="stylesheet" href="assets/lab.css?v=26">
+<link rel="stylesheet" href="assets/tutor.css?v=26">
+<link rel="stylesheet" href="assets/app.css?v=26">
+<link rel="stylesheet" href="assets/highlight.css?v=26">
 </head>
 <body>
 
@@ -163,10 +163,10 @@ void InvalidateRegion(uint64_t vaddr, uint64_t size, Flush&amp;&amp; on_flush) {
     <p><code>tests/MemoryTrackerTests.cpp</code>, before the implementation. Each test name is a sentence stating an invariant, and together they specify the model far more clearly than the templates do. <code>tests/PageManagerTests.cpp</code> covers the watch semantics in isolation.</p>
   </div>
 
-<p class="deck">Because guest code runs natively, Kyty cannot instrument it. The CPU's own fault mechanism becomes the emulator's primary hook — three of the handler's branches are load-bearing, not diagnostic.</p>
+<p class="deck">Because guest code runs natively, Kyty cannot instrument it. The CPU's own fault mechanism becomes the emulator's primary hook — two of the handler's three branches are load-bearing, not diagnostic.</p>
 
   <h4 id="the-handler">The handler</h4>
-  <div class="filename">src/loader/runtimeLinker.cpp:763</div>
+  <div class="filename">src/loader/runtimeLinker.cpp:782</div>
 <pre>static bool KytyExceptionHandler(const Common::HostException::ExceptionInfo&amp; exception_info) {
     const auto* info = &amp;exception_info;
 
@@ -183,20 +183,20 @@ void InvalidateRegion(uint64_t vaddr, uint64_t size, Flush&amp;&amp; on_flush) {
         if (Libs::LibKernel::Memory::<b>HandleGpuFault</b>(access, info-&gt;access_violation_vaddr)) {
             return true;
         }
-
-        <b>// 3 — reserved but not yet committed</b>
-        if (Libs::LibKernel::Memory::<b>KernelHandleReservedRangeAccessViolation</b>(
-                info-&gt;access_violation_vaddr)) {
-            return true;
-        }
     }
 
-    <b>// 4 — a genuine crash: produce the most useful dump possible</b>
-    LOGF("kyty_exception_handler: %016" PRIx64 "\n", info-&gt;exception_address);
-    ...
+    <b>// 3 — a genuine crash: print what can be read safely, then stop</b>
+    std::printf("--- Guest fault context ---\n");
+    std::printf("thread: %s\n", thread_name);          <i>// which guest thread, by its pthread name</i>
+    std::printf("rax=... rbx=... rcx=... rdx=...\n" ...);  <i>// all sixteen registers</i>
+    <i>// 96 code bytes around pc, 32 stack qwords from rsp — each range probed first</i>
+    EXIT("Unhandled host exception: type=%u code=%u pc=0x%016" PRIx64
+         " access=%u address=0x%016" PRIx64 "\n", ...);
 }</pre>
 
-  <p>Returning <code>true</code> means "handled, resume execution." The guest never learns anything happened.</p>
+  <p>Returning <code>true</code> means "handled, resume execution." The guest never learns anything happened. On Linux and macOS the handler runs on a per-thread alternate signal stack (<code>InitializeThreadSignalStack</code>, installed for every guest thread) precisely because branch 2 can fire while the guest's own stack pages are write-protected by the GPU tracker; Windows delivers vectored exceptions on the faulting stack without that problem.</p>
+
+  <p>Reservations are committed explicitly. A fault in reserved-but-uncommitted memory is a real bug and falls through to the dump.</p>
 
   <h4 id="branch-1-emulating-missing-instructions">Branch 1 — emulating missing instructions</h4>
   <p>The PS5's Zen 2 supports instructions your CPU might not, notably the SHA extensions. When one executes, the CPU raises an illegal-instruction fault, and <code>X64InstructionEmulator</code> decodes the bytes at the fault address, performs the operation in software against the saved register context, and advances the instruction pointer past it.</p>
@@ -227,32 +227,33 @@ void InvalidateRegion(uint64_t vaddr, uint64_t size, Flush&amp;&amp; on_flush) {
 
   <p>There is no other way to do this without a recompiler. On a unified-memory console no synchronisation is needed at all, so games contain no hints; the page fault <em>is</em> the notification.</p>
 
-  <h4 id="branch-4-the-crash-dump">Branch 4 — the crash dump</h4>
-  <p>When nothing handles the fault, the handler produces everything a bug report needs:</p>
+  <h4 id="branch-4-the-crash-dump">Branch 3 — the crash dump</h4>
+  <p>When nothing handles the fault, the handler prints a <code>--- Guest fault context ---</code> block — everything it can read without faulting again — and then exits through <code>EXIT</code>:</p>
   <ul>
-    <li>The faulting module — via <code>GetModuleHandleEx</code> on Windows, <code>dladdr</code> elsewhere — which immediately tells you whether the crash is in the emulator or in guest code.</li>
-    <li>64 bytes of code around the fault address, dumped as hex, guarded by <code>VirtualQuery</code> so probing does not itself fault.</li>
-    <li>All sixteen general-purpose registers.</li>
-    <li>Sixteen stack words, if readable.</li>
-    <li>A guest stack walk. <code>StackwalkX86</code> follows the frame-pointer chain, accepting a frame only if the frame pointer is inside the stack range <em>and</em> the return address falls inside the module band from <a href="t-mapping.html">topic 06</a> — which is precisely what fixing the module layout buys.</li>
+    <li>The <strong>guest thread name</strong> from the pthread layer (or <code>(host thread)</code> if the fault was not on a guest thread) — which immediately tells you whether the crash is in the emulator or in guest code.</li>
+    <li>All sixteen general-purpose registers, four per line, as <code>rax=…</code>.</li>
+    <li>96 bytes of code around the fault address — <code>pc-48 .. pc+48</code>, the faulting byte at offset 48 — probed with <code>IsReadableRange</code> first so the dump does not itself fault.</li>
+    <li>32 stack qwords read from <code>rsp</code>, again only if readable.</li>
+    <li>The final <code>Unhandled host exception: type=… code=… pc=… access=… address=…</code> line: the exception type, the native code, the program counter, the access kind and the address that was touched.</li>
   </ul>
 
-<pre>static void StackwalkX86(uint64_t rbp, void** stack, int* depth, uintptr_t stack_addr,
-                         size_t stack_size, uintptr_t code_addr, size_t code_size) {
-    auto* frame = reinterpret_cast&lt;FrameS*&gt;(rbp);
-    int d = *depth, i = 0;
-    for (; i &lt; d; i++) {
-        if (!((uintptr_t)frame &gt;= stack_addr &amp;&amp; (uintptr_t)frame &lt; stack_addr + stack_size)) break;
-        if (!(frame-&gt;ret_addr &gt;= code_addr &amp;&amp; frame-&gt;ret_addr &lt; code_addr + code_size)) break;
-        stack[i] = reinterpret_cast&lt;void*&gt;(frame-&gt;ret_addr);
-        frame = frame-&gt;next;
+  <p>A September 2026 change ("port guest fault diagnostics and remove host stack traces") took the host-side stack walker out of this path — a stack of emulator frames told you nothing about the game. The <em>guest</em> frame-pointer walk still exists as <code>RuntimeLinker::StackTrace()</code>, which prints <code>Stack trace [thread = N]:</code> followed by one <code>[i] address, off=…, module</code> line per frame, resolved against the loaded modules; the libc <code>abort</code> path calls it. Accepting a frame only when the return address lands inside a loaded module's segments is precisely what fixing the module layout in <a href="t-mapping.html">topic 06</a> buys.</p>
+
+<pre>void RuntimeLinker::StackTrace(uint64_t frame_ptr, uint64_t stack_ptr) {
+    void* stack[20];
+    int   depth = WalkGuestStack(frame_ptr, stack_ptr, stack, 20);
+    LOGF("Stack trace [thread = %d]:\n", Common::Thread::GetThreadIdUnique());
+    for (int i = 0; i &lt; depth; i++) {
+        auto  vaddr = reinterpret_cast&lt;uint64_t&gt;(stack[i]);
+        auto* p     = FindProgramByAddr(vaddr);          <i>// which module owns this return address?</i>
+        LOGF("[%d] %016" PRIx64 ", off=%016" PRIx64 ", %s\n", i, vaddr,
+             (p == nullptr ? 0 : vaddr - p-&gt;base_vaddr), (p == nullptr ? "???" : name_of(p)));
     }
-    *depth = i;
 }</pre>
 
   <div class="callout h">
     <span class="lbl">Reading a crash</span>
-    <p>A fault address of <code>0x28</code> means an unpatched <code>fs:[0x28]</code> canary store. A small address generally means a null-pointer dereference in guest code, often downstream of a stubbed import that returned zero. An address in the <code>0x9…</code> band with a sensible stack walk is a genuine guest crash worth investigating.</p>
+    <p>An <code>address=0x28</code> means an unpatched <code>fs:[0x28]</code> canary store. A small address generally means a null-pointer dereference in guest code, often downstream of a stubbed import that returned zero. A <code>pc</code> in the <code>0x9…</code> band with sensible-looking return addresses among the stack words is a genuine guest crash worth investigating.</p>
   </div>
     </div>
   </section>
@@ -310,16 +311,16 @@ void InvalidateRegion(uint64_t vaddr, uint64_t size, Flush&amp;&amp; on_flush) {
 
 </main>
 
-<script src="assets/topics.js?v=23" defer></script>
-<script src="assets/search-index.js?v=23" defer></script>
-<script src="assets/app.js?v=23" defer></script>
-<script src="assets/viz.js?v=23" defer></script>
-<script src="assets/atlas.js?v=23" defer></script>
-<script src="assets/lab.js?v=23" defer></script>
-<script src="assets/figs.js?v=23" defer></script>
-<script src="assets/figures.js?v=23" defer></script>
-<script src="assets/highlight.js?v=23" defer></script>
-<script src="assets/tutor.js?v=23" defer></script>
+<script src="assets/topics.js?v=26" defer></script>
+<script src="assets/search-index.js?v=26" defer></script>
+<script src="assets/app.js?v=26" defer></script>
+<script src="assets/viz.js?v=26" defer></script>
+<script src="assets/atlas.js?v=26" defer></script>
+<script src="assets/lab.js?v=26" defer></script>
+<script src="assets/figs.js?v=26" defer></script>
+<script src="assets/figures.js?v=26" defer></script>
+<script src="assets/highlight.js?v=26" defer></script>
+<script src="assets/tutor.js?v=26" defer></script>
 </body>
 </html>
 

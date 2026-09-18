@@ -492,9 +492,9 @@
           { n: "BLEND_CLAMP", s: 15, w: 1 },
           { n: "BLEND_BYPASS", s: 16, w: 1 },
           { n: "ROUND_MODE", s: 18, w: 1 },
-          { n: "CMASK_IS_LINEAR", s: 19, w: 1 },
           { n: "FMASK_COMPRESSION_DISABLE", s: 26, w: 1 },
-          { n: "FMASK_COMPRESS_1FRAG_ONLY", s: 27, w: 1 }
+          { n: "FMASK_COMPRESS_1FRAG_ONLY", s: 27, w: 1 },
+          { n: "DCC_ENABLE", s: 28, w: 1 }
         ]
       },
       DB_DEPTH_CONTROL: {
@@ -1710,15 +1710,14 @@
     var body = frame(host,
       "The pipeline cache key",
       "toggle any state and watch the key change",
-      "Vulkan bakes fixed-function state into the immutable <code>VkPipeline</code>, so every distinct combination needs its own object. Kyty packs the whole lot into one <code>#pragma pack(1)</code> struct and hashes it byte by byte — which is also why there is a <code>static_assert</code> on its exact size: a padding byte would be uninitialised, so identical states could hash differently and quietly multiply the cache.");
+      "Vulkan bakes fixed-function state into the immutable <code>VkPipeline</code>, so every distinct combination needs its own object. Kyty packs the state that is <em>not</em> Vulkan dynamic state into one <code>#pragma pack(1)</code> struct (<code>sizeof == 125</code>) and hashes it byte by byte — which is also why there is a <code>static_assert</code> on its exact size: a padding byte would be uninitialised, so identical states could hash differently and quietly multiply the cache. Viewport, scissor, depth test/write/compare/bias, the whole stencil state and blend constants are set dynamically per draw, so they are not in the key.");
 
     var FIELDS = [
       { k: "topology", label: "topology", vals: ["triangle list", "triangle strip", "rect list"], v: 0 },
       { k: "blend", label: "blend enable", bool: true, v: 0 },
       { k: "srcblend", label: "src blend factor", vals: ["one", "src alpha", "zero"], v: 0, dep: "blend" },
-      { k: "depthtest", label: "depth test", bool: true, v: 1 },
-      { k: "depthwrite", label: "depth write", bool: true, v: 1, dep: "depthtest" },
-      { k: "zfunc", label: "depth compare", vals: ["less", "lequal", "greater", "always"], v: 0, dep: "depthtest" },
+      { k: "depthbounds", label: "depth bounds test", bool: true, v: 0 },
+      { k: "polymode", label: "polygon mode", vals: ["fill", "line", "point"], v: 0 },
       { k: "cullback", label: "cull back faces", bool: true, v: 1 },
       { k: "samples", label: "sample count", vals: ["1", "2", "4", "8"], v: 0 },
       { k: "colorfmt", label: "colour format", vals: ["B8G8R8A8_SRGB", "R8G8B8A8_UNORM", "R16G16B16A16_SFLOAT"], v: 0 },
@@ -1755,8 +1754,8 @@
         b.push(active ? (state[f.k] & 0xFF) : 0);
         b.push(active ? 0x01 : 0x00);
       });
-      // stand-ins for the viewport floats and blend constants the real struct carries
-      [0x00, 0x00, 0x80, 0x3F, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x3F].forEach(function (x) { b.push(x); });
+      // stand-ins for the depth-bounds floats and per-attachment colour masks the real struct carries
+      [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x3F, 0x0F, 0x00, 0x00, 0x00].forEach(function (x) { b.push(x); });
       return b;
     }
     function hash(bytes) {
@@ -1825,14 +1824,14 @@
         run: function () { set("blend", 1); }, ms: 3400 },
       { say: "Another miss, another pipeline. <b>Two now.</b>",
         run: function () { lookBtn.click(); }, ms: 3200 },
-      { say: "Change the depth compare, and the topology. Each distinct combination is its own immutable object.",
-        run: function () { set("zfunc", 2); lookBtn.click(); set("topology", 2); lookBtn.click(); }, ms: 4000 },
-      { say: "Four pipelines from three toggles. Multiply that by every material in a game and you have the first-encounter stutter people complain about.",
-        ms: 4200 },
-      { say: "Now turn <b>depth test off</b>. The fields that depend on it grey out and <b>zero in the key</b> — state that cannot affect the result must not affect the hash, or you get duplicate pipelines that are actually identical.",
-        run: function () { set("depthtest", 0); }, ms: 5000 },
-      { say: "Turn it back on with the same compare function and you land on an existing entry again: <b>hit</b>.",
-        run: function () { set("depthtest", 1); lookBtn.click(); }, ms: 4000 }
+      { say: "Change the polygon mode, and the topology. Each distinct combination is its own immutable object.",
+        run: function () { set("polymode", 1); lookBtn.click(); set("topology", 2); lookBtn.click(); }, ms: 4000 },
+      { say: "Four pipelines from three toggles. Multiply that by every material in a game and you have the first-encounter stutter people complain about. (Depth test, stencil, viewport and scissor are <em>not</em> in this key any more — Kyty sets them as Vulkan dynamic state, precisely so they cannot multiply pipelines.)",
+        ms: 5200 },
+      { say: "Now turn <b>blend off</b>. The blend factor that depends on it greys out and <b>zeroes in the key</b> — state that cannot affect the result must not affect the hash, or you get duplicate pipelines that are actually identical.",
+        run: function () { set("blend", 0); }, ms: 5000 },
+      { say: "Turn it back on with the same factor and you land on an existing entry again: <b>hit</b>.",
+        run: function () { set("blend", 1); lookBtn.click(); }, ms: 4000 }
     ]);
   });
 })();

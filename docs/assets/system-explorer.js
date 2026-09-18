@@ -39,7 +39,7 @@
       sources: ["src/loader/runtimeLinker.cpp", "src/kernel/pthread.cpp"], topic: ["t-calling-conventions.html", "Calling conventions and the ABI wall"] },
     { id: "memory", title: "Guest memory", sub: "fixed virtual addresses", kind: "guest", pos: [1, 4], cats: ["boot", "memory", "graphics"],
       summary: "Kyty reserves the address bands the game expects, maps executable segments, and backs direct or flexible allocations while preserving guest-visible pointers.",
-      sources: ["src/kernel/memory.cpp", "src/common/virtualMemory.cpp"], topic: ["t-address-space.html", "The guest address space"] },
+      sources: ["src/kernel/memory.cpp", "src/common/virtualMemory.h"], topic: ["t-address-space.html", "The guest address space"] },
     { id: "agc", title: "AGC + PM4 ring", sub: "packets, not draw calls", kind: "guest", pos: [1, 5], cats: ["graphics"],
       summary: "The game builds AMD PM4 packets in memory. State packets, draws, dispatches and synchronisation reach Kyty as a command stream.",
       sources: ["src/libs/agc.cpp", "src/graphics/guest_gpu/pm4.cpp"], topic: ["t-pm4.html", "PM4 and the command processor"] },
@@ -64,7 +64,7 @@
       summary: "Consumes PM4 headers and payloads, dispatches opcode handlers, updates the emulated hardware register file and turns draw or dispatch packets into host work.",
       sources: ["src/graphics/guest_gpu/command_processor/pm4Dispatch.cpp", "src/graphics/guest_gpu/command_processor/pm4Handlers.cpp"], topic: ["t-pm4.html", "The command processor"] },
     { id: "shader", title: "Shader recompiler", sub: "RDNA 2 → SPIR-V", kind: "kyty", pos: [3, 4], cats: ["graphics"],
-      summary: "Decodes shader machine code, recovers control flow, lowers it to an internal representation and emits typed, structured SPIR-V accepted by Vulkan.",
+      summary: "TranslateProgram builds an immutable ResourcePlan (decode, CFG, typed IR). CompileProgram emits SPIR-V per resource specialisation. Materialise happens at draw time in the pipeline cache.",
       sources: ["src/graphics/shader/recompiler/ShaderRecompiler.cpp", "src/graphics/shader/shader.cpp"], topic: ["t-shaders.html", "Shaders: RDNA 2 to SPIR-V"] },
     { id: "vulkan", title: "Vulkan renderer", sub: "resources + pipelines", kind: "kyty", pos: [3, 5], cats: ["memory", "graphics"],
       summary: "Resolves guest resources, uploads or tiles memory, creates cached Vulkan pipelines and descriptors, records commands and manages in-flight lifetimes.",
@@ -638,7 +638,7 @@
     { at: 10, addr: "command rings", name: "PM4 queues", size: "CPU/GPU shared", kind: "guest" }
   ];
   var LOADER_STAGES = ["open SELF/ELF", "read headers", "map segments", "build symbols", "relocate NIDs", "patch code", "protect + enter"];
-  var SHADER_STAGES = ["machine words", "decode", "CFG", "IR", "SPIR-V"];
+  var SHADER_STAGES = ["decode", "CFG", "translate", "materialize", "SPIR-V"];
 
   var pageEls = [];
   var ringEls = [];

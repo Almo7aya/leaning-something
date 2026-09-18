@@ -343,16 +343,19 @@
 .be-insn.is-pc { background: rgba(85,197,222,.08); }.be-insn.is-pc span, .be-insn.is-pc code:last-of-type { color: var(--be-cyan); }
 .be-cpu-stats dl,
 .be-memory-stats,
+#be-memory-stats,
 .be-gpu-stats dl,
 .be-elf-instrument > dl,
 .be-gpu-register-instrument > dl { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; padding: 11px; }
 .be-cpu-stats dt,
 .be-memory-stats dt,
+#be-memory-stats dt,
 .be-gpu-stats dt,
 .be-elf-instrument dt,
 .be-gpu-register-instrument dt { color: var(--be-ink-3); font: 8.5px var(--mono); }
 .be-cpu-stats dd,
 .be-memory-stats dd,
+#be-memory-stats dd,
 .be-gpu-stats dd,
 .be-elf-instrument dd,
 .be-gpu-register-instrument dd { margin: 0; color: var(--be-ink-2); font: 8.5px var(--mono); text-align: right; }
@@ -371,7 +374,17 @@
 .be-pages { display: grid; grid-template-columns: repeat(64, 1fr); gap: 2px; padding: 10px; }
 .be-page { aspect-ratio: 1; min-width: 3px; border-radius: 1px; background: #17202d; }
 .be-page.rx { background: rgba(85,197,222,.75); }.be-page.rw { background: rgba(240,184,73,.48); }.be-page.dirty { background: var(--be-pink); box-shadow: 0 0 4px rgba(236,102,139,.55); }.be-page.gpu { outline: 1px solid rgba(117,212,154,.58); outline-offset: -1px; }
-.be-hex-instrument pre { min-height: 180px; margin: 0; padding: 11px; overflow: auto; color: var(--be-ink-2); font: 8.5px/1.55 var(--mono); }
+.be-hex-instrument { min-height: 220px; }
+.be-hex-instrument pre {
+  min-height: 180px;
+  max-height: 280px;
+  margin: 0;
+  padding: 11px;
+  overflow: auto;
+  color: var(--be-ink-2);
+  font: 8.5px/1.55 var(--mono);
+  white-space: pre;
+}
 
 /* ---------- loader and HLE ---------- */
 

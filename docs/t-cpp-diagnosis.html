@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>A boot failure, diagnosed — KytyPS5</title>
 <meta name="description" content="A worked case study: a game that boots to a black screen and then crashes — the tools, the log-reading, the cause-vs-symptom discipline, and the fix.">
-<link rel="stylesheet" href="assets/viz.css?v=23">
-<link rel="stylesheet" href="assets/atlas.css?v=23">
-<link rel="stylesheet" href="assets/lab.css?v=23">
-<link rel="stylesheet" href="assets/tutor.css?v=23">
-<link rel="stylesheet" href="assets/app.css?v=23">
-<link rel="stylesheet" href="assets/highlight.css?v=23">
+<link rel="stylesheet" href="assets/viz.css?v=26">
+<link rel="stylesheet" href="assets/atlas.css?v=26">
+<link rel="stylesheet" href="assets/lab.css?v=26">
+<link rel="stylesheet" href="assets/tutor.css?v=26">
+<link rel="stylesheet" href="assets/app.css?v=26">
+<link rel="stylesheet" href="assets/highlight.css?v=26">
 </head>
 <body>
 
@@ -52,37 +52,42 @@
     <li><strong>The whole log is droppable into the <a href="playground.html#log-triage">log triage tool</a></strong>, which groups these lines into "unresolved", "unimplemented", and "errors" buckets. That is the to-do list.</li>
   </ul>
 
-  <p>In Neptune's case the log ends not with unresolved imports but with the <code>kyty_exception_handler:</code> block. The black screen was the game waiting on a call that never returned; the crash is where it finally gave up.</p>
+  <p>In Neptune's case the log ends not with unresolved imports but with the <code>--- Guest fault context ---</code> block. The black screen was the game waiting on a call that never returned; the crash is where it finally gave up.</p>
 
   <h4 id="step-two-the-crash-block">Step two — the crash block, through the reader</h4>
-  <p>Copy the crash block from <code>_kyty.txt</code> — from <code>kyty_exception_handler:</code> down through the <code>Stack trace</code> — into the <a href="playground.html#crash-log-reader">crash-log reader</a>. What comes back:</p>
+  <p>Copy the crash block from <code>_kyty.txt</code> — from <code>--- Guest fault context ---</code> down through the <code>Unhandled host exception</code> line — into the <a href="playground.html#crash-log-reader">crash-log reader</a>. What comes back:</p>
 
   <div class="filename">the crash, annotated</div>
-<pre>kyty_exception_handler: 0x00000009000A3B4C
-exception module: D:\Games\Neptune\eboot.bin
-exception: type=AccessViolation, av_type=Write, av_addr=0000000000000000, native_code=c0000005
-regs: rax=0  rbx=... rcx=... rsp=...
-Stack trace [thread = 1]:
-[0] 00000009000A3B4C, off=00000000000A3B4C, eboot.bin
-[1] 0000000900C01234, off=0000000000001234, libScePad.sprx</pre>
+<pre>--- Guest fault context ---
+thread: GameMainThread
+rax=0000000000000000 rbx=000000090009e000 rcx=0000000000000050 rdx=00000009000a3b40
+rsi=0000000900abcd00 rdi=0000000000000000 rbp=0000000900c80000 rsp=0000000900c7f800
+...
+code (pc-48 .. pc+48, fault at byte 48):
+ ...
+ 48 89 07 48 83 c4 50 c3 ...                 <i>byte 48: mov [rdi], rax — a store through rdi</i>
+stack:
+ 000000090009e000 0000000900c01234 0000000900c7f830 0000000000000050   <i>0x900c01234 → libScePad.sprx+0x1234</i>
+ ...
+Unhandled host exception: type=1 code=3221225477 pc=0x00000009000a3b4c access=2 address=0x0000000000000000</pre>
 
   <p>The discipline from <a href="t-cpp-build.html">topic C3</a>, applied:</p>
   <ul>
-    <li><strong>The symptom is the write to address 0.</strong> Something passed a null pointer into a function that wrote through it. The native code <code>c0000005</code> is STATUS_ACCESS_VIOLATION — expected.</li>
-    <li><strong>The cause is frame <code>[1]</code>.</strong> The crash <em>happens</em> in <code>eboot.bin</code>, but the caller is <code>libScePad.sprx</code> at offset <code>0x1234</code> — a pad library function. Neptune was reading a controller that isn't there, got a null state, and handed it onward.</li>
-    <li><strong>Cross-check with the register table.</strong> <code>rax = 0</code> is the giveaway: the value being written is a null. A register dump is only useful when you ask "which register was supposed to hold an address?"</li>
+    <li><strong>The symptom is the write to address 0.</strong> <code>type=1</code> is an access violation, <code>access=2</code> is a write, <code>address=0x0</code> is a null. The native code <code>3221225477</code> is <code>0xC0000005</code>, STATUS_ACCESS_VIOLATION — expected.</li>
+    <li><strong>The cause is in the stack words.</strong> The crash <em>happens</em> at <code>pc=0x9000a3b4c</code> in <code>eboot.bin</code>, but the second stack word, <code>0x900c01234</code>, is a return address into <code>libScePad.sprx</code> at offset <code>0x1234</code> — a pad library function. The <a href="playground.html#elf-inspector">module inspector</a> (or the loader's <code>base_vaddr</code> log lines) tells you which module owns which band. Neptune was reading a controller that isn't there, got a null state, and handed it onward.</li>
+    <li><strong>Cross-check with the register table.</strong> <code>rdi = 0</code> with a store through <code>rdi</code> in the code bytes is the giveaway: the destination pointer is a null. A register dump is only useful when you ask "which register was supposed to hold an address?"</li>
   </ul>
 
   <h4 id="step-three-the-module">Step three — confirm what the loader sees</h4>
   <p>The crash names <code>libScePad.sprx</code>. If the pad library resolved but behaves wrong, look at the module itself: drop <code>eboot.bin</code> or the <code>.sprx</code> into the <a href="playground.html#elf-inspector">module inspector</a>. You expect the <code>ET_SCE_*</code> type and a <code>PT_OS_DYNLIBDATA</code> segment — the loader-only tags from topic 05. If those are present and the dynamic tags list includes <code>DT_OS_NEEDED_MODULE</code> for <code>libScePad</code>, the binding story is coherent and the bug is in the emulator's pad implementation, not the loading.</p>
 
   <h4 id="step-four-the-instruction">Step four — the instruction itself</h4>
-  <p>From the crash block's <code>code-32</code> bytes, you can decode the exact instruction that died. The <a href="playground.html#shader-isa">RDNA2 decoder</a> is for shaders, but the same idea applies here: feed the <code>code-32</code> bytes to any x86 disassembler (or read them with Zydis, which is in the tree — topic C6) and confirm the operation is a store through a null base. That turns "access violation" into "this exact store wrote to a null pointer" — the difference between a symptom and a cause.</p>
+  <p>From the crash block's code window — 96 bytes, the faulting instruction starting at byte 48 — you can decode the exact instruction that died. The <a href="playground.html#shader-isa">RDNA2 decoder</a> is for shaders, but the same idea applies here: feed the bytes from offset 48 onward to any x86 disassembler (or read them with Zydis, which is in the tree — topic C6) and confirm the operation is a store through a null base. That turns "access violation" into "this exact store wrote to a null pointer" — the difference between a symptom and a cause.</p>
 
   <h4 id="step-five-the-fix">Step five — the fix loop</h4>
   <p>The pad library returned a null controller state where the game expected a valid one. The fix is exactly <a href="t-first-change.html">topic 19</a>: find the pad <code>padReadState</code>-shaped function in <code>src/libs/libPad.cpp</code>, work out what it should return when no controller is attached, and return a zeroed-but-valid state instead of a null. The loop:</p>
   <ol>
-    <li>Rebuild, re-run, confirm the <code>kyty_exception_handler:</code> line is gone.</li>
+    <li>Rebuild, re-run, confirm the <code>Guest fault context</code> block is gone.</li>
     <li>Confirm the <strong>game</strong> proceeds — the black screen clearing is the real test, not the absence of a crash.</li>
     <li>Re-run with the <a href="playground.html#shader-log">shader artifact reader</a> on the <code>_Shaders/</code> output once frames render — a black screen that <em>doesn't</em> crash is usually a shader problem, not a crash problem.</li>
   </ol>
@@ -174,15 +179,15 @@ Stack trace [thread = 1]:
 
 </main>
 
-<script src="assets/topics.js?v=23" defer></script>
-<script src="assets/search-index.js?v=23" defer></script>
-<script src="assets/app.js?v=23" defer></script>
-<script src="assets/viz.js?v=23" defer></script>
-<script src="assets/atlas.js?v=23" defer></script>
-<script src="assets/lab.js?v=23" defer></script>
-<script src="assets/figs.js?v=23" defer></script>
-<script src="assets/figures.js?v=23" defer></script>
-<script src="assets/highlight.js?v=23" defer></script>
-<script src="assets/tutor.js?v=23" defer></script>
+<script src="assets/topics.js?v=26" defer></script>
+<script src="assets/search-index.js?v=26" defer></script>
+<script src="assets/app.js?v=26" defer></script>
+<script src="assets/viz.js?v=26" defer></script>
+<script src="assets/atlas.js?v=26" defer></script>
+<script src="assets/lab.js?v=26" defer></script>
+<script src="assets/figs.js?v=26" defer></script>
+<script src="assets/figures.js?v=26" defer></script>
+<script src="assets/highlight.js?v=26" defer></script>
+<script src="assets/tutor.js?v=26" defer></script>
 </body>
 </html>

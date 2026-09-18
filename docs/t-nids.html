@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>NIDs and the runtime linker — KytyPS5</title>
 <meta name="description" content="How an encoded id in a module's import table becomes the address of a C++ function in the emulator.">
-<link rel="stylesheet" href="assets/viz.css?v=23">
-<link rel="stylesheet" href="assets/atlas.css?v=23">
-<link rel="stylesheet" href="assets/lab.css?v=23">
-<link rel="stylesheet" href="assets/tutor.css?v=23">
-<link rel="stylesheet" href="assets/app.css?v=23">
-<link rel="stylesheet" href="assets/highlight.css?v=23">
+<link rel="stylesheet" href="assets/viz.css?v=26">
+<link rel="stylesheet" href="assets/atlas.css?v=26">
+<link rel="stylesheet" href="assets/lab.css?v=26">
+<link rel="stylesheet" href="assets/tutor.css?v=26">
+<link rel="stylesheet" href="assets/app.css?v=26">
+<link rel="stylesheet" href="assets/highlight.css?v=26">
 </head>
 <body>
 
@@ -28,7 +28,7 @@
 <p class="deck">This is the join between guest and emulator. Understanding it makes the entire HLE design obvious.</p>
 
   <h4 id="what-a-relocation-record-contains">What a relocation record contains</h4>
-  <div class="filename">src/loader/elf.h:228</div>
+  <div class="filename">src/loader/elf.h:229</div>
 <pre>struct Elf64_Rela {
     Elf64_Word GetSymbol() const { return r_info &gt;&gt; 32u; }        <i>// index into symtab</i>
     Elf64_Word GetType()   const { return r_info &amp; 0xffffffff; }  <i>// R_X86_64_*</i>
@@ -43,7 +43,7 @@
   <h4 id="resolution">Resolution</h4>
   <p>For the types that reference a symbol, the loader takes the symbol's name from the string table and calls <code>Resolve</code>. The name is a NID triple:</p>
 
-  <div class="filename">src/loader/runtimeLinker.cpp:1654</div>
+  <div class="filename">src/loader/runtimeLinker.cpp:1506</div>
 <pre>void RuntimeLinker::Resolve(const std::string&amp; name, SymbolType type, Program* program,
                             SymbolRecord* out_info, bool* bind_self) {
     Common::LockGuard lock(m_mutex);
@@ -77,7 +77,7 @@
   <h4 id="how-the-hle-database-is-populated">How the HLE database is populated</h4>
   <p>Every implementation registers itself with two macros. <code>LIB_VERSION</code> declares the identity of the module being impersonated, and <code>LIB_FUNC</code> binds a NID to a C++ function pointer:</p>
 
-  <div class="filename">src/libs/libs.h:39</div>
+  <div class="filename">src/libs/libs.h:30</div>
 <pre>#define LIB_ADD(n, f, t)                                            \
     {                                                               \
         Loader::SymbolResolve sr {};                                \
@@ -149,7 +149,7 @@ LIB_DEFINE(InitGraphicsDriver_1) {
   <h4 id="the-thunk-byte-by-byte">The thunk, byte by byte</h4>
   <p>Kyty assembles 162 bytes per unresolved import. Reading it teaches you the System V ABI faster than any specification:</p>
 
-  <div class="filename">src/loader/runtimeLinker.cpp:147 — annotated</div>
+  <div class="filename">src/loader/runtimeLinker.cpp:150 — annotated</div>
 <pre>emit(0x50);              <b>push rax</b>    <i>// preserve AL: variadic SysV calls put the</i>
                                       <i>//   vector-register count there</i>
 emit(0x57);              push rdi     <i>// arg 1</i>
@@ -276,16 +276,16 @@ Common::VirtualMemory::<b>FlushInstructionCache</b>(code, thunk_size);</pre>
 
 </main>
 
-<script src="assets/topics.js?v=23" defer></script>
-<script src="assets/search-index.js?v=23" defer></script>
-<script src="assets/app.js?v=23" defer></script>
-<script src="assets/viz.js?v=23" defer></script>
-<script src="assets/atlas.js?v=23" defer></script>
-<script src="assets/lab.js?v=23" defer></script>
-<script src="assets/figs.js?v=23" defer></script>
-<script src="assets/figures.js?v=23" defer></script>
-<script src="assets/highlight.js?v=23" defer></script>
-<script src="assets/tutor.js?v=23" defer></script>
+<script src="assets/topics.js?v=26" defer></script>
+<script src="assets/search-index.js?v=26" defer></script>
+<script src="assets/app.js?v=26" defer></script>
+<script src="assets/viz.js?v=26" defer></script>
+<script src="assets/atlas.js?v=26" defer></script>
+<script src="assets/lab.js?v=26" defer></script>
+<script src="assets/figs.js?v=26" defer></script>
+<script src="assets/figures.js?v=26" defer></script>
+<script src="assets/highlight.js?v=26" defer></script>
+<script src="assets/tutor.js?v=26" defer></script>
 </body>
 </html>
 
