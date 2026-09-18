@@ -42,6 +42,7 @@
 .ax-pipe li:hover { border-color: var(--c); color: var(--ink); }
 .ax-pipe li.on { border-color: var(--c); color: var(--c); background: rgba(85,197,222,.08); }
 .ax-pipe li.done { border-color: rgba(117,212,154,.5); color: var(--ink2); }
+.ax-pipe li.sel { border-color: var(--a); color: var(--a); background: rgba(240,184,73,.12); box-shadow: 0 0 0 1px var(--a) inset; }
 
 .ax-top { display: grid; grid-template-columns: 1.25fr .75fr; }
 .ax-screen-card { border-right: 1px solid var(--ln); }
@@ -105,7 +106,20 @@
 .ax-sh-stages { display: flex; gap: 3px; list-style: none; margin: 0; padding: 8px; }
 .ax-sh-stages li { flex: 1; padding: 5px 2px; border: 1px solid var(--ln); border-radius: 3px; color: var(--ink3); font-size: 8px; text-align: center; cursor: pointer; }
 .ax-sh-stages li:hover { border-color: var(--c); color: var(--ink); }
-.ax-sh-stages li.on { border-color: var(--c); color: var(--c); }
+.ax-sh-stages li.on { border-color: var(--c); color: var(--c); background: rgba(85,197,222,.08); }
+.ax-sh-stages li.done { border-color: rgba(117,212,154,.5); color: var(--ink2); }
+.ax-sh-stages li.sel { border-color: var(--a); color: var(--a); box-shadow: 0 0 0 1px var(--a) inset; }
+
+/* stage inspector inside the side panel */
+#ax-inspect { margin: 2px 12px 8px; padding: 8px 10px; border: 1px solid var(--ln2); border-radius: 6px; background: var(--p2); }
+.ax-ins-map { margin: 0 0 8px !important; color: var(--a) !important; font-size: 10px !important; }
+.ax-ins-tbl { display: grid; gap: 3px; }
+.ax-ins-tbl > div { display: grid; grid-template-columns: minmax(64px, auto) 1fr; gap: 8px; align-items: baseline; }
+.ax-ins-tbl span { color: var(--ink3); font-size: 10px; }
+.ax-ins-tbl code { color: var(--ink); font-size: 10px; text-align: right; word-break: break-all; }
+.ax-ins-pre { margin: 0; color: var(--ink2); font-size: 10px; white-space: pre-wrap; }
+.ax-ins-note { margin: 6px 0 0 !important; color: var(--ink3) !important; font-size: 10px !important; }
+.ax-ins-x { width: 100%; margin-top: 8px; border-color: var(--a); color: var(--a); }
 
 #ax-crash { margin: 0; padding: 10px; max-height: 180px; overflow: auto; color: var(--g); font-size: 10px; white-space: pre; }
 .ax-fault-btns { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px; }

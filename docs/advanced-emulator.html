@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="assets/tutor.css?v=26">
 <link rel="stylesheet" href="assets/app.css?v=26">
 <link rel="stylesheet" href="assets/highlight.css?v=26">
-<link rel="stylesheet" href="assets/advanced-emulator.css?v=5">
+<link rel="stylesheet" href="assets/advanced-emulator.css?v=6">
 </head>
 <body>
 <main data-app-content class="ax-wrap">
@@ -43,10 +43,15 @@
         <button type="button" class="ax-btn" data-mode="5">Moire</button>
         <button type="button" class="ax-btn" data-mode="6">Hex rain</button>
         <button type="button" class="ax-btn" data-mode="7">Kaleido</button>
+        <button type="button" class="ax-btn" data-mode="8">Metaballs</button>
+        <button type="button" class="ax-btn" data-mode="9">Voronoi</button>
         <span class="ax-knob-l">games</span>
         <button type="button" class="ax-btn" data-mode="10">Serpent</button>
         <button type="button" class="ax-btn" data-mode="11">Breakout</button>
         <button type="button" class="ax-btn" data-mode="12">Drift</button>
+        <button type="button" class="ax-btn" data-mode="13">Invaders</button>
+        <button type="button" class="ax-btn" data-mode="14">Flappy</button>
+        <button type="button" class="ax-btn" data-mode="15">Pong</button>
         <label>warp <input id="ax-warp" type="range" min="1" max="32" value="8"></label>
       </div>
     </header>
@@ -69,12 +74,13 @@
           </div>
           <div class="ax-boot" id="ax-boot"><pre id="ax-boot-text">assembling intro…</pre></div>
         </div>
-        <p class="ax-help">Intros are uniforms. Games: <kbd>WASD</kbd>/<kbd>arrows</kbd> · <kbd>.</kbd> insn · <kbd>,</kbd> frame · <kbd>P</kbd> pause</p>
+        <p class="ax-help">Click any <b>pipeline stage</b> above or <b>shader stage</b> to inspect it live. Games: <kbd>WASD</kbd>/<kbd>arrows</kbd> · <kbd>space</kbd> shoot/flap · <kbd>.</kbd> insn · <kbd>,</kbd> frame · <kbd>P</kbd> pause</p>
       </section>
       <aside class="ax-side">
         <header><span>LIVE BOUNDARY</span><b id="ax-bound-kind">BOOT</b></header>
         <p class="ax-bound"><span id="ax-from">host</span> → <span id="ax-to">loader</span></p>
         <p id="ax-bound-text">Reserving guest address space.</p>
+        <div id="ax-inspect" hidden></div>
         <dl id="ax-metrics"></dl>
         <h3>Trace</h3>
         <ol id="ax-log"></ol>
@@ -133,10 +139,16 @@
     <h2 id="what-this-is">What you are looking at</h2>
     <p>
       The raster thread only stores a handful of uniforms and submits one fullscreen draw.
-      The mixer thread writes an envelope into a tiny audio ring. Changing <em>Plasma / Tunnel /
-      Constellation</em> changes the specialisation key, so the five-stage cache misses and
-      “compiles” again — the same split as <code>TranslateProgram</code> / <code>CompileProgram</code>.
-      The picture is the uniforms, visualised. Switch to Serpent, Breakout or Drift for a real guest-ticked game on the same machine.
+      The mixer thread writes an envelope into a tiny audio ring. Cold boot plays the loader
+      pipeline back one stage at a time — <em>reserve → map → relocate → TLS patch → protect →
+      threads → entry</em> — so you can watch the boundary the emulator actually crosses. Changing
+      the effect changes the specialisation key, so the cache misses and the frame <em>stalls</em>
+      while it walks <em>Decode → CFG → Translate → Materialize → Compile</em> — the same split as
+      <code>TranslateProgram</code> / <code>CompileProgram</code>, and the same first-encounter
+      stutter a real title shows. Click any stage in either pipeline to open a live inspector
+      (memory map, GOT, TLS bytes, PM4 packets, the permutation cache…). The eight intros are
+      uniforms visualised; Serpent, Breakout, Drift, Invaders, Flappy and Pong are real
+      guest-ticked programs running on the same machine.
     </p>
   </section>
 </main>
@@ -144,7 +156,7 @@
 <script src="assets/search-index.js?v=26" defer></script>
 <script src="assets/app.js?v=26" defer></script>
 <script src="assets/highlight.js?v=26" defer></script>
-<script src="assets/advanced-emulator.js?v=5" defer></script>
+<script src="assets/advanced-emulator.js?v=6" defer></script>
 <script src="assets/tutor.js?v=26" defer></script>
 </body>
 </html>
