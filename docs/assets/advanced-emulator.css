@@ -121,6 +121,28 @@
 .ax-ins-pre { margin: 0; color: var(--ink2); font-size: 10px; white-space: pre-wrap; }
 .ax-ins-note { margin: 6px 0 0 !important; color: var(--ink3) !important; font-size: 10px !important; }
 .ax-ins-x { width: 100%; margin-top: 8px; border-color: var(--a); color: var(--a); }
+.ax-ins-sub { margin: 0 0 6px !important; color: var(--c) !important; font-size: 10px !important; }
+
+/* megademo button + pace selector */
+.ax-mega { border-color: var(--k); color: var(--k); }
+.ax-mega:hover { border-color: var(--k); color: var(--ink); }
+.ax-speed { display: flex; align-items: center; gap: 2px; color: var(--ink3); font-size: 10px; }
+
+/* the live RDNA 2 → IR → SPIR-V recompiler tape */
+#ax-recompile {
+  margin: 0 10px 8px; padding: 8px 10px; max-height: 260px; overflow: auto;
+  background: #0a0f16; border: 1px solid var(--ln); border-radius: 5px;
+  color: var(--ink2); font: 10px/1.5 var(--mono); white-space: pre;
+}
+#ax-recompile b { color: var(--c); font-weight: 650; }
+#ax-recompile i { color: var(--a); font-style: normal; }
+.ax-dim { color: var(--ink3); }
+
+/* PM4 packets: header line + register target + dword payload */
+.ax-pm4-row { display: block; padding: 6px 10px; }
+.ax-pm4-row b { color: var(--ink); }
+.ax-pm4-row code { color: var(--a); margin-left: 6px; }
+.ax-pm4-row span { display: block; margin-top: 2px; color: var(--g); font-size: 9px; }
 
 #ax-crash { margin: 0; padding: 10px; max-height: 180px; overflow: auto; color: var(--g); font-size: 10px; white-space: pre; }
 .ax-fault-btns { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px; }

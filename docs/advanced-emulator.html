@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="assets/tutor.css?v=26">
 <link rel="stylesheet" href="assets/app.css?v=26">
 <link rel="stylesheet" href="assets/highlight.css?v=26">
-<link rel="stylesheet" href="assets/advanced-emulator.css?v=6">
+<link rel="stylesheet" href="assets/advanced-emulator.css?v=7">
 </head>
 <body>
 <main data-app-content class="ax-wrap">
@@ -32,6 +32,13 @@
         <button type="button" class="ax-btn" id="ax-insn">Step insn</button>
         <button type="button" class="ax-btn" id="ax-reset">Cold reboot</button>
         <button type="button" class="ax-btn" id="ax-sound">Sound</button>
+        <label class="ax-speed">pace
+          <select id="ax-speed">
+            <option value="learn">learn (slow)</option>
+            <option value="normal">normal</option>
+            <option value="fast">fast</option>
+          </select>
+        </label>
       </div>
       <div class="ax-knobs" id="ax-knobs">
         <span class="ax-knob-l">intro</span>
@@ -52,6 +59,8 @@
         <button type="button" class="ax-btn" data-mode="13">Invaders</button>
         <button type="button" class="ax-btn" data-mode="14">Flappy</button>
         <button type="button" class="ax-btn" data-mode="15">Pong</button>
+        <span class="ax-knob-l">big</span>
+        <button type="button" class="ax-btn ax-mega" data-mode="20">Megademo ✦</button>
         <label>warp <input id="ax-warp" type="range" min="1" max="32" value="8"></label>
       </div>
     </header>
@@ -74,7 +83,7 @@
           </div>
           <div class="ax-boot" id="ax-boot"><pre id="ax-boot-text">assembling intro…</pre></div>
         </div>
-        <p class="ax-help">Click any <b>pipeline stage</b> above or <b>shader stage</b> to inspect it live. Games: <kbd>WASD</kbd>/<kbd>arrows</kbd> · <kbd>space</kbd> shoot/flap · <kbd>.</kbd> insn · <kbd>,</kbd> frame · <kbd>P</kbd> pause</p>
+        <p class="ax-help">Click any <b>pipeline stage</b> or <b>shader stage</b> to inspect it live · set <b>pace</b> to <em>learn</em> to slow boot &amp; compiles · try <b>Megademo</b>. Games: <kbd>WASD</kbd>/<kbd>arrows</kbd> · <kbd>space</kbd> shoot/flap · <kbd>.</kbd> insn · <kbd>,</kbd> frame · <kbd>P</kbd> pause</p>
       </section>
       <aside class="ax-side">
         <header><span>LIVE BOUNDARY</span><b id="ax-bound-kind">BOOT</b></header>
@@ -115,9 +124,10 @@
         <header><b>PM4</b><span>fullscreen draw only</span></header>
         <div id="ax-pm4"></div>
       </section>
-      <section class="ax-card">
-        <header><b>Shader permutations</b><span>Translate → Materialize → Compile</span></header>
+      <section class="ax-card ax-span2">
+        <header><b>Shader recompiler</b><span>RDNA&nbsp;2 → typed IR → SPIR-V · click a stage</span></header>
         <ol class="ax-sh-stages" id="ax-sh-stages"></ol>
+        <pre id="ax-recompile"></pre>
         <div id="ax-pipes"></div>
       </section>
       <section class="ax-card ax-span2">
@@ -145,10 +155,15 @@
       the effect changes the specialisation key, so the cache misses and the frame <em>stalls</em>
       while it walks <em>Decode → CFG → Translate → Materialize → Compile</em> — the same split as
       <code>TranslateProgram</code> / <code>CompileProgram</code>, and the same first-encounter
-      stutter a real title shows. Click any stage in either pipeline to open a live inspector
-      (memory map, GOT, TLS bytes, PM4 packets, the permutation cache…). The eight intros are
-      uniforms visualised; Serpent, Breakout, Drift, Invaders, Flappy and Pong are real
-      guest-ticked programs running on the same machine.
+      stutter a real title shows. The <b>Shader recompiler</b> panel shows that program as it is
+      built — the decoded <b>RDNA&nbsp;2 ISA</b>, its control-flow graph, the typed IR, the
+      resource table and the emitted <b>SPIR-V</b> — and the <b>pace</b> control (learn / normal /
+      fast) slows the whole thing down so you can read each stage. Click any stage in either
+      pipeline to open a live inspector (memory map, GOT, TLS bytes, PM4 register writes, the IR
+      and SPIR-V…). The intros are uniforms visualised; Serpent, Breakout, Drift, Invaders, Flappy
+      and Pong are real guest-ticked programs. <b>Megademo ✦</b> is the big one: it links two dozen
+      parts at boot and then runs them back to back, so you watch the shader cache fill one
+      first-encounter compile at a time — a whole demo warming its pipeline cache.
     </p>
   </section>
 </main>
@@ -156,7 +171,7 @@
 <script src="assets/search-index.js?v=26" defer></script>
 <script src="assets/app.js?v=26" defer></script>
 <script src="assets/highlight.js?v=26" defer></script>
-<script src="assets/advanced-emulator.js?v=6" defer></script>
+<script src="assets/advanced-emulator.js?v=7" defer></script>
 <script src="assets/tutor.js?v=26" defer></script>
 </body>
 </html>
