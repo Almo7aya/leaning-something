@@ -67,11 +67,24 @@
   var IMPORTS = ["libDemo.knobs", "libAgc.submit", "libAudio.mix"];
   var GAME0 = 10;   // first game mode
   var MEGA = 20;    // the big demo
+  var NEBULA = 16;  // the big streaming-shader game
+
+  // Nebula Run's materials — each is its own pipeline, compiled the first time
+  // the thing it draws appears on screen (streaming shader compilation).
+  var NEB_MATS = ["bg_starfield", "bg_nebula", "bg_asteroid", "bg_planet", "bg_void", "bg_ion",
+    "ship", "thruster", "shield", "laser", "muzzle",
+    "enemy_drone", "enemy_wisp", "enemy_cruiser", "enemy_mine", "enemy_turret", "enemy_seeker",
+    "enemy_splitter", "enemy_boss", "enemy_plasma", "explosion", "explosion_big",
+    "powerup", "hud", "hud_alert"];
+  var NEB_ZONES = ["bg_starfield", "bg_nebula", "bg_asteroid", "bg_planet", "bg_void", "bg_ion"];
+  var NEB_BASE = 4096;
+  var NEB_KEY = {}; NEB_MATS.forEach(function (n, i) { NEB_KEY[n] = NEB_BASE + i; });
+  var KEYNAME = {}; NEB_MATS.forEach(function (n) { KEYNAME[NEB_BASE + NEB_MATS.indexOf(n)] = n + ".fs"; });
 
   // A permutation key is the render mode plus a specialisation variant, exactly
   // as a real pipeline key mixes shader id with resource/render state. Same shader,
   // different variant → a different host program that has to be compiled once.
-  function permName(key) { var m = key % 64, vr = (key / 64) | 0; var n = FX[m] || ("perm-" + m); return vr ? n + " #" + vr : n; }
+  function permName(key) { if (KEYNAME[key]) return KEYNAME[key]; var m = key % 64, vr = (key / 64) | 0; var n = FX[m] || ("perm-" + m); return vr ? n + " #" + vr : n; }
 
   // The effect-specific core of each fragment program — the ALU that makes it look
   // different, shown as RDNA 2 ISA, typed IR and SPIR-V so the recompiler is visible.
@@ -195,7 +208,12 @@
   function buildMixer() {
     var a = new Asm();
     a.L("mix");
-    a.E("SYS", 0, 0, 0, 2);
+    a.E("LOAD", 1, 0, 0, U.tick);   // r1 = tick
+    a.E("ADDI", 2, 1, 0, 0);        // r2 = phase (copy of tick)
+    a.E("ADDI", 3, 3, 0, 1);        // r3 = frame counter, ++
+    a.E("SYS", 0, 0, 0, 2);         // libAudio.mix → envelope into the ring
+    a.E("LOAD", 4, 0, 0, U.bass);   // r4 = bass level the mix produced
+    a.E("STORE", 4, 0, 0, STACK);   // spill it to the stack
     a.E("YIELD");
     a.J("JMP", "mix");
     return a.fin();
@@ -238,7 +256,18 @@
     this.ctx = null; this.img = null; this.small = null;
     this.keys = new Set(); this.pressedEdge = new Set();
     this.game = null; this.stars = []; this.fire = null;
+    this.vk = [];                              // host Vulkan event log
+    this.disk = {};                            // L2: on-disk VkPipelineCache (hash → 1)
+    this.diskBytes = 0;
+    this.draws = [];                           // current frame's draw list (multi-draw)
+    this.focusKey = null; this.shTab = 0;      // recompiler UI: expanded shader + tab
+    this.vblank = 0;                           // present count
   }
+  Emu.prototype.vklog = function (call, arg, lv) {
+    this.vk.unshift({ c: call, a: arg || "", lv: lv || "", f: this.booted ? this.frame : "boot" });
+    if (this.vk.length > 80) this.vk.length = 80;
+  };
+  function hashOf(key) { return (0x51A00000 + key * 0x20F) >>> 0; }
   Emu.prototype.log = function (k, t, lv) {
     this.events.unshift({ k: k, t: t, lv: lv || "", f: this.booted ? this.frame : "boot" });
     if (this.events.length > 60) this.events.length = 60;
@@ -248,12 +277,18 @@
   Emu.prototype.boot = function () {
     var self = this;
     this.m = new Mem();
-    this.shaders = new Cache();
-    this.pm4 = []; this.events = []; this.faulted = false; this.alive = true;
-    this.crash = "No unhandled fault this run."; this.frame = 0;
+    this.shaders = new Cache();   // L1 (in-memory) is per-process — cleared on reboot
+    this.pm4 = []; this.events = []; this.vk = []; this.draws = []; this.faulted = false; this.alive = true;
+    this.crash = "No unhandled fault this run."; this.frame = 0; this.vblank = 0;
     this.code = [buildRaster(), buildMixer()];
-    this.compileAnim = null; this.inspect = null;
+    this.compileAnim = null; this.inspect = null; this.focusKey = null;
     this.pipeOn = 0;
+    // the host GPU comes up; the on-disk VkPipelineCache (L2) survives a reboot
+    var diskN = Object.keys(this.disk).length;
+    this.vklog("vkCreateInstance", "VK_API_VERSION_1_3");
+    this.vklog("vkCreateDevice", "AMD RDNA host GPU + VMA");
+    this.vklog("vkCreateSwapchainKHR", "2 images · VIDEO_OUT_0");
+    this.vklog("vkCreatePipelineCache", diskN ? "loaded " + diskN + " pipelines from disk" : "empty — first run", diskN ? "gpu" : "");
     this.log("boot", "reserve 512 KB guest space", "ok");
 
     var rlen = this.code[0].length * 8, mlen = this.code[1].length * 8;
@@ -386,14 +421,15 @@
     if (t.pc >= t.ins.length) t.pc = 0;
     return "ok";
   };
+  Emu.prototype.blocking = function () { return this.compileAnim && !this.compileAnim.async; };
   Emu.prototype.stepInsn = function () {
     if (!this.booted) { this.finishBoot(); return; }
-    if (!this.alive || this.compileAnim) return;
+    if (!this.alive || this.blocking()) return;
     try { this.exec(this.th[this.view]); } catch (e) { this.dump(0); }
   };
   Emu.prototype.stepFrame = function () {
     if (!this.booted) { this.finishBoot(); return; }
-    if (!this.alive || this.compileAnim) return;
+    if (!this.alive || this.blocking()) return;
     this.frame++;
     try {
       var n, t, g;
@@ -401,12 +437,13 @@
         t = this.th[n]; g = 64;
         while (g-- > 0) {
           if (this.exec(t) === "yield") break;
-          if (this.compileAnim) break;   // a specialisation miss stalls the frame
+          if (this.blocking()) break;   // a blocking specialisation miss stalls the frame
         }
-        if (this.compileAnim) break;
+        if (this.blocking()) break;
       }
     } catch (e) { this.dump(0); }
     if (this.knobMode === MEGA) this.demoStep();
+    else if (this.knobMode === NEBULA) this.nebulaStep();
     else if ((this.knobMode | 0) >= GAME0) this.gameStep();
     this.pressedEdge.clear();
     this.draw();
@@ -429,52 +466,78 @@
     this.m.w32(U.warp, this.knobWarp, "hle");
     this.m.w32(U.variant, this.knobVariant, "hle");
   };
-  Emu.prototype.sysSubmit = function () {
+  // The scene = the pipelines this frame needs. One draw for an intro/simple game;
+  // for the big game, the whole material list (background, ship, each enemy, HUD…).
+  Emu.prototype.buildScene = function () {
+    if (this.game && this.game.kind === "nebula" && this.game.scene) return this.game.scene;
     var mode = this.m.peek(U.mode) | 0, variant = this.m.peek(U.variant) | 0;
-    var warp = this.m.peek(U.warp) | 0, tick = this.m.peek(U.tick) | 0;
     var key = mode + variant * 64;
+    return [{ key: key, name: permName(key), verts: mode >= GAME0 ? 6 : 3 }];
+  };
+  Emu.prototype.sysSubmit = function () {
+    var tick = this.m.peek(U.tick) | 0, warp = this.m.peek(U.warp) | 0;
+    var scene = this.buildScene(); this.draws = scene;
     this.pipeOn = 10;
-    // a small but PM4-shaped command stream (type-3 packets → register writes)
-    this.pm4 = [
-      { name: "IT_SET_SH_REG", n: 4, reg: "SPI_SHADER_USER_DATA_0..3", pl: [tick, mode, warp, variant] },
-      { name: "IT_SET_CONTEXT_REG", n: 2, reg: "CB_COLOR0_INFO · DB_DEPTH", pl: [mode, 0] },
-      { name: "IT_DISPATCH_/_DRAW_INDEX_AUTO", n: 2, reg: "3 verts · fullscreen", pl: [3, 1] },
-      { name: "IT_EVENT_WRITE_EOP", n: 4, reg: "FLIP + release fence", pl: [] }
-    ];
+    // a PM4-shaped stream: user data, then a bind + draw per pipeline, then flip
+    this.pm4 = [{ name: "IT_SET_SH_REG", n: 4, reg: "SPI_SHADER_USER_DATA_0..3", pl: [tick, this.m.peek(U.mode) | 0, warp, this.m.peek(U.variant) | 0] }];
+    for (var i = 0; i < Math.min(scene.length, 7); i++) {
+      this.pm4.push({ name: "IT_SET_CONTEXT_REG", n: 2, reg: "bind " + scene[i].name, pl: [scene[i].key] });
+      this.pm4.push({ name: "IT_DRAW_INDEX_AUTO", n: 2, reg: scene[i].verts + " verts", pl: [scene[i].verts] });
+    }
+    this.pm4.push({ name: "IT_EVENT_WRITE_EOP", n: 4, reg: "FLIP + release fence", pl: [] });
     this.pipeOn = 11;
-    if (!this.shaders.has(key)) { this.startCompile(key); return; }
-    this.shaders.hit(key);
-    this.recompile = { key: key, arts: shaderArtifacts(key) };
-    this.finishSubmit(key);
+    // find the first pipeline this scene still needs; compile it
+    var async = !!(this.game && this.game.kind === "nebula"), pending = null;
+    for (var j = 0; j < scene.length; j++) { if (!this.shaders.has(scene[j].key)) { pending = scene[j]; break; } }
+    if (pending && !this.compileAnim) this.startCompile(pending.key, pending.name, async);
+    if (pending && !async) return;             // blocking: stall the frame on the miss
+    var focus = this.compileAnim ? this.compileAnim.key : (scene.length ? scene[scene.length - 1].key : null);
+    if (focus != null) this.recompile = { key: focus, arts: shaderArtifacts(focus) };
+    this.emitDraws(scene);
+    this.finishSubmit();
   };
-  Emu.prototype.startCompile = function (key) {
-    this.compileAnim = { key: key, stage: 0, t: 0 };
-    this.recompile = { key: key, arts: shaderArtifacts(key) };
-    this.shaders.stage = 0;
-    this.log("gpu", "specialisation miss " + permName(key) + " → TranslateProgram", "gpu");
+  // Vulkan-level draw: bind + draw each pipeline that is ready, then submit + present.
+  Emu.prototype.emitDraws = function (scene) {
+    var self = this, drawn = 0;
+    scene.forEach(function (d) { if (self.shaders.has(d.key)) { self.shaders.hit(d.key); drawn++; } });
+    this.vblank++;
+    this.vklog("vkQueueSubmit", drawn + " bind+draw · 1 cmd buffer");
+    this.vklog("vkQueuePresentKHR", "image " + (this.vblank % 2) + " → VIDEO_OUT_0", "flip");
+    this.act.gpu = 1; this.act.flip = 1;
   };
-  Emu.prototype.advanceCompile = function (dt) {
+  Emu.prototype.startCompile = function (key, name, async) {
+    var l2 = !!this.disk[hashOf(key)];         // SPIR-V already persisted on disk?
+    this.compileAnim = { key: key, name: name || permName(key), stage: 0, t: 0, full: !l2, async: !!async };
+    this.recompile = { key: key, arts: shaderArtifacts(key) };
+    this.shaders.stage = l2 ? 3 : 0;
+    if (l2) this.log("gpu", "VkPipelineCache HIT " + permName(key) + " — reuse SPIR-V", "gpu");
+    else { this.log("gpu", "L1+L2 miss " + permName(key) + " → TranslateProgram", "gpu"); this.vklog("vkCreateShaderModule", "compile VS+FS from RDNA 2", "gpu"); }
+  };
+  Emu.prototype.advanceCompile = function (dt, doDraw) {
     var ca = this.compileAnim; ca.t += dt;
+    var nStages = ca.full ? 5 : 2;
     if (ca.t >= this.compMs) {
       ca.t = 0; ca.stage++;
-      this.shaders.stage = Math.min(ca.stage, 4);
-      if (ca.stage <= 4) this.log("gpu", SH[ca.stage] + " · " + permName(ca.key), "gpu");
+      this.shaders.stage = ca.full ? Math.min(ca.stage, 4) : Math.min(3 + ca.stage, 4);
+      if (ca.stage < nStages) this.log("gpu", (ca.full ? SH[ca.stage] : ["VkPipelineCache read", "vkCreateGraphicsPipelines"][ca.stage]) + " · " + permName(ca.key), "gpu");
     }
-    if (ca.stage > 4) {
-      var key = ca.key;
+    if (ca.stage >= nStages) {
+      var key = ca.key, full = ca.full;
       this.shaders.commit(key);
+      if (full && !this.disk[hashOf(key)]) { this.disk[hashOf(key)] = 1; this.diskBytes += 8192 + (key % 9) * 512; }
+      this.vklog("vkCreateGraphicsPipelines", "0x" + hex(hashOf(key)) + " " + permName(key), "gpu");
       this.compileAnim = null;
-      this.finishSubmit(key);
-      this.log("gpu", "CompileProgram done 0x" + hex(this.shaders.pipes[key].hash) + " → SPIR-V", "gpu");
+      this.log("gpu", "pipeline ready 0x" + hex(hashOf(key)) + (full ? " · compiled + saved to disk" : " · from VkPipelineCache"), "gpu");
     }
-    this.draw();
+    if (doDraw) this.draw();
   };
-  Emu.prototype.finishSubmit = function (key) {
-    this.m.w32(U.hash, this.shaders.pipes[key].hash, "gpu");
+  Emu.prototype.finishSubmit = function () {
     this.pipeOn = 12;
     this.uploads = this.m.upload();
     this.pipeOn = 13;
-    this.act.gpu = 1; this.act.flip = 1; if (this.uploads > 0) this.act.up = 1;
+    var last = this.draws[this.draws.length - 1];
+    if (last && this.shaders.pipes[last.key]) this.m.w32(U.hash, this.shaders.pipes[last.key].hash, "gpu");
+    if (this.uploads > 0) this.act.up = 1;
   };
   Emu.prototype.sysMix = function () {
     var tick = this.m.peek(U.tick);
@@ -509,10 +572,103 @@
       this.game = { kind: "flappy", y: 180, vy: 0, pipes: [{ x: 640, gap: 150 }, { x: 860, gap: 120 }, { x: 1080, gap: 190 }], score: 0, dead: 0, t: 0 };
     } else if (mode === 15) {
       this.game = { kind: "pong", ly: 150, ry: 150, ball: { x: 320, y: 180, vx: 4.2, vy: 2.4 }, ls: 0, rs: 0, dead: 0 };
+    } else if (mode === NEBULA) {
+      this.game = {
+        kind: "nebula", ship: { x: 90, y: 180 }, bullets: [], enemies: [], eplasma: [], parts: [], powerups: [],
+        score: 0, lives: 3, dead: 0, t: 0, cool: 0, zone: 0, zoneT: 0, wave: 0, waveT: 0, spawnT: 40, shield: 0, muzzle: 0, boom: 0, scene: []
+      };
     } else this.game = null;
     if (!this.stars.length) {
       for (i = 0; i < 90; i++) this.stars.push({ x: Math.random() * 640, y: Math.random() * 360, z: 0.3 + Math.random() * 2 });
     }
+  };
+  // enemy types unlock as the run progresses — each new one streams in a new shader
+  var NEB_WAVE = ["enemy_drone", "enemy_wisp", "enemy_cruiser", "enemy_mine", "enemy_turret", "enemy_seeker", "enemy_splitter", "enemy_boss"];
+  var NEB_HP = { enemy_drone: 1, enemy_wisp: 1, enemy_cruiser: 3, enemy_mine: 1, enemy_turret: 2, enemy_seeker: 1, enemy_splitter: 2, enemy_boss: 12 };
+  Emu.prototype.nebulaStep = function () {
+    var g = this.game, self = this; if (!g || g.dead) return;
+    g.t++;
+    // ship control
+    var sp = 4.4;
+    if (this.held("arrowup", "w")) g.ship.y -= sp;
+    if (this.held("arrowdown", "s")) g.ship.y += sp;
+    if (this.held("arrowleft", "a")) g.ship.x = Math.max(30, g.ship.x - sp);
+    if (this.held("arrowright", "d")) g.ship.x = Math.min(300, g.ship.x + sp);
+    g.ship.y = Math.max(20, Math.min(340, g.ship.y));
+    if (g.cool > 0) g.cool--;
+    if (this.pressed(" ", "arrowup") && g.cool <= 0) { g.bullets.push({ x: g.ship.x + 22, y: g.ship.y }); g.cool = 8; g.muzzle = 4; }
+    if (g.muzzle > 0) g.muzzle--;
+    if (g.boom > 0) g.boom--;
+    if (g.shield > 0) g.shield--;
+    // zones cycle → a new background shader each time
+    g.zoneT++; if (g.zoneT > 300) { g.zoneT = 0; g.zone = (g.zone + 1) % 6; }
+    // waves unlock enemy types → a new enemy shader each time
+    g.waveT++; if (g.waveT > 260 && g.wave < NEB_WAVE.length - 1) { g.waveT = 0; g.wave++; this.log("demo", "wave " + (g.wave + 1) + " — new hostiles", ""); }
+    // spawn
+    g.spawnT--; if (g.spawnT <= 0) {
+      g.spawnT = Math.max(16, 46 - g.wave * 4);
+      var type = NEB_WAVE[(Math.random() * (g.wave + 1)) | 0];
+      g.enemies.push({ type: type, x: 660, y: 30 + Math.random() * 300, hp: NEB_HP[type], t: Math.random() * 6, cool: 40 });
+    }
+    // bullets
+    g.bullets.forEach(function (b) {
+      b.x += 9;
+      g.enemies.forEach(function (e) {
+        if (e.hp > 0 && Math.abs(e.x - b.x) < 22 && Math.abs(e.y - b.y) < 18) {
+          e.hp--; b.x = 999;
+          if (e.hp <= 0) {
+            g.score += 10;
+            var big = e.type === "enemy_boss" || e.type === "enemy_cruiser";
+            if (big) g.boom = 18;
+            var np = big ? 12 : 6;
+            for (var k = 0; k < np; k++) g.parts.push({ x: e.x, y: e.y, vx: (Math.random() - 0.5) * (big ? 7 : 4), vy: (Math.random() - 0.5) * (big ? 7 : 4), life: 18 });
+            if (e.type === "enemy_splitter") for (var q = 0; q < 2; q++) g.enemies.push({ type: "enemy_drone", x: e.x, y: e.y + (q ? 14 : -14), hp: 1, t: 0, cool: 40 });
+          }
+        }
+      });
+    });
+    g.bullets = g.bullets.filter(function (b) { return b.x < 660; });
+    // enemies
+    g.enemies.forEach(function (e) {
+      e.t += 0.06;
+      if (e.type === "enemy_wisp") { e.x -= 3.4; e.y += Math.sin(e.t) * 3; }
+      else if (e.type === "enemy_cruiser") e.x -= 1.4;
+      else if (e.type === "enemy_mine") { e.x -= 1.0; }
+      else if (e.type === "enemy_turret") { e.x -= 0.8; e.cool--; if (e.cool <= 0 && e.x < 620) { e.cool = 70; g.eplasma.push({ x: e.x, y: e.y, vx: -4, vy: (g.ship.y - e.y) * 0.02 }); } }
+      else if (e.type === "enemy_seeker") { e.x -= 2.1; e.y += Math.sign(g.ship.y - e.y) * 1.7; }
+      else if (e.type === "enemy_splitter") { e.x -= 1.8; e.y += Math.sin(e.t * 0.7) * 1.5; }
+      else if (e.type === "enemy_boss") { e.x = Math.min(e.x - 0.6, 500); e.y += Math.sin(e.t) * 2; e.cool--; if (e.cool <= 0) { e.cool = 40; g.eplasma.push({ x: e.x, y: e.y, vx: -4.5, vy: (Math.random() - 0.5) * 3 }); } }
+      else e.x -= 2.6;
+      // collide with ship
+      if (Math.abs(e.x - g.ship.x) < 22 && Math.abs(e.y - g.ship.y) < 18 && e.hp > 0) { if (!g.shield) { g.lives--; g.shield = 90; if (g.lives <= 0) g.dead = 1; } e.hp = 0; for (var k = 0; k < 8; k++) g.parts.push({ x: e.x, y: e.y, vx: (Math.random() - 0.5) * 5, vy: (Math.random() - 0.5) * 5, life: 20 }); }
+    });
+    g.enemies = g.enemies.filter(function (e) { return e.hp > 0 && e.x > -30; });
+    // enemy plasma
+    g.eplasma.forEach(function (b) { b.x += b.vx; b.y += b.vy; if (Math.abs(b.x - g.ship.x) < 16 && Math.abs(b.y - g.ship.y) < 14) { b.x = -99; if (!g.shield) { g.lives--; g.shield = 90; if (g.lives <= 0) g.dead = 1; } } });
+    g.eplasma = g.eplasma.filter(function (b) { return b.x > -10 && b.x < 660; });
+    // powerups
+    if (Math.random() < 0.004) g.powerups.push({ x: 660, y: 30 + Math.random() * 300 });
+    g.powerups.forEach(function (pw) { pw.x -= 2.2; if (Math.abs(pw.x - g.ship.x) < 20 && Math.abs(pw.y - g.ship.y) < 18) { pw.x = -99; g.shield = 200; g.score += 5; } });
+    g.powerups = g.powerups.filter(function (pw) { return pw.x > -20; });
+    // particles
+    g.parts.forEach(function (pt) { pt.x += pt.vx; pt.y += pt.vy; pt.life--; });
+    g.parts = g.parts.filter(function (pt) { return pt.life > 0; });
+    // build the draw list (unique materials in view) → the scene the GPU compiles/binds
+    var used = {}, scene = [];
+    function add(mat, verts) { var k = NEB_KEY[mat]; if (used[k]) return; used[k] = 1; scene.push({ key: k, name: mat + ".fs", verts: verts || 3 }); }
+    add(NEB_ZONES[g.zone], 3);
+    add("ship", 6); add("thruster", 4);
+    if (g.muzzle) add("muzzle", 4);
+    if (g.bullets.length) add("laser", 4);
+    var types = {}; g.enemies.forEach(function (e) { types[e.type] = 1; });
+    Object.keys(types).forEach(function (t) { add(t, 6); });
+    if (g.eplasma.length) add("enemy_plasma", 4);
+    if (g.parts.length) add("explosion", 8);
+    if (g.boom) add("explosion_big", 12);
+    if (g.powerups.length) add("powerup", 4);
+    if (g.shield) add("shield", 6);
+    add(g.lives <= 1 ? "hud_alert" : "hud", 3);
+    g.scene = scene;
   };
 
   Emu.prototype.held = function (a, b) { return this.keys.has(a) || this.keys.has(b); };
@@ -623,7 +779,7 @@
     var c = this.ctx, m = this.m; if (!c || !m) return;
     var w = 160, h = 90, t = (m.peek(U.tick) | 0) * 0.035, mode = m.peek(U.mode) | 0, warp = (m.peek(U.warp) || 8) * 0.12;
     var bass = (m.peek(U.bass) || 0) / 100, i, x, y, u, v, p, r, g, b, z, bi, si;
-    var showMode = this.compileAnim ? (this.compileAnim.key % 64) : mode;
+    var showMode = this.blocking() ? (this.compileAnim.key % 64) : mode;
     if (showMode >= GAME0) { this.drawGame(c, showMode); if (this.compileAnim) this.compileOverlay(c); return; }
     if (!this.small) this.small = c.createImageData(w, h);
     var d = this.small.data;
@@ -701,19 +857,28 @@
   };
 
   Emu.prototype.compileOverlay = function (c) {
-    var ca = this.compileAnim;
+    var ca = this.compileAnim; if (!ca) return;
+    if (ca.async) {   // background compile: a small corner hitch, game keeps running
+      c.save(); c.fillStyle = "rgba(3,6,10,.7)"; c.fillRect(8, 320, 300, 30);
+      c.fillStyle = "#f0b849"; c.font = "10px monospace"; c.textAlign = "left";
+      c.fillText("◷ background compile: " + permName(ca.key) + (ca.full ? "" : " (from cache)"), 16, 338);
+      c.restore(); return;
+    }
+    var labels = ca.full ? SH : ["cache read", "vkCreatePipeline", "", "", ""];
+    var n = ca.full ? 5 : 2;
     c.fillStyle = "rgba(3,6,10,.72)"; c.fillRect(0, 0, 640, 360);
-    c.fillStyle = "#f0b849"; c.font = "600 15px monospace"; c.textAlign = "center";
-    c.fillText("◷ COMPILING  " + permName(ca.key), 320, 150);
-    var stage = Math.min(ca.stage, 4);
-    for (var i = 0; i < SH.length; i++) {
+    c.fillStyle = ca.full ? "#f0b849" : "#75d49a"; c.font = "600 15px monospace"; c.textAlign = "center";
+    c.fillText((ca.full ? "◷ COMPILING  " : "◷ VkPipelineCache HIT  ") + permName(ca.key), 320, 150);
+    var stage = ca.full ? Math.min(ca.stage, 4) : ca.stage;
+    for (var i = 0; i < n; i++) {
       c.fillStyle = i < stage ? "#75d49a" : i === stage ? "#55c5de" : "#3a4b61";
-      c.fillRect(150 + i * 70, 180, 60, 8);
+      c.fillRect(320 - n * 35 + i * 70, 180, 60, 8);
       c.fillStyle = i === stage ? "#eaf0f5" : "#718092"; c.font = "9px monospace";
-      c.fillText(SH[i], 180 + i * 70, 202);
+      c.fillText(labels[i], 320 - n * 35 + 30 + i * 70, 202);
     }
     c.fillStyle = "#b2bfca"; c.font = "10px monospace";
-    c.fillText("first-encounter compile — a real pipeline miss stalls the frame here", 320, 230);
+    c.fillText(ca.full ? "first-encounter compile — a real pipeline miss stalls the frame here"
+      : "SPIR-V already on disk — skip recompile, just recreate the VkPipeline", 320, 230);
     c.textAlign = "left";
   };
 
@@ -777,7 +942,66 @@
       c.fillText(g.ls + "   " + g.rs, 320, 40); c.textAlign = "left"; c.font = "12px monospace";
       c.fillText("PONG  you (left) · W/S or ↑/↓", 16, 352);
       if (g.dead) over(g.ls > g.rs ? "you win " + g.ls + "–" + g.rs : "AI wins " + g.rs + "–" + g.ls);
+    } else if (g.kind === "nebula") {
+      this.drawNebula(c, g);
     }
+  };
+  // A pipeline is "ready" once its shader is compiled; until then the thing it draws
+  // renders as a dim wireframe placeholder — exactly the pop-in of streaming compilation.
+  Emu.prototype.ready = function (mat) { return this.shaders.has(NEB_KEY[mat]); };
+  Emu.prototype.drawNebula = function (c, g) {
+    var self = this, ZONE = ["#05070e", "#0a0616", "#0d0a06", "#04101a", "#060409", "#04120f"][g.zone];
+    var ZC = ["#2a3350", "#4a2a5a", "#5a4a2a", "#1a4a6a", "#2a1a3a", "#1a4a3a"][g.zone];
+    c.fillStyle = ZONE; c.fillRect(0, 0, 640, 360);
+    // background: zone-tinted scrolling stars (bg shader)
+    var bgReady = self.shaders.has(NEB_KEY[NEB_ZONES[g.zone]]);
+    this.stars.forEach(function (s) {
+      s.x -= s.z * 1.6; if (s.x < 0) { s.x = 640; s.y = Math.random() * 360; }
+      c.fillStyle = bgReady ? "rgba(150,180,220," + (0.2 + s.z / 4) + ")" : "rgba(120,60,120,.4)";
+      c.fillRect(s.x, s.y, s.z, s.z);
+    });
+    if (g.zone === 3) { c.fillStyle = bgReady ? ZC : "#3a2140"; c.beginPath(); c.arc(560, 300, 120, 0, Math.PI * 2); c.fill(); }
+    function ph(mat, x, y, w, h, col, draw) {   // draw if ready, else placeholder box
+      if (self.ready(mat)) { draw(); }
+      else { c.strokeStyle = "#ec668b"; c.setLineDash([3, 3]); c.strokeRect(x - w / 2, y - h / 2, w, h); c.setLineDash([]); }
+    }
+    // enemy plasma
+    c.fillStyle = "#ec668b"; g.eplasma.forEach(function (b) { if (self.ready("enemy_plasma")) c.fillRect(b.x - 3, b.y - 2, 7, 4); else { c.strokeStyle = "#ec668b"; c.strokeRect(b.x - 3, b.y - 2, 7, 4); } });
+    // bullets (laser)
+    g.bullets.forEach(function (b) { ph("laser", b.x, b.y, 16, 4, 0, function () { c.fillStyle = "#75d49a"; c.fillRect(b.x - 8, b.y - 2, 16, 4); }); });
+    // enemies
+    var ecol = { enemy_drone: "#55c5de", enemy_wisp: "#9a7be0", enemy_cruiser: "#f0b849", enemy_mine: "#ec668b", enemy_turret: "#e08a4a", enemy_seeker: "#5ad0a0", enemy_splitter: "#d05ad0", enemy_boss: "#ff5a7a" };
+    g.enemies.forEach(function (e) {
+      var sz = e.type === "enemy_boss" ? 46 : e.type === "enemy_cruiser" ? 30 : 20;
+      ph(e.type, e.x, e.y, sz + 6, sz + 6, 0, function () {
+        c.fillStyle = ecol[e.type] || "#fff";
+        if (e.type === "enemy_wisp") { c.beginPath(); c.arc(e.x, e.y, sz / 2, 0, Math.PI * 2); c.fill(); }
+        else { c.fillRect(e.x - sz / 2, e.y - sz / 2, sz, sz); }
+        if (e.type === "enemy_boss") { c.fillStyle = "#3a0a12"; c.fillRect(e.x - 20, e.y - 3, 40, 6); }
+      });
+    });
+    // powerups
+    g.powerups.forEach(function (pw) { ph("powerup", pw.x, pw.y, 16, 16, 0, function () { c.fillStyle = "#75d49a"; c.beginPath(); c.arc(pw.x, pw.y, 8, 0, Math.PI * 2); c.fill(); c.fillStyle = "#04101a"; c.fillText("+", pw.x - 3, pw.y + 4); }); });
+    // muzzle flash
+    if (g.muzzle && self.ready("muzzle")) { c.fillStyle = "rgba(255,240,180," + (g.muzzle / 4) + ")"; c.beginPath(); c.arc(g.ship.x + 24, g.ship.y, 5 + g.muzzle, 0, Math.PI * 2); c.fill(); }
+    // big explosion flash
+    if (g.boom && self.ready("explosion_big")) { c.fillStyle = "rgba(255,180,80," + (g.boom / 18) * 0.5 + ")"; c.beginPath(); c.arc(320, 180, 40 + (18 - g.boom) * 6, 0, Math.PI * 2); c.fill(); }
+    // ship + thruster
+    if (self.ready("thruster")) { c.fillStyle = "#f0b849"; c.beginPath(); c.moveTo(g.ship.x - 14, g.ship.y); c.lineTo(g.ship.x - 24 - (g.t % 6), g.ship.y - 4); c.lineTo(g.ship.x - 24 - (g.t % 6), g.ship.y + 4); c.fill(); }
+    ph("ship", g.ship.x, g.ship.y, 34, 22, 0, function () {
+      c.fillStyle = g.shield ? "#8ad0ff" : "#eaf0f5"; c.beginPath();
+      c.moveTo(g.ship.x + 22, g.ship.y); c.lineTo(g.ship.x - 14, g.ship.y - 11); c.lineTo(g.ship.x - 8, g.ship.y); c.lineTo(g.ship.x - 14, g.ship.y + 11); c.closePath(); c.fill();
+    });
+    if (g.shield && self.ready("shield")) { c.strokeStyle = "rgba(138,208,255,.6)"; c.beginPath(); c.arc(g.ship.x, g.ship.y, 22, 0, Math.PI * 2); c.stroke(); }
+    // particles (explosion)
+    g.parts.forEach(function (pt) { if (self.ready("explosion")) { c.fillStyle = "rgba(240,184,73," + (pt.life / 20) + ")"; c.fillRect(pt.x - 2, pt.y - 2, 4, 4); } });
+    // HUD (turns red on the last life → a hud_alert pipeline)
+    var alert = g.lives <= 1;
+    c.fillStyle = alert ? "#ff5a7a" : "#eaf0f5"; c.font = "12px monospace"; c.textAlign = "left";
+    c.fillText("NEBULA RUN   score " + g.score + "   lives " + g.lives + "   wave " + (g.wave + 1) + (g.shield ? "   ◈ shield" : "") + (alert ? "   ⚠ LOW" : ""), 14, 20);
+    c.fillStyle = "#718092"; c.font = "10px monospace";
+    c.fillText("WASD/arrows move · space fire — new enemies & zones stream new shaders (watch the recompiler)", 14, 352);
+    if (g.dead) { c.fillStyle = "rgba(3,6,10,.7)"; c.fillRect(0, 150, 640, 60); c.fillStyle = "#eaf0f5"; c.font = "600 16px monospace"; c.textAlign = "center"; c.fillText("destroyed — score " + g.score + " · switch cartridge to restart", 320, 186); c.textAlign = "left"; }
   };
 
   Emu.prototype.dump = function (addr) {
@@ -826,22 +1050,42 @@
     if (this.recompile) return this.recompile.key;
     return (this.m.peek(U.mode) | 0) + (this.m.peek(U.variant) | 0) * 64;
   };
+  var SH_TABS = ["ISA", "CFG", "IR", "SRT", "SPIR-V"];
+  // light syntax colouring so a stage reads as code, not a text blob
+  function colorize(line) {
+    var s = esc(line);
+    s = s.replace(/(;.*)$/, '<span class="cx-cm">$1</span>');
+    s = s.replace(/\b(v_[a-z0-9_]+|s_[a-z0-9_]+|exp|s_endpgm)\b/g, '<span class="cx-op">$1</span>');
+    s = s.replace(/\b(Op[A-Za-z0-9]+)\b/g, '<span class="cx-op">$1</span>');
+    s = s.replace(/\b(LoadUniform|Interp|FMul|FAdd|Fma|Sin|Sqrt|Rcp|FMin|PackUnorm4x8|Store|Load|BranchCond|FOrdGt|FOrdLt)\b/g, '<span class="cx-ir">$1</span>');
+    s = s.replace(/(%[A-Za-z0-9_]+|\bv\d+\b|\bs\d+\b|s\[\d+:\d+\]|\bbb\d+\b|GOT\[\d+\]|DescriptorBindingKind::\w+)/g, '<span class="cx-rg">$1</span>');
+    return s;
+  }
   Emu.prototype.shInspect = function (i) {
-    var key = this.curKey(), arts = (this.recompile && this.recompile.key === key) ? this.recompile.arts : shaderArtifacts(key);
+    var key = this.curKey(), arts = shaderArtifacts(key);
     var stageArr = [arts.isa, arts.cfg, arts.ir, arts.srt, arts.spv][i];
     var label = ["RDNA 2 ISA (decoded)", "control-flow graph", "typed value IR", "resource table (SRT snapshot)", "emitted SPIR-V"][i];
-    return "<p class='ax-ins-sub'>" + esc(arts.name) + " · " + esc(label) + "</p><pre class='ax-ins-pre'>" + esc(stageArr.join("\n")) + "</pre>";
+    return "<p class='ax-ins-sub'>" + esc(arts.name) + " · " + esc(label) + "</p><ol class='cx'>" + stageArr.map(function (l) { return "<li>" + colorize(l) + "</li>"; }).join("") + "</ol>";
   };
-  // the live RDNA 2 → IR → SPIR-V tape in the recompiler card, revealed stage by stage
-  var SH_HDR = ["RDNA 2 ISA (decode)", "control-flow graph", "typed value IR", "resource table (SRT)", "SPIR-V (compile)"];
-  function recompileHTML() {
-    var r = emu.recompile;
-    if (!r) return "<span class='ax-dim'>no fragment program specialised yet — pick an effect</span>";
-    var arts = r.arts, stages = [arts.isa, arts.cfg, arts.ir, arts.srt, arts.spv];
-    var upto = emu.compileAnim ? Math.min(emu.compileAnim.stage, 4) : 4;
-    var out = "<b>" + esc(arts.name) + "</b>  <span class='ax-dim'>0x" + hex((0x51A00000 + r.key * 0x20F) >>> 0) + (emu.compileAnim ? " · compiling…" : " · cached") + "</span>";
-    for (var s = 0; s <= upto; s++) out += "\n\n<i>; ── " + SH_HDR[s] + " ──</i>\n" + esc(stages[s].join("\n"));
-    return out;
+  // which cached/compiling shader the recompiler detail is showing
+  function focusedKey() {
+    var k = emu.focusKey;
+    if (k != null && (emu.shaders.has(k) || (emu.compileAnim && emu.compileAnim.key === k))) return k;
+    if (emu.compileAnim) return emu.compileAnim.key;
+    var keys = Object.keys(emu.shaders.pipes);
+    if (keys.length) return +keys[keys.length - 1];
+    return emu.recompile ? emu.recompile.key : null;
+  }
+  function recompileDetailHTML() {
+    var key = focusedKey();
+    if (key == null) return "<div class='ax-dim' style='padding:12px'>no pipeline specialised yet — pick an effect, a game, or Nebula Run</div>";
+    var arts = shaderArtifacts(key), tab = emu.shTab, stages = [arts.isa, arts.cfg, arts.ir, arts.srt, arts.spv];
+    var compiling = emu.compileAnim && emu.compileAnim.key === key;
+    var status = compiling ? "compiling " + (emu.compileAnim.full ? SH[Math.min(emu.compileAnim.stage, 4)] : "pipeline") : emu.shaders.has(key) ? "L1 cached" : "preview";
+    var head = "<div class='ax-recomp-name'><b>" + esc(arts.name) + "</b> <span class='ax-dim'>0x" + hex(hashOf(key)) + " · " + status + "</span></div>";
+    var reached = !compiling || !emu.compileAnim.full || emu.compileAnim.stage >= tab;
+    if (!reached) return head + "<div class='ax-dim' style='padding:12px'>" + SH_TABS[tab] + " not produced yet — recompiler is at " + SH[Math.min(emu.compileAnim.stage, 4)] + "…</div>";
+    return head + "<ol class='cx'>" + stages[tab].map(function (l) { return "<li>" + colorize(l) + "</li>"; }).join("") + "</ol>";
   }
 
   var emu = new Emu();
@@ -913,6 +1157,7 @@
     $("ax-which").textContent = emu.th[emu.view] ? emu.th[emu.view].name : "—";
     $("ax-effect-name").textContent = emu.knobMode === MEGA
       ? "megademo · " + (emu.demo ? emu.demo.seq[emu.demo.scene].name : "")
+      : emu.knobMode === NEBULA ? "nebula run · " + (emu.game ? Object.keys(emu.shaders.pipes).length + " pipelines" : "")
       : (FX[emu.knobMode] || ("mode-" + emu.knobMode));
     $("ax-metrics").innerHTML = "<dt>PC</dt><dd>0x" + hex(emu.th[emu.view] ? emu.th[emu.view].base + emu.th[emu.view].pc * 8 : 0) + "</dd><dt>shader</dt><dd>" + esc(emu.shaders.last) + "</dd>";
     var log = $("ax-log"); log.innerHTML = "";
@@ -982,15 +1227,44 @@
       d.innerHTML = "<b>" + p.name + "</b><code>" + (p.reg || ("n=" + p.n)) + "</code><span>" + (p.pl.length ? p.pl.join(" ") : "—") + "</span>";
       pm.appendChild(d);
     });
-    $("ax-recompile").innerHTML = recompileHTML();
+    // recompiler: tabs + colorized detail for the focused pipeline
+    var focus = focusedKey();
+    var tabsEl = $("ax-sh-tabs");
+    if (tabsEl.childElementCount !== SH_TABS.length) {
+      tabsEl.innerHTML = "";
+      SH_TABS.forEach(function (t, i) { var bt = document.createElement("button"); bt.type = "button"; bt.className = "ax-tab"; bt.textContent = t; bt.onclick = function () { emu.shTab = i; paint(); }; tabsEl.appendChild(bt); });
+    }
+    Array.prototype.forEach.call(tabsEl.children, function (bt, i) { bt.classList.toggle("on", i === emu.shTab); });
+    $("ax-recompile").innerHTML = recompileDetailHTML();
+    // cached pipeline list (click to inspect an old shader)
     var sh = $("ax-pipes"); sh.innerHTML = "";
     var keys = Object.keys(emu.shaders.pipes);
-    keys.slice(-14).forEach(function (k) {
+    if (!keys.length) sh.innerHTML = "<div class='ax-dim' style='padding:8px'>empty</div>";
+    keys.slice(-40).reverse().forEach(function (k) {
       var p = emu.shaders.pipes[k];
-      var d = document.createElement("div"); d.className = "ax-row";
-      d.innerHTML = "<b>" + p.name + "</b><code>0x" + hex(p.hash) + "</code><span>key " + k + "</span>";
+      var d = document.createElement("div"); d.className = "ax-pipe-row" + (+k === focus ? " on" : "");
+      d.innerHTML = "<b>" + esc(p.name) + "</b><code>0x" + hex(p.hash) + "</code>";
+      d.onclick = function () { emu.focusKey = +k; paint(); };
       sh.appendChild(d);
     });
+    // Vulkan event log
+    var vk = $("ax-vk"); vk.innerHTML = "";
+    emu.vk.slice(0, 16).forEach(function (e) {
+      var li = document.createElement("li"); li.className = e.lv;
+      li.innerHTML = "<code>" + esc(e.c) + "</code><span>" + esc(e.a) + "</span>";
+      vk.appendChild(li);
+    });
+    // two-level pipeline cache
+    var l1 = Object.keys(emu.shaders.pipes).length, l2 = Object.keys(emu.disk).length;
+    var last = emu.draws.length ? emu.draws[emu.draws.length - 1] : null;
+    var lastKey = last ? last.key : null;
+    var lookup = lastKey == null ? "—" : (emu.shaders.has(lastKey) ? "L1 hit" : emu.disk[hashOf(lastKey)] ? "L1 miss → L2 hit (recreate pipeline)" : "L1+L2 miss → full compile");
+    $("ax-cache").innerHTML =
+      "<div class='ax-cache-row'><b>L1 · Kyty ProgramCache</b><span>in-memory std::unordered_map&lt;key,Program&gt;</span></div>" +
+      "<div class='ax-cache-kv'><span>entries</span><code>" + l1 + "</code><span>hits / misses</span><code>" + emu.shaders.hits + " / " + emu.shaders.misses + "</code></div>" +
+      "<div class='ax-cache-row'><b>L2 · VkPipelineCache</b><span>~/.kyty/CUSA00000/pipeline.cache</span></div>" +
+      "<div class='ax-cache-kv'><span>pipelines</span><code>" + l2 + "</code><span>on disk</span><code>" + (emu.diskBytes / 1024 | 0) + " KB</code></div>" +
+      "<div class='ax-cache-flow'>this draw &nbsp;<code>0x" + (lastKey == null ? "—" : hex(hashOf(lastKey))) + "</code> &nbsp;→ &nbsp;<b>" + lookup + "</b></div>";
     $("ax-crash").textContent = emu.crash;
     var s = emu.m.st;
     $("ax-coh").innerHTML = [["reads", s.r], ["writes", s.w], ["watch faults", s.watch], ["uploaded", s.up], ["hits", emu.shaders.hits], ["misses", emu.shaders.misses]].map(function (row) {
@@ -1035,7 +1309,19 @@
     try { emu.m.w32(CODE, 0, "cpu"); } catch (e) { emu.dump(CODE); }
     paint();
   };
-  $("ax-flush").onclick = function () { var was = emu.shaders; emu.shaders = new Cache(); emu.shaders.hits = 0; emu.log("gpu", "permutations dropped — next draw recompiles", "gpu"); paint(); };
+  $("ax-flush").onclick = function () {
+    emu.shaders = new Cache(); emu.focusKey = null;
+    emu.log("gpu", "L1 dropped — next draws recreate pipelines from the disk cache", "gpu");
+    emu.vklog("vkDestroyPipeline", "flush L1 program cache");
+    paint();
+  };
+  var wipeBtn = $("ax-wipe");
+  if (wipeBtn) wipeBtn.onclick = function () {
+    emu.shaders = new Cache(); emu.disk = {}; emu.diskBytes = 0; emu.focusKey = null;
+    emu.log("gpu", "wiped VkPipelineCache on disk — everything recompiles cold", "err");
+    emu.vklog("unlink", "~/.kyty/pipeline.cache", "err");
+    paint();
+  };
   window.addEventListener("keydown", function (e) {
     var k = e.key.toLowerCase();
     if (["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d", " "].indexOf(k) >= 0) e.preventDefault();
@@ -1052,13 +1338,16 @@
     var dt = now - last; last = now;
     if (dt > 250) dt = 250;
     if (!emu.booted) { emu.advanceBoot(dt); }
-    else if (emu.compileAnim) { emu.advanceCompile(dt); }
-    else if (emu.running && emu.alive) {
-      emu.act = { cpu: 0, gpu: 0, up: 0, flip: 0 };
-      acc += dt;
-      var guard = 6;
-      while (acc > 33 && guard-- > 0 && !emu.compileAnim) { acc -= 33; emu.stepFrame(); }
-      if (acc > 200) acc = 0;
+    else {
+      var blk = emu.blocking();
+      if (emu.compileAnim) emu.advanceCompile(dt, blk);   // draw the overlay only when blocking
+      if (emu.running && emu.alive && !blk) {
+        emu.act = { cpu: 0, gpu: 0, up: 0, flip: 0 };
+        acc += dt;
+        var guard = 6;
+        while (acc > 33 && guard-- > 0 && !emu.blocking()) { acc -= 33; emu.stepFrame(); }
+        if (acc > 200) acc = 0;
+      }
     }
     paint();
     requestAnimationFrame(tick);

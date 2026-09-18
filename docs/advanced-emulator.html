@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="assets/tutor.css?v=26">
 <link rel="stylesheet" href="assets/app.css?v=26">
 <link rel="stylesheet" href="assets/highlight.css?v=26">
-<link rel="stylesheet" href="assets/advanced-emulator.css?v=7">
+<link rel="stylesheet" href="assets/advanced-emulator.css?v=8">
 </head>
 <body>
 <main data-app-content class="ax-wrap">
@@ -60,7 +60,8 @@
         <button type="button" class="ax-btn" data-mode="14">Flappy</button>
         <button type="button" class="ax-btn" data-mode="15">Pong</button>
         <span class="ax-knob-l">big</span>
-        <button type="button" class="ax-btn ax-mega" data-mode="20">Megademo ✦</button>
+        <button type="button" class="ax-btn ax-mega" data-mode="16">Nebula Run ✦</button>
+        <button type="button" class="ax-btn ax-mega" data-mode="20">Megademo</button>
         <label>warp <input id="ax-warp" type="range" min="1" max="32" value="8"></label>
       </div>
     </header>
@@ -121,21 +122,38 @@
         <div id="ax-hle"></div>
       </section>
       <section class="ax-card">
-        <header><b>PM4</b><span>fullscreen draw only</span></header>
+        <header><b>PM4</b><span>bind + draw per pipeline</span></header>
         <div id="ax-pm4"></div>
       </section>
-      <section class="ax-card ax-span2">
-        <header><b>Shader recompiler</b><span>RDNA&nbsp;2 → typed IR → SPIR-V · click a stage</span></header>
+      <section class="ax-card ax-span3">
+        <header><b>Shader recompiler</b><span>RDNA&nbsp;2 → typed IR → SPIR-V · click a cached pipeline, then a tab</span></header>
         <ol class="ax-sh-stages" id="ax-sh-stages"></ol>
-        <pre id="ax-recompile"></pre>
-        <div id="ax-pipes"></div>
+        <div class="ax-recomp-body">
+          <div class="ax-recomp-list">
+            <div class="ax-recomp-h">pipeline cache (L1)</div>
+            <div id="ax-pipes"></div>
+          </div>
+          <div class="ax-recomp-detail">
+            <div class="ax-tabs" id="ax-sh-tabs"></div>
+            <pre id="ax-recompile"></pre>
+          </div>
+        </div>
+      </section>
+      <section class="ax-card">
+        <header><b>Vulkan · host GPU</b><span>vk* calls</span></header>
+        <ol id="ax-vk"></ol>
+      </section>
+      <section class="ax-card ax-span2">
+        <header><b>Pipeline cache</b><span>L1 in-memory · L2 on disk (VkPipelineCache)</span></header>
+        <div id="ax-cache"></div>
       </section>
       <section class="ax-card ax-span2">
         <header><b>Guest fault context</b><span>KytyPS5 dump shape</span></header>
         <pre id="ax-crash">No unhandled fault this run.</pre>
         <div class="ax-fault-btns">
           <button type="button" class="ax-btn" id="ax-fault-rx">Write RX</button>
-          <button type="button" class="ax-btn" id="ax-flush">Flush permutations</button>
+          <button type="button" class="ax-btn" id="ax-flush">Flush L1</button>
+          <button type="button" class="ax-btn" id="ax-wipe">Wipe disk cache</button>
         </div>
       </section>
       <section class="ax-card">
@@ -161,9 +179,16 @@
       fast) slows the whole thing down so you can read each stage. Click any stage in either
       pipeline to open a live inspector (memory map, GOT, TLS bytes, PM4 register writes, the IR
       and SPIR-V…). The intros are uniforms visualised; Serpent, Breakout, Drift, Invaders, Flappy
-      and Pong are real guest-ticked programs. <b>Megademo ✦</b> is the big one: it links two dozen
-      parts at boot and then runs them back to back, so you watch the shader cache fill one
-      first-encounter compile at a time — a whole demo warming its pipeline cache.
+      and Pong are real guest-ticked programs. <b>Megademo</b> links two dozen parts at boot and
+      runs them back to back. <b>Nebula Run ✦</b> is the big one — a simple space shooter whose
+      background, ship, every enemy type, weapon, explosion and HUD is its own pipeline, compiled
+      <em>the first time it appears on screen</em> (streaming shader compilation, in the background,
+      so gameplay keeps running). Watch the <b>Shader recompiler</b> fill — click any cached
+      pipeline to read its RDNA&nbsp;2 → IR → SPIR-V — the <b>Vulkan</b> panel for the host
+      <code>vk*</code> calls, and the <b>Pipeline cache</b> for the two levels the emulator keeps:
+      an in-memory ProgramCache (L1) and the on-disk <code>VkPipelineCache</code> (L2). Flush L1 and
+      the next draws rebuild pipelines straight from disk without recompiling SPIR-V; wipe the disk
+      cache and everything compiles cold, exactly like a first run of a game.
     </p>
   </section>
 </main>
@@ -171,7 +196,7 @@
 <script src="assets/search-index.js?v=26" defer></script>
 <script src="assets/app.js?v=26" defer></script>
 <script src="assets/highlight.js?v=26" defer></script>
-<script src="assets/advanced-emulator.js?v=7" defer></script>
+<script src="assets/advanced-emulator.js?v=8" defer></script>
 <script src="assets/tutor.js?v=26" defer></script>
 </body>
 </html>
