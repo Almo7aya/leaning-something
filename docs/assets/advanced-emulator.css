@@ -18,21 +18,38 @@
 .ax-brand i.fault { background: var(--k); }
 .ax-brand b { font-size: 12px; letter-spacing: .08em; }
 .ax-brand small { color: var(--ink3); margin-left: 8px; }
-.ax-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.ax-controls { display: flex; flex-wrap: wrap; gap: 6px; }
 .ax-btn {
   min-height: 30px; padding: 5px 10px; border: 1px solid var(--ln2); border-radius: 5px;
   background: var(--p2); color: var(--ink2); font: 650 11px var(--mono); cursor: pointer;
 }
 .ax-btn:hover { color: var(--ink); border-color: var(--c); }
 .ax-pri { border-color: var(--c); color: var(--c); }
-.ax-knob-l { color: var(--a); letter-spacing: .14em; font-size: 9px; margin-left: 6px; }
-.ax-knobs { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-left: auto; color: var(--ink3); font-size: 10px; max-width: 720px; }
-.ax-knobs label { display: flex; align-items: center; gap: 6px; }
-.ax-knobs input[type=range] { width: 90px; }
-.ax-thread-switch { display: flex; gap: 6px; padding: 8px 10px 0; }
-.ax-speed select, .ax-hex-tools input {
-  margin-left: 6px; background: var(--bg); color: var(--ink); border: 1px solid var(--ln); border-radius: 4px; padding: 3px 6px; font: 11px var(--mono);
+.ax-selects { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-left: auto; }
+.ax-sel { display: flex; align-items: center; gap: 6px; color: var(--ink3); font-size: 10px; letter-spacing: .04em; }
+.ax-sel select {
+  background: var(--bg); color: var(--ink); border: 1px solid var(--ln2); border-radius: 5px;
+  padding: 5px 8px; font: 650 11px var(--mono); cursor: pointer; min-height: 30px;
 }
+.ax-sel select:hover { border-color: var(--c); }
+.ax-warp input[type=range] { width: 84px; accent-color: var(--c); }
+.ax-thread-switch { display: flex; gap: 6px; padding: 8px 10px 0; }
+
+/* detail tabs */
+.ax-nav { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 10px 0; border-top: 1px solid var(--ln); background: #0c121b; }
+.ax-navbtn {
+  padding: 8px 14px; border: 1px solid var(--ln); border-bottom: 0; border-radius: 6px 6px 0 0;
+  background: var(--p); color: var(--ink3); font: 650 11px var(--mono); cursor: pointer;
+}
+.ax-navbtn:hover { color: var(--ink); }
+.ax-navbtn.on { background: var(--bg); color: var(--c); border-color: var(--ln2); box-shadow: 0 2px 0 0 var(--bg); }
+.ax-panels { padding: 12px; background: var(--bg); border-top: 1px solid var(--ln2); margin-top: -1px; }
+.ax-panel-lead { margin: 0 2px 12px; color: var(--ink2); font: 12px/1.5 var(--serif); max-width: 96ch; }
+.ax-panel-lead code { font-family: var(--mono); color: var(--a); }
+.ax-cards { display: grid; gap: 10px; }
+.ax-cards-2 { grid-template-columns: 1fr 1fr; }
+.ax-cards-3 { grid-template-columns: 1fr 1fr 1fr; }
+.ax-recomp-card { margin-bottom: 10px; }
 
 .ax-pipe { display: flex; gap: 4px; margin: 0; padding: 8px 10px; overflow-x: auto; list-style: none; border-bottom: 1px solid var(--ln); }
 .ax-pipe li {
@@ -75,14 +92,9 @@
 #ax-log li { padding: 3px 4px; border-bottom: 1px solid var(--ln); color: var(--ink2); font-size: 10px; }
 #ax-log .ok { color: var(--g); } #ax-log .gpu { color: var(--c); } #ax-log .err { color: var(--k); }
 
-.ax-grid {
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 8px;
-  border-top: 1px solid var(--ln);
-}
 .ax-card { min-width: 0; overflow: hidden; border: 1px solid var(--ln); border-radius: 8px; background: var(--p); }
 .ax-card > header b { font-size: 11px; }
 .ax-card > header span { color: var(--ink3); font-size: 9px; }
-.ax-span2 { grid-column: span 2; }
 .ax-regs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 8px; }
 .ax-reg { display: flex; justify-content: space-between; padding: 4px 6px; border: 1px solid var(--ln); border-radius: 3px; background: var(--p2); font-size: 9px; }
 .ax-reg span { color: var(--c); } .ax-reg.is-changed { border-color: var(--a); }
@@ -145,7 +157,6 @@
 .ax-pm4-row span { display: block; margin-top: 2px; color: var(--g); font-size: 9px; }
 
 /* full-width shader recompiler: cached list + tabbed, colorized detail */
-.ax-span3 { grid-column: span 3; }
 .ax-recomp-body { display: grid; grid-template-columns: 220px 1fr; gap: 0; border-top: 1px solid var(--ln); }
 .ax-recomp-list { border-right: 1px solid var(--ln); max-height: 300px; overflow: auto; }
 .ax-recomp-h { padding: 6px 10px; color: var(--ink3); font-size: 9px; letter-spacing: .08em; border-bottom: 1px solid var(--ln); }
@@ -219,7 +230,11 @@ ol.cx li::before { content: counter(ln); position: absolute; left: 0; width: 32p
 .ax-note p { color: var(--prose); font: 17px/1.55 var(--serif); }
 
 @media (max-width: 1100px) {
-  .ax-top, .ax-grid { grid-template-columns: 1fr; }
-  .ax-span2 { grid-column: auto; }
+  .ax-top { grid-template-columns: 1fr; }
+  .ax-cards-3 { grid-template-columns: 1fr 1fr; }
   .ax-screen-card { border-right: 0; border-bottom: 1px solid var(--ln); }
+}
+@media (max-width: 720px) {
+  .ax-cards-2, .ax-cards-3 { grid-template-columns: 1fr; }
+  .ax-selects { margin-left: 0; }
 }

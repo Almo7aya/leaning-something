@@ -1177,9 +1177,7 @@
     Array.prototype.forEach.call(document.querySelectorAll("[data-th]"), function (b) {
       b.classList.toggle("ax-pri", +b.getAttribute("data-th") === emu.view);
     });
-    Array.prototype.forEach.call(document.querySelectorAll("[data-mode]"), function (b) {
-      b.classList.toggle("ax-pri", +b.getAttribute("data-mode") === emu.knobMode);
-    });
+    var scSel = $("ax-scene"); if (scSel && +scSel.value !== emu.knobMode) scSel.value = emu.knobMode;
 
     var h = $("ax-regs"); h.innerHTML = "";
     if (emu.th[emu.view]) {
@@ -1312,20 +1310,26 @@
   var PACE = { learn: [520, 460], normal: [260, 230], fast: [110, 80] };
   $("ax-speed").onchange = function () { var p = PACE[this.value] || PACE.learn; emu.bootMs = p[0]; emu.compMs = p[1]; };
   (function () { var p = PACE.learn; emu.bootMs = p[0]; emu.compMs = p[1]; })();
-  Array.prototype.forEach.call(document.querySelectorAll("[data-mode]"), function (b) {
-    b.onclick = function () {
-      var m = +this.getAttribute("data-mode");
-      if (m === MEGA) { emu.enterMega(); paint(); return; }
-      if (!emu.booted) emu.finishBoot();
-      emu.knobMode = m; emu.knobVariant = 0; emu.demo = null;
-      emu.focusKey = null; emu.focusPinned = false;
-      emu.resetGame(m);
-      emu.running = true;
-      paint();
-    };
-  });
+  $("ax-scene").onchange = function () {
+    var m = +this.value;
+    if (m === MEGA) { emu.enterMega(); paint(); return; }
+    if (!emu.booted) emu.finishBoot();
+    emu.knobMode = m; emu.knobVariant = 0; emu.demo = null;
+    emu.focusKey = null; emu.focusPinned = false;
+    emu.resetGame(m);
+    emu.running = true;
+    paint();
+  };
   Array.prototype.forEach.call(document.querySelectorAll("[data-th]"), function (b) {
     b.onclick = function () { emu.view = +this.getAttribute("data-th"); paint(); };
+  });
+  // detail tabs
+  Array.prototype.forEach.call(document.querySelectorAll("#ax-nav .ax-navbtn"), function (b) {
+    b.onclick = function () {
+      var tab = this.getAttribute("data-tab");
+      Array.prototype.forEach.call(document.querySelectorAll("#ax-nav .ax-navbtn"), function (x) { x.classList.toggle("on", x === b); });
+      Array.prototype.forEach.call(document.querySelectorAll(".ax-panel"), function (pnl) { pnl.hidden = pnl.getAttribute("data-tab") !== tab; });
+    };
   });
   $("ax-fault-rx").onclick = function () {
     try { emu.m.w32(CODE, 0, "cpu"); } catch (e) { emu.dump(CODE); }

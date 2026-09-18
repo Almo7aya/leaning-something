@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="assets/tutor.css?v=26">
 <link rel="stylesheet" href="assets/app.css?v=26">
 <link rel="stylesheet" href="assets/highlight.css?v=26">
-<link rel="stylesheet" href="assets/advanced-emulator.css?v=9">
+<link rel="stylesheet" href="assets/advanced-emulator.css?v=10">
 </head>
 <body>
 <main data-app-content class="ax-wrap">
@@ -26,43 +26,50 @@
   <section class="ax-machine" id="ax-machine">
     <header class="ax-bar">
       <div class="ax-brand"><i id="ax-led"></i><b>ASTERIA · INTRO</b><small id="ax-sub">cold</small></div>
-      <div class="ax-actions">
+      <div class="ax-controls">
         <button type="button" class="ax-btn ax-pri" id="ax-run">Pause</button>
         <button type="button" class="ax-btn" id="ax-frame">Step frame</button>
         <button type="button" class="ax-btn" id="ax-insn">Step insn</button>
         <button type="button" class="ax-btn" id="ax-reset">Cold reboot</button>
         <button type="button" class="ax-btn" id="ax-sound">Sound</button>
-        <label class="ax-speed">pace
+      </div>
+      <div class="ax-selects">
+        <label class="ax-sel">scene
+          <select id="ax-scene">
+            <optgroup label="Intros">
+              <option value="0">Plasma</option>
+              <option value="1">Tunnel</option>
+              <option value="2">Constellation</option>
+              <option value="3">Fire</option>
+              <option value="4">Starfield</option>
+              <option value="5">Moire</option>
+              <option value="6">Hex rain</option>
+              <option value="7">Kaleido</option>
+              <option value="8">Metaballs</option>
+              <option value="9">Voronoi</option>
+            </optgroup>
+            <optgroup label="Games">
+              <option value="10">Serpent</option>
+              <option value="11">Breakout</option>
+              <option value="12">Drift</option>
+              <option value="13">Invaders</option>
+              <option value="14">Flappy</option>
+              <option value="15">Pong</option>
+            </optgroup>
+            <optgroup label="Big demos">
+              <option value="16">Nebula Run ✦</option>
+              <option value="20">Megademo</option>
+            </optgroup>
+          </select>
+        </label>
+        <label class="ax-sel">pace
           <select id="ax-speed">
             <option value="learn">learn (slow)</option>
             <option value="normal">normal</option>
             <option value="fast">fast</option>
           </select>
         </label>
-      </div>
-      <div class="ax-knobs" id="ax-knobs">
-        <span class="ax-knob-l">intro</span>
-        <button type="button" class="ax-btn" data-mode="0">Plasma</button>
-        <button type="button" class="ax-btn" data-mode="1">Tunnel</button>
-        <button type="button" class="ax-btn" data-mode="2">Constellation</button>
-        <button type="button" class="ax-btn" data-mode="3">Fire</button>
-        <button type="button" class="ax-btn" data-mode="4">Starfield</button>
-        <button type="button" class="ax-btn" data-mode="5">Moire</button>
-        <button type="button" class="ax-btn" data-mode="6">Hex rain</button>
-        <button type="button" class="ax-btn" data-mode="7">Kaleido</button>
-        <button type="button" class="ax-btn" data-mode="8">Metaballs</button>
-        <button type="button" class="ax-btn" data-mode="9">Voronoi</button>
-        <span class="ax-knob-l">games</span>
-        <button type="button" class="ax-btn" data-mode="10">Serpent</button>
-        <button type="button" class="ax-btn" data-mode="11">Breakout</button>
-        <button type="button" class="ax-btn" data-mode="12">Drift</button>
-        <button type="button" class="ax-btn" data-mode="13">Invaders</button>
-        <button type="button" class="ax-btn" data-mode="14">Flappy</button>
-        <button type="button" class="ax-btn" data-mode="15">Pong</button>
-        <span class="ax-knob-l">big</span>
-        <button type="button" class="ax-btn ax-mega" data-mode="16">Nebula Run ✦</button>
-        <button type="button" class="ax-btn ax-mega" data-mode="20">Megademo</button>
-        <label>warp <input id="ax-warp" type="range" min="1" max="32" value="8"></label>
+        <label class="ax-sel ax-warp">warp <input id="ax-warp" type="range" min="1" max="32" value="8"></label>
       </div>
     </header>
 
@@ -85,7 +92,7 @@
           <div class="ax-boot" id="ax-boot"><pre id="ax-boot-text">assembling intro…</pre></div>
         </div>
         <div class="ax-flip" id="ax-flip"></div>
-        <p class="ax-help">Click any <b>pipeline stage</b> or <b>shader stage</b> to inspect it live · set <b>pace</b> to <em>learn</em> to slow boot &amp; compiles · try <b>Megademo</b>. Games: <kbd>WASD</kbd>/<kbd>arrows</kbd> · <kbd>space</kbd> shoot/flap · <kbd>.</kbd> insn · <kbd>,</kbd> frame · <kbd>P</kbd> pause</p>
+        <p class="ax-help">Pick a <b>scene</b> above and a <b>detail tab</b> below · click any <b>pipeline</b> or <b>shader stage</b> to inspect it live · set <b>pace</b> to <em>learn</em> to slow it down. Games: <kbd>WASD</kbd>/<kbd>arrows</kbd> · <kbd>space</kbd> shoot/flap · <kbd>.</kbd> insn · <kbd>,</kbd> frame · <kbd>P</kbd> pause</p>
       </section>
       <aside class="ax-side">
         <header><span>LIVE BOUNDARY</span><b id="ax-bound-kind">BOOT</b></header>
@@ -98,70 +105,100 @@
       </aside>
     </div>
 
-    <div class="ax-grid">
-      <section class="ax-card">
-        <header><b>CPU · executed code</b><span id="ax-cpu-ip">raster / mixer</span></header>
-        <div class="ax-thread-switch">
-          <button type="button" class="ax-btn" data-th="0">raster</button>
-          <button type="button" class="ax-btn" data-th="1">mixer</button>
+    <nav class="ax-nav" id="ax-nav" role="tablist">
+      <button type="button" class="ax-navbtn on" data-tab="cpu">1 · Guest CPU &amp; memory</button>
+      <button type="button" class="ax-navbtn" data-tab="loader">2 · Loader &amp; HLE</button>
+      <button type="button" class="ax-navbtn" data-tab="gpu">3 · GPU pipeline</button>
+      <button type="button" class="ax-navbtn" data-tab="diag">4 · Diagnostics</button>
+    </nav>
+
+    <div class="ax-panels">
+      <section class="ax-panel" data-tab="cpu">
+        <p class="ax-panel-lead">The guest's own code runs natively on two threads; it reads and writes a small guest address space. Nothing here is interpreted.</p>
+        <div class="ax-cards ax-cards-2">
+          <section class="ax-card">
+            <header><b>CPU · executed code</b><span id="ax-cpu-ip">raster / mixer</span></header>
+            <div class="ax-thread-switch">
+              <button type="button" class="ax-btn" data-th="0">raster</button>
+              <button type="button" class="ax-btn" data-th="1">mixer</button>
+            </div>
+            <div class="ax-regs" id="ax-regs"></div>
+            <ol class="ax-disasm" id="ax-disasm"></ol>
+          </section>
+          <section class="ax-card">
+            <header><b>Guest memory</b><span>layout · pages · .data uniforms</span></header>
+            <div id="ax-maps"></div>
+            <div class="ax-mem-h">4&nbsp;KB pages — <i class="k-rx"></i> R+X <i class="k-rw"></i> R+W <i class="k-d"></i> dirty</div>
+            <div class="ax-pages" id="ax-pages"></div>
+            <pre id="ax-hex"></pre>
+          </section>
         </div>
-        <div class="ax-regs" id="ax-regs"></div>
-        <ol class="ax-disasm" id="ax-disasm"></ol>
       </section>
-      <section class="ax-card">
-        <header><b>Guest memory</b><span>layout · pages · .data uniforms</span></header>
-        <div id="ax-maps"></div>
-        <div class="ax-mem-h">4&nbsp;KB pages — <i class="k-rx"></i> R+X <i class="k-rw"></i> R+W <i class="k-d"></i> dirty</div>
-        <div class="ax-pages" id="ax-pages"></div>
-        <pre id="ax-hex"></pre>
+
+      <section class="ax-panel" data-tab="loader" hidden>
+        <p class="ax-panel-lead">At load time each import (a NID) is resolved into the GOT, and the TLS read is patched to <code>Call9</code>. At run time a <code>SYS</code> crosses into a hand-written native function.</p>
+        <div class="ax-cards ax-cards-2">
+          <section class="ax-card">
+            <header><b>GOT + TLS</b><span>resolve then patch</span></header>
+            <div id="ax-got"></div>
+            <pre id="ax-tls"></pre>
+          </section>
+          <section class="ax-card">
+            <header><b>HLE</b><span>NID → native function</span></header>
+            <div id="ax-hle"></div>
+          </section>
+        </div>
       </section>
-      <section class="ax-card">
-        <header><b>GOT + TLS</b><span>resolve then patch</span></header>
-        <div id="ax-got"></div>
-        <pre id="ax-tls"></pre>
-      </section>
-      <section class="ax-card">
-        <header><b>HLE</b><span>NID → native</span></header>
-        <div id="ax-hle"></div>
-      </section>
-      <section class="ax-card">
-        <header><b>PM4</b><span>bind + draw per pipeline</span></header>
-        <div id="ax-pm4"></div>
-      </section>
-      <section class="ax-card ax-span3">
-        <header><b>Shader recompiler</b><span>RDNA&nbsp;2 → typed IR → SPIR-V · click a cached pipeline, then a tab</span></header>
-        <ol class="ax-sh-stages" id="ax-sh-stages"></ol>
-        <div class="ax-recomp-body">
-          <div class="ax-recomp-list">
-            <div class="ax-recomp-h">pipeline cache (L1)</div>
-            <div id="ax-pipes"></div>
+
+      <section class="ax-panel" data-tab="gpu" hidden>
+        <p class="ax-panel-lead">A draw travels PM4 → the shader recompiler (RDNA&nbsp;2 → SPIR-V, cached in two levels) → Vulkan → present. Watch new pipelines stream in as a scene needs them.</p>
+        <section class="ax-card ax-recomp-card">
+          <header><b>Shader recompiler</b><span>RDNA&nbsp;2 → typed IR → SPIR-V · click a cached pipeline, then a tab</span></header>
+          <ol class="ax-sh-stages" id="ax-sh-stages"></ol>
+          <div class="ax-recomp-body">
+            <div class="ax-recomp-list">
+              <div class="ax-recomp-h">pipeline cache (L1)</div>
+              <div id="ax-pipes"></div>
+            </div>
+            <div class="ax-recomp-detail">
+              <div class="ax-tabs" id="ax-sh-tabs"></div>
+              <pre id="ax-recompile"></pre>
+            </div>
           </div>
-          <div class="ax-recomp-detail">
-            <div class="ax-tabs" id="ax-sh-tabs"></div>
-            <pre id="ax-recompile"></pre>
-          </div>
+        </section>
+        <div class="ax-cards ax-cards-3">
+          <section class="ax-card">
+            <header><b>PM4</b><span>bind + draw per pipeline</span></header>
+            <div id="ax-pm4"></div>
+          </section>
+          <section class="ax-card">
+            <header><b>Vulkan · host GPU</b><span>vk* calls</span></header>
+            <ol id="ax-vk"></ol>
+          </section>
+          <section class="ax-card">
+            <header><b>Pipeline cache</b><label class="ax-diskchk"><input type="checkbox" id="ax-disk"> persist to disk (L2)</label></header>
+            <div id="ax-cache"></div>
+          </section>
         </div>
       </section>
-      <section class="ax-card">
-        <header><b>Vulkan · host GPU</b><span>vk* calls</span></header>
-        <ol id="ax-vk"></ol>
-      </section>
-      <section class="ax-card ax-span2">
-        <header><b>Pipeline cache</b><label class="ax-diskchk"><input type="checkbox" id="ax-disk"> persist to disk (L2 VkPipelineCache)</label></header>
-        <div id="ax-cache"></div>
-      </section>
-      <section class="ax-card ax-span2">
-        <header><b>Guest fault context</b><span>KytyPS5 dump shape</span></header>
-        <pre id="ax-crash">No unhandled fault this run.</pre>
-        <div class="ax-fault-btns">
-          <button type="button" class="ax-btn" id="ax-fault-rx">Write RX</button>
-          <button type="button" class="ax-btn" id="ax-flush">Flush L1</button>
-          <button type="button" class="ax-btn" id="ax-wipe">Wipe disk cache</button>
+
+      <section class="ax-panel" data-tab="diag" hidden>
+        <p class="ax-panel-lead">What the emulator shows when something breaks, and the coherency it keeps between CPU writes and GPU reads.</p>
+        <div class="ax-cards ax-cards-2">
+          <section class="ax-card">
+            <header><b>Guest fault context</b><span>KytyPS5 dump shape</span></header>
+            <pre id="ax-crash">No unhandled fault this run.</pre>
+            <div class="ax-fault-btns">
+              <button type="button" class="ax-btn" id="ax-fault-rx">Write to RX page (fault)</button>
+              <button type="button" class="ax-btn" id="ax-flush">Flush L1 cache</button>
+              <button type="button" class="ax-btn" id="ax-wipe">Wipe disk cache</button>
+            </div>
+          </section>
+          <section class="ax-card">
+            <header><b>Coherency / audio</b><span>dirty pages + mixer ring</span></header>
+            <dl id="ax-coh"></dl>
+          </section>
         </div>
-      </section>
-      <section class="ax-card">
-        <header><b>Coherency / audio</b><span>dirty pages + mixer ring</span></header>
-        <dl id="ax-coh"></dl>
       </section>
     </div>
   </section>
@@ -199,7 +236,7 @@
 <script src="assets/search-index.js?v=26" defer></script>
 <script src="assets/app.js?v=26" defer></script>
 <script src="assets/highlight.js?v=26" defer></script>
-<script src="assets/advanced-emulator.js?v=9" defer></script>
+<script src="assets/advanced-emulator.js?v=10" defer></script>
 <script src="assets/tutor.js?v=26" defer></script>
 </body>
 </html>
