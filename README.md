@@ -57,8 +57,9 @@ a real answer, and every one can be made to fail in the way the emulator would f
 ### The Visual Atlas
 
 Animation-led rather than prose-led. Nineteen explainers grouped into six parts — CPU,
-memory, startup, threads, GPU, presentation — each auto-playing while on screen and
-steppable by hand. The explanation lives in the caption, which changes with every step.
+memory, startup, threads, GPU, presentation — each stepped by hand with Back/Next or
+played on demand (they start paused; Play only auto-advances while the figure is on
+screen). The explanation lives in the caption, which changes with every step.
 
 ### The Complete Book
 
