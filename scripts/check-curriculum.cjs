@@ -13,6 +13,16 @@ for (const [i, file] of pages.entries()) {
   if (!item || item.n !== 'D'+(i+1) || !item.ready) errors.push('Missing D-topic: '+file);
   if (!read('docs/'+file).includes('class="notranslate" translate="no"')) errors.push('Translation marker missing: '+file);
 }
+const rtTopic = context.window.KYTY_TOPICS.find(t => t.file === 't-ray-tracing.html');
+if (!rtTopic || rtTopic.n !== 'C11' || !rtTopic.ready) errors.push('Missing C11 ray-tracing appendix');
+const rt = read('docs/t-ray-tracing.html');
+for (const id of ['current-state', 'rdna-contract', 'encoding', 'cpu-re', 'shader-re', 'bvh-re',
+  'oracle', 'compiler', 'resources', 'vulkan', 'synchronization', 'cache', 'testing', 'milestones', 'limits']) {
+  if (!rt.includes('id="'+id+'"')) errors.push('Missing ray-tracing section: '+id);
+}
+if (!rt.includes('This is a development roadmap, not implemented support')) errors.push('Missing RT implementation-status warning');
+if (!rt.includes('href="labs/raytracing-reference.cjs"')) errors.push('Missing RT fixture link');
+if (!read('docs/developer-curriculum.html').includes('href="t-ray-tracing.html"')) errors.push('RT coverage map is stale');
 for (const file of ['docs/index.html', 'docs/path.html', 'docs/t-first-change.html']) {
   if (!read(file).includes('href="developer-curriculum.html"')) errors.push('Missing curriculum entry: '+file);
 }
@@ -36,6 +46,12 @@ const anchors = {
   'src/graphics/host_gpu/renderer/masterSemaphore.h': ['KnownGpuTick', 'IsFree'],
   'src/common/alignment.h': ['AlignUp', 'AlignDown'],
   'src/common/lruCache.h': ['LeastRecentlyUsedCache', 'ForEachItemBelow'],
+  'src/graphics/shader/recompiler/frontend/decode/ShaderDecoder.cpp': ['program.has_bvh = true', '0xe6u', '0xe7u'],
+  'src/graphics/shader/recompiler/frontend/decode/ImageOps.cpp': ['DecodeMimg', 'nsa_dwords', 'word_count'],
+  'src/graphics/shader/recompiler/ShaderRecompiler.cpp': ['decoded.has_bvh', 'return {.skip_dispatch = true}'],
+  'src/graphics/host_gpu/renderer/pipeline/pipelineCache.cpp': ['entry->second.skip_dispatch = true'],
+  'src/graphics/host_gpu/renderer/renderCompute.cpp': ['if (!compute_program)'],
+  'tests/ShaderRayTracingTests.inc': ['TestRayTracingDispatchDetection', '0xf1989f01u', '0xf19c9f01u', '0xf1989f07u'],
   'tests/LruCacheTests.cpp': ['TestTouchReordersAndSkips'],
   'tests/VirtualMemoryAllocationTests.cpp': ['TestSparseBackingReadPreservesResidency', 'TestSparseReadDuringDirectCommit'],
   'tests/KernelFileSystemTests.cpp': ['CheckAprPaths']
@@ -50,4 +66,4 @@ if (hasSource) {
   }
 } else console.log('SKIP: source-anchor checks (optional KytyPS5 checkout absent).');
 if (errors.length) { console.error(errors.join('\n')); process.exitCode = 1; }
-else console.log('PASS: D1–D4 navigation, lab artifacts, behavioral gates'+(hasSource ? ' and source anchors.' : '.'));
+else console.log('PASS: D1–D4 and C11 navigation, lab artifacts, behavioral gates'+(hasSource ? ' and source anchors.' : '.'));

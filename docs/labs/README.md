@@ -31,3 +31,11 @@ your solution. The baseline meta-tests deliberately check the teaching fixtures.
 Verified on Windows x64, Clang 22.1.3, with source `2650478`: 7/7 baseline checks.
 No full emulator, Vulkan or game runtime validation is implied. Keep source SHA,
 commands, exit codes, before/after results and remaining limits in your report.
+
+## Ray-tracing appendix fixtures
+
+From the learning root, run `node docs/labs/raytracing-reference.cjs` for C11's
+27 mathematical and encoding checks. These require Node.js only and are separate
+from the seven native CTest cases above. The pointer layout is explicitly invented;
+the geometry math uses JavaScript binary64. This is not a console BVH reader,
+full RDNA decoder, hardware-precision oracle or emulator RT implementation.

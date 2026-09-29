@@ -1,0 +1,515 @@
+<!doctype html>
+<html lang="en" class="notranslate" translate="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Implementing ray tracing — KytyPS5</title>
+<meta name="description" content="A detailed research and implementation roadmap for KytyPS5 ray tracing: RDNA 2 instruction semantics, game reverse engineering, BVH formats, software lowering, Vulkan integration and validation.">
+<link rel="stylesheet" href="assets/viz.css?v=20260929">
+<link rel="stylesheet" href="assets/atlas.css?v=20260929">
+<link rel="stylesheet" href="assets/lab.css?v=20260929">
+<link rel="stylesheet" href="assets/tutor.css?v=20260929">
+<link rel="stylesheet" href="assets/app.css?v=20260929">
+<link rel="stylesheet" href="assets/highlight.css?v=20260929">
+</head>
+<body>
+<main class="topic" data-app-content>
+<p class="topic-eyebrow">Appendix · C11 · Advanced research and implementation</p>
+<h1 id="ray-tracing">Implementing ray tracing in KytyPS5</h1>
+<p class="topic-deck">From a skipped BVH instruction to a verified implementation: investigate the game, establish the guest contract, preserve its memory and execution semantics, then choose how the host GPU executes it.</p>
+<section class="band band-read"><div class="band-h"><span class="band-t">Research → model → implement → prove</span></div><div class="prose">
+<div class="callout k"><span class="lbl">This is a development roadmap, not implemented support</span>
+<p>KytyPS5 at <code>2650478d92c394c092b36ee129962060c623ca16</code> (29 September 2026) does not implement ray tracing. This appendix changes documentation only. Public AMD/Vulkan facts, current KytyPS5 behavior, original design proposals and unverified console-format hypotheses are deliberately distinguished. No specific game's BVH format, undocumented API or successful RT run is claimed.</p></div>
+<p>Read <a href="t-shaders.html">shader translation</a>, <a href="t-program-cache.html">C9: program cache</a>, <a href="t-pointers-memory.html">C10: memory and ownership</a>, <a href="t-trace-draw.html">D3: submission/completion</a> and <a href="t-debugging-labs.html">D4: regression discipline</a> first. This is a multi-stage emulator/compiler project, not a “turn on the Vulkan extension” task. Keep the original raster path working throughout.</p>
+<nav aria-label="Ray-tracing appendix contents"><ol>
+<li><a href="#current-state">Current source and precise scope</a></li>
+<li><a href="#mental-model">Rays, BVHs and the abstraction mismatch</a></li>
+<li><a href="#rdna-contract">The public RDNA 2 instruction contract</a></li>
+<li><a href="#encoding">Decode real instruction words</a></li>
+<li><a href="#evidence">Build an evidence dossier</a></li>
+<li><a href="#capture">Capture a bounded failing workload</a></li>
+<li><a href="#cpu-re">Reverse-engineer the CPU-side path</a></li>
+<li><a href="#shader-re">Reverse-engineer the GPU-side path</a></li>
+<li><a href="#bvh-re">Recover BVH layouts without guessing</a></li>
+<li><a href="#oracle">Build a reference oracle and numerical tests</a></li>
+<li><a href="#architecture">Choose an implementation architecture</a></li>
+<li><a href="#compiler">Extend decoding, IR and SPIR-V</a></li>
+<li><a href="#resources">Integrate resources and guest addresses</a></li>
+<li><a href="#vulkan">A conditional Vulkan hardware backend</a></li>
+<li><a href="#synchronization">Synchronization, residency and replay</a></li>
+<li><a href="#cache">Cache identity, invalidation and ownership</a></li>
+<li><a href="#testing">Validation matrix and executable fixtures</a></li>
+<li><a href="#diagnosis">Diagnose failures by boundary</a></li>
+<li><a href="#milestones">A reviewable implementation sequence</a></li>
+<li><a href="#limits">What remains unknown and what “supported” means</a></li>
+<li><a href="#references">Source map and primary references</a></li>
+</ol></nav>
+
+<h2 id="current-state">1. What the current emulator actually does</h2>
+<p><strong>Verified in the pinned checkout:</strong> the following chain is a compatibility workaround. It can let a title get far enough to select a non-RT mode; it is not a ray-tracing fallback. Skipping the entire dispatch also omits any non-RT writes that the same shader would have performed. Do not describe the resulting image as a correct all-rays-miss result.</p>
+<div class="tw"><table><thead><tr><th>Boundary</th><th>Current behavior</th><th>Implementation consequence</th></tr></thead><tbody>
+<tr><td><code>Decoder::DecodeProgram</code> in <code>src/graphics/shader/recompiler/frontend/decode/ShaderDecoder.cpp</code></td><td>After decoding an MIMG instruction with numeric opcode <code>0xE6</code> or <code>0xE7</code>, sets <code>has_bvh</code> and returns immediately.</td><td>The instruction list is intentionally truncated at the first BVH operation. Removing only a later skip flag does not create a complete shader.</td></tr>
+<tr><td><code>TranslateProgram</code> in <code>src/graphics/shader/recompiler/ShaderRecompiler.cpp</code></td><td>For compute plus <code>has_bvh</code>, warns once and returns <code>skip_dispatch = true</code> before CFG/IR translation.</td><td>A BVH-bearing compute shader never reaches ordinary IR generation on this path. The warning is not a per-dispatch census.</td></tr>
+<tr><td><code>ProgramCache::Get</code> in <code>src/graphics/host_gpu/renderer/pipeline/pipelineCache.cpp</code></td><td>Stores the skip result in a program-cache entry and returns an empty program; repeated lookups reuse the skip.</td><td>Any future execution-mode change must invalidate or distinguish negative cache entries as well as successful compilations.</td></tr>
+<tr><td><code>src/graphics/host_gpu/renderer/renderCompute.cpp</code></td><td>Returns when <code>GetComputeProgram</code> produces no program.</td><td>There is no normal dispatch to validate or capture for that skipped shader.</td></tr>
+<tr><td><code>tests/ShaderRayTracingTests.inc</code>, included by <code>tests/shaderCfgTests.cpp</code></td><td>Tests detection and skipping, including NSA forms, literal/operand false positives and an early-end branch target.</td><td>These are workaround regression tests, not intersection, traversal or image-correctness tests.</td></tr>
+</tbody></table></div>
+<p>The guard is explicitly compute-specific. Do not infer that RT in other guest stages is supported, correctly rejected or comprehensively detected. Stage coverage must become a tested policy. Likewise, an ordinary shader without a detected BVH opcode is not automatically irrelevant: it may build nodes, transform geometry, filter hit results or denoise the final RT image.</p>
+<p><strong>Proposed scope:</strong> first reproduce one instruction's observable behavior on one documented node family, then execute a complete reduced guest shader, then integrate a controlled scene. Define the exact supported opcode, A16/NSA forms, descriptor interpretation, node layouts, shader stages and memory conditions. Broad game support comes after those contracts, not before.</p>
+
+<h2 id="mental-model">2. The mental model: one instruction is not one scene trace</h2>
+<p>A ray can be written <code>P(t) = O + tD</code>. O is its origin, D its direction, and a permitted interval limits which t values count. D need not have unit length. A bounding volume hierarchy, or BVH, rejects groups of geometry before testing individual primitives. An axis-aligned bounding box (AABB) is one common bounding volume; triangles are one possible leaf primitive.</p>
+<p>Keep four operations distinct: <strong>build</strong> creates a hierarchy; <strong>update/refit</strong> changes it after geometry moves; <strong>traversal</strong> chooses which nodes to visit; <strong>intersection</strong> tests a ray against a node's bounds or primitives. Shading interprets the accepted result afterward. An implementation may run some of these in shaders and some in special hardware.</p>
+<pre>Possible guest workload (must be established from evidence)
+CPU job / guest command stream
+  -> geometry or instance update
+  -> compute builds/refits guest BVH bytes
+  -> traversal shader:
+       choose a guest node
+       execute node-intersection instruction
+       inspect returned words, update traversal state, repeat
+       evaluate/filter a candidate and write results
+  -> denoise / composite / later image consumers
+
+Portable Vulkan RT path
+host geometry + instances
+  -> driver builds opaque host acceleration structures
+  -> ray query or ray-tracing pipeline traverses host structures
+  -> host-defined result interface</pre>
+<p>The difficult boundary is the middle of that diagram. A guest may observe intermediate node pointers, traversal ordering and packed results, not merely a final closest hit. Substituting a whole-scene query for one guest instruction can skip the guest's control flow, candidate filtering and side effects. Even identical final hit distance on a simple triangle does not prove those programs equivalent.</p>
+<p>Vulkan distinguishes inline ray queries from dedicated ray-tracing pipelines. Both use implementation-owned acceleration structures. <strong>Design inference:</strong> neither interface promises access to the guest's internal BVH nodes or a portable way to install arbitrary console BVH bytes. This rules out a generic raw-byte reinterpretation shortcut; it does not rule out a carefully proven higher-level translation. See the <a href="https://docs.vulkan.org/guide/latest/extensions/ray_tracing.html">Khronos ray-tracing guide</a>.</p>
+
+<h2 id="rdna-contract">3. Establish the RDNA 2 contract before inventing an IR opcode</h2>
+<p><strong>Public AMD ISA:</strong> RDNA 2 exposes <code>IMAGE_BVH_INTERSECT_RAY</code> and <code>IMAGE_BVH64_INTERSECT_RAY</code>. Box-node operations test four boxes and return distance-sorted child information; triangle-node operations return triangle-intersection information. Inputs include VGPR ray/node data and an SGPR resource descriptor. The 64 variant widens the node address; A16 reduces direction/inverse-direction components, not every input. Section 8.2.10 and its register-content table are the starting reference, not a complete console software ABI. <a href="https://docs.amd.com/v/u/en-US/rdna2-shader-instruction-set-architecture">AMD RDNA 2 ISA guide, document 70648</a>.</p>
+<div class="tw"><table><thead><tr><th>Public instruction form</th><th>A16</th><th>Input VGPR dwords</th><th>Output VGPR dwords</th><th>Resource SGPR dwords</th></tr></thead><tbody>
+<tr><td>BVH, 32-bit node input</td><td>0</td><td>11</td><td>4</td><td>4</td></tr>
+<tr><td>BVH, 32-bit node input</td><td>1</td><td>8</td><td>4</td><td>4</td></tr>
+<tr><td>BVH64</td><td>0</td><td>12</td><td>4</td><td>4</td></tr>
+<tr><td>BVH64</td><td>1</td><td>9</td><td>4</td><td>4</td></tr>
+</tbody></table></div>
+<p>These are operand payload widths, not machine-code instruction lengths. Cross-check contiguous and non-sequential-address (NSA) forms with the <a href="https://rocmdocs.amd.com/projects/llvm-project/en/latest/LLVM/llvm/html/AMDGPU/AMDGPUAsmGFX1030.html">LLVM GFX1030 assembler reference</a>. AMD's public PC documentation is evidence for the instruction family; confirm the console program's actual usage independently. Do not import later-generation BVH8 or other new instruction behavior into RDNA 2 by name similarity.</p>
+<h3 id="contract-ledger">Write a contract ledger with an explicit unknown column</h3>
+<div class="tw"><table><thead><tr><th>Question</th><th>Evidence to gather</th><th>What a premature guess breaks</th></tr></thead><tbody>
+<tr><td>Which bytes encode the opcode and operands?</td><td>Raw shader words, aligned instruction boundaries, independent assembly/disassembly and decoder fixtures.</td><td>False detection inside literals; wrong next PC; incorrect NSA source registers.</td></tr>
+<tr><td>What does the resource descriptor mean?</td><td>Public fields where specified, SGPR producer chain, descriptor writes and controlled address changes.</td><td>Treating an image-like encoding as an ordinary texture; wrong base/stride/type interpretation.</td></tr>
+<tr><td>What is the node pointer?</td><td>Integer operations before the instruction, memory reads by builders/traversal, and byte-range validation.</td><td>Confusing a tagged index, relative offset and full guest address.</td></tr>
+<tr><td>How are nodes packed?</td><td>Builder stores and consumer loads from the same versioned allocation, plus geometric consistency.</td><td>Wrong bounds, child tags, triangle ordering, padding or instance transforms.</td></tr>
+<tr><td>How are four result words interpreted?</td><td>Trace every live result use: bit masks, integer comparisons, float conversions, stack pushes and branches.</td><td>Returning t/u/v/id in a convenient invented layout instead of the guest's encoding.</td></tr>
+<tr><td>Which numerical cases matter?</td><td>Controlled parallel rays, signed zeros, shared edges, ties, packed precision and range endpoints.</td><td>Holes, flicker, wrong nearest primitive or nontermination.</td></tr>
+<tr><td>What happens in inactive lanes?</td><td>Guest EXEC behavior, destination merge and surrounding subgroup operations.</td><td>Inactive memory accesses, destroyed old register values or incorrect wave cooperation.</td></tr>
+</tbody></table></div>
+<p>The ledger should distinguish “documented,” “observed,” “inferred” and “unknown.” A TODO is preferable to a fabricated bitfield. A name such as <code>IntersectNode</code> can be useful for design discussion, but it is not proof that the four returned words are ordinary floating-point hit coordinates.</p>
+
+<h2 id="encoding">4. Decode the real encoding examples already in the tests</h2>
+<p><strong>Verified source:</strong> <code>DecodeMimg</code> in <code>src/graphics/shader/recompiler/frontend/decode/ImageOps.cpp</code> extracts the opcode and extension length as follows. This small excerpt is about this repository's decoder, not a complete BVH implementation.</p>
+<pre>opcode     = ((word0 &gt;&gt; 18) &amp; 0x7F) | ((word0 &amp; 1) &lt;&lt; 7)
+nsa_dwords = (word0 &gt;&gt; 1) &amp; 3
+word_count = 2 + nsa_dwords
+pc_bytes   = word_index * 4</pre>
+<div class="tw"><table><thead><tr><th>Words from current regression fixtures</th><th>Decoded observation</th></tr></thead><tbody>
+<tr><td><code>F1989F01 00081014</code></td><td>Opcode <code>E6</code> = 230; NSA extension count 0; two dwords = eight instruction bytes.</td></tr>
+<tr><td><code>F19C9F01 00081014</code></td><td>Opcode <code>E7</code> = 231; NSA extension count 0. The fixture labels this BVH64.</td></tr>
+<tr><td><code>F1989F07 00071001 3D3E3C15 38095851 00003A39</code></td><td>Opcode E6; NSA extension count 3; five dwords = 20 instruction bytes. Extension words carry register selectors, not additional opcodes.</td></tr>
+</tbody></table></div>
+<pre>For word0 = 0xF1989F01:
+low opcode field = 0x66 = 102 = binary 0110 0110
+bit 0 contributes 0x80 = 128 = binary 1000 0000
+combined opcode  = 0xE6 = 230 = binary 1110 0110
+
+Little-endian memory for that first word: 01 9F 98 F1
+Printed dword text is F1989F01, not the byte sequence to paste unchanged.</pre>
+<p>A parser must first know that this is an instruction boundary. The existing tests place BVH-looking words inside a scalar literal, an MIMG operand, NSA selector storage and data after an end instruction to ensure they are not mistaken for opcodes. Preserve those distinctions in any new scanner. Also preserve the branch-target case where one path ends before another path's BVH instruction.</p>
+<p><strong>Implementation proposal:</strong> separate feature discovery from full semantic decoding. The current stop-on-first-BVH behavior can remain in an explicit legacy workaround mode, but an enabled implementation must decode the rest of the program, build a correct CFG and reject unsupported forms precisely. Check the input span before reading word1, extension words or literals. A malformed captured shader must produce a bounded diagnostic, not an out-of-range host read. Do not assume the current skip tests cover all truncated-input cases.</p>
+
+
+<h2 id="evidence">5. Build an evidence dossier before patching a game</h2>
+<p><strong>Research workflow proposal:</strong> work with software and captures you are authorized to inspect. This chapter does not require leaked SDK headers, extracted keys, protection bypasses or redistributing a game's executable/assets. Use public specifications, open implementations, original fixtures and permitted local observations. Keep title-specific raw captures private unless you have permission to share them; a minimized synthetic fixture is preferable for a public regression.</p>
+<p>Record each conclusion alongside the artifact that supports it. A CPU patch whose bytes and branch target were validated is still not proof that RT was disabled safely, much less implemented. Avoid broad renderer flags: they may select allocation, lighting, streaming and synchronization paths together. “The crash moved” is useful triage evidence, not a compatibility result.</p>
+<pre>Study identity
+  emulator full SHA, branch, compiler, executable + matching symbols
+  title/version and executable SHA-256 (local record)
+  host OS, GPU, driver, enabled features, configuration
+  exact scene/save/camera/frame route and warm/cold cache state
+
+Dispatch identity
+  guest queue + submit ID + PM4 offset
+  shader hash + original code bytes + stage + wave size
+  dispatch dimensions + user-data register words
+  BVH instruction byte-PC + raw words + operand register map
+
+Data provenance
+  guest allocation identity + generation + valid mapped extent
+  descriptor/root-pointer producer and current values
+  last CPU/GPU writer + ordering point
+  captured node/geometry/output byte ranges and capture completion tick
+
+Claim
+  observed fact / hypothesis / competing explanation
+  smallest experiment that distinguishes them
+  expected result / actual result / confidence / remaining unknowns</pre>
+<p>Keep shader-relative PCs, CPU guest addresses, host PCs, file offsets and GPU buffer offsets in separate fields. “Address 0x100” without its coordinate system is not reproducible evidence. Hashing bytes establishes identity, not correctness; do not confuse the two.</p>
+
+<h2 id="capture">6. Capture one bounded workload, not every frame's memory</h2>
+<h3 id="capture-baseline">6.1 Establish the earliest observable boundary</h3>
+<p>Start with the source-level skip chain. Find the first RT warning and its shader hash, but remember it is emitted once. Original shader dumping occurs before translation in <code>pipelineCache.cpp</code>; the detailed decoded dump is later than the compute skip in <code>ShaderRecompiler.cpp</code>. Consequently, turning on shader logs does not guarantee a complete decoded or IR dump for this shader.</p>
+<p>These current CLI names can collect useful evidence. This <strong>Windows PowerShell example</strong> is for an authorized manual run from the emulator root using an existing compatible build. Replace the executable/content paths, inspect the current <code>--help</code>, and run with deliberate scope. The chapter does not execute it for you.</p>
+<pre>.\_Build\windows\kyty_emulator.exe --game "D:\Games\Example\eboot.bin" --redzone --printf-direction File --printf-output-file _Build/rt-study.log --shader-log-direction File --shader-log-folder _Build/rt-shaders --command-buffer-dump true --command-buffer-dump-folder _Build/rt-pm4 --graphics-debug-dump true --vulkan-validation true --shader-validation true</pre>
+<p>Diagnostic output can be large and timing-sensitive. Use a fresh output location, a short route and bounded logging. Keep validation enabled during correctness work. Do not benchmark this diagnostic run. The actual screenshot and route matter: a live process and an advancing title-bar counter do not prove an RT image exists.</p>
+<h3 id="capture-instrumentation">6.2 Add narrowly targeted instrumentation when existing logs stop too early</h3>
+<ol>
+<li><strong>Select a shader and submission.</strong> Record hash plus original bytes; a hash collision or shader relocation must not attach the wrong capture. Capture a small number of calls, not an unbounded per-lane stream.</li>
+<li><strong>Capture pre-dispatch state before the empty-program return.</strong> Save raw compute registers, user data, dimensions and referenced descriptor bytes. Do not rely on resource metadata that was never created because translation stopped.</li>
+<li><strong>Capture GPU-produced inputs coherently.</strong> Find the actual producer and complete the required copy/readback before interpreting a CPU snapshot. An unchanged CPU mirror is not proof that the GPU did not update the BVH.</li>
+<li><strong>After an experimental backend exists, trace one invocation.</strong> Restrict a debug buffer by shader, dispatch, workgroup, lane and instruction PC; record input/result words and a bounded number of node visits. Keep a dropped-record counter.</li>
+<li><strong>Capture consumers.</strong> Record which buffer/image fields the next shader reads. A plausible intersection tuple is insufficient if the output is packed or indexed incorrectly.</li>
+</ol>
+<p>The production skip path cannot provide a hardware oracle for the skipped instruction. Reference answers must come from a lawful reference execution, a documented semantic case, or independently calculated fixtures with explicitly limited claims. Repeating the same unproven formula on CPU and GPU only proves agreement between two copies of that formula.</p>
+<h3 id="capture-tools">6.3 Know which layer each tool can see</h3>
+<ul>
+<li><strong>Ghidra / a CPU debugger:</strong> guest x86-64 orchestration, library calls, allocation lifetimes, argument construction and command generation. GPU machine code stored in a data blob must not be analyzed as x86.</li>
+<li><strong>RDNA-aware assembler/disassembler:</strong> instruction boundaries and register syntax. Pin architecture and tool version; “it disassembles” is not proof of console-specific node layout.</li>
+<li><strong>Vulkan validation / graphics captures:</strong> emitted host resources and commands. They cannot show a native ray query for a dispatch the emulator skipped, or certify guest semantics.</li>
+<li><strong>Radeon Raytracing Analyzer:</strong> useful for supported host Vulkan/DX12 RT captures and acceleration structures. Its capture path is a host-driver facility, not a decoder for arbitrary console dumps. Check its version, GPU/API and capture restrictions. See <a href="https://gpuopen.com/radeon-raytracing-analyzer/">AMD RRA</a> and its <a href="https://gpuopen.com/manuals/rra_manual/quickstart/">capture workflow</a>.</li>
+</ul>
+
+<h2 id="cpu-re">7. Reverse-engineer the game's CPU-side setup in Ghidra</h2>
+<p>This is a repeatable investigation method, not an assertion about one game's engine. The aim is to connect <em>who allocates and writes data</em> to <em>the shader that consumes it</em>. Useful strings and function names are leads; they are not contracts.</p>
+<ol>
+<li><strong>Confirm the exact program.</strong> Record executable hash, title version, module and loader base. Validate the mapping of a known instruction against the bytes in your run. Use <a href="t-trace-boot.html#addresses">D2's ELF address worksheet</a> to translate runtime addresses to module-relative addresses and file offsets.</li>
+<li><strong>Separate guest and host ABIs.</strong> Interpret guest call sites using the actual SysV-style boundary; do not infer parameters from Windows host-register conventions. Correct a function signature only when multiple call sites and data uses support it. Record guessed types as guessed.</li>
+<li><strong>Find an anchor.</strong> Start at an observed command-buffer submission, descriptor write, allocation or shader-creation call. Strings containing “ray,” “shadow,” “reflection” or “BVH” can help, but a missing string means little in stripped or optimized code.</li>
+<li><strong>Walk backward from the submitted descriptor/root.</strong> Identify the object containing it, constructor/allocation path, relevant fields, setters and per-frame update. Track indirect calls and job-system payloads, not only the immediate caller.</li>
+<li><strong>Walk forward from the builder inputs.</strong> Follow geometry addresses, index format/stride, counts, transforms and output/scratch ranges into command generation. Check whether a generic compute dispatch—not a named RT function—does the build.</li>
+<li><strong>Identify consumers and cleanup.</strong> Trace hit/output buffers through filtering/compositing and find when allocations are recycled. Record synchronization objects and who owns each lifetime transition.</li>
+<li><strong>Validate one field at a time.</strong> Change a controlled scene variable or use a minimized harness, then compare the predicted field/range. Correlation across one frame is not enough for a layout definition.</li>
+</ol>
+<h3 id="cpu-dossier">A useful function note is more than a decompiler screenshot</h3>
+<pre>candidate function: descriptive local name, original address and module
+callers: direct, indirect, worker-job entry
+arguments: register/stack origin, widths, pointer ownership
+fields read/written: offset, width, value range, evidence
+outputs: allocation/range, descriptor, command words
+synchronization: producer completion, consumer wait, reuse point
+confidence: confirmed / inferred / unknown
+counterexample: condition that would disprove the current interpretation</pre>
+<p>For example, a 64-bit field copied into a shader user-data slot might be a descriptor-table address, a BVH base, a scratch pointer or a pointer to another pointer. Follow the GPU consumer before naming it <code>blas_address</code>. Likewise, an allocation size that scales with triangle count suggests a relationship but does not establish its binary layout.</p>
+<p>A per-game hook is a possible research tool, but a fragile long-term emulator interface. If later recognizing a builder or traversal routine, use verified version/shape checks and a conservative fallback. Never identify a routine solely by a nearby string or a fixed RVA copied from another version.</p>
+
+<h2 id="shader-re">8. Reverse-engineer the GPU shader around the BVH instruction</h2>
+<p>Start from the original shader bytes, stage metadata and register snapshot for the selected dispatch. Build the control-flow graph without discarding the tail after the first BVH operation. Keep a raw-word listing alongside the disassembly, including literal and NSA words, so instruction offsets remain auditable.</p>
+<h3 id="backward-slice">8.1 Backward slice: where did each input come from?</h3>
+<p>For every source VGPR and descriptor SGPR, walk definitions backward through copies, scalar/vector loads, address arithmetic, select/phi nodes, lane reads and function calls. Note whether a value is uniform for the wave, per-lane, or only uniform on one path. The initial inputs may come from user data, an SRT walk, an ordinary buffer or a global-memory address.</p>
+<ul>
+<li>Separate <strong>ray construction</strong> from <strong>node selection</strong>. Camera rays, shadow rays and secondary rays may all use the same traversal code with different inputs.</li>
+<li>Record the ray interval and space. Is the origin already transformed? Is the direction unnormalized? Is an inverse direction supplied rather than computed at the instruction?</li>
+<li>Track how the node pointer is tagged, masked or shifted. Keep integer arithmetic as integer arithmetic; a decompiler's convenient pointer cast can conceal encoding.</li>
+<li>Recover NSA register order explicitly. A contiguous register-range assumption can silently mix unrelated live values into the ray.</li>
+<li>Identify stack/scratch and EXEC/VCC use. If traversal is wave-cooperative, replacing it with independent scalar work may change behavior.</li>
+</ul>
+<h3 id="forward-slice">8.2 Forward slice: what is observable?</h3>
+<p>Follow all four destination words until they are dead, stored, used as an address or consumed by a branch. Look for distance comparisons, invalid-child tests, stack updates, triangle-index extraction and barycentric interpolation. Label bitcasts separately from numeric conversions. A word whose bits encode a pointer must not be treated as a floating-point distance because it happens to occupy a VGPR.</p>
+<p>Determine which behavior belongs to the instruction and which belongs to surrounding shader code: traversal order, nearest-hit selection, instance transforms, mask tests, opacity/alpha rejection and procedural intersection handling may occur at different levels. Implementing both the instruction's effect and a duplicated host-side version of the shader's filtering can be just as wrong as omitting filtering.</p>
+<h3 id="shader-complications">8.3 Expect compiler work beyond the two BVH opcodes</h3>
+<p>The current tests deliberately allow feature detection to find BVH after an unsupported <code>SWAPPC</code>. Once execution is enabled, calls/returns, indirect branches, stack operations, LDS, atomics and ordinary memory instructions on that real path must work too. A skip detector tolerating an earlier unsupported instruction is not evidence that its semantics are implemented.</p>
+<p>Minimize by dataflow, not by deleting everything that looks unrelated. Preserve definitions feeding the BVH op, result consumers, active-lane masks and required memory/synchronization. Keep one original failing program as a local integration case, then derive a small redistributable shader fixture whose expected outputs can be explained without the whole game.</p>
+
+<h2 id="bvh-re">9. Recover guest BVH layouts from producers and consumers</h2>
+<p><strong>Unknown until established:</strong> do not publish a “PS5 BVH struct” assembled from plausible fields. Public AMD GPURT is useful comparison material, but its versions, hardware-generation branches and client conventions are not proof of a console engine's format. The <a href="https://github.com/GPUOpen-Drivers/gpurt">GPURT repository</a> and <a href="https://raw.githubusercontent.com/GPUOpen-Drivers/gpurt/dev/src/shaders/IntersectCommon.hlsl">its intersection helpers</a> illustrate explicit pointer decoding and versioned traversal machinery. Pin the revision used for research and retain licensing/provenance for any reused code.</p>
+<h3 id="layout-method">9.1 A field-recovery method</h3>
+<ol>
+<li><strong>Locate a coherent root and owned range.</strong> Record allocation generation, base, extent, writer and capture tick. Validate integer addition and bounds before dereferencing candidate pointers.</li>
+<li><strong>Find the producer.</strong> Disassemble the node builder's stores or CPU serializer. Store width, offset and value expression constrain the candidate layout more strongly than a float-looking hexdump.</li>
+<li><strong>Match the consumer.</strong> Verify that traversal reads the same bytes and interprets the same tag/offset. A buffer may contain a header, nodes, sideband IDs and scratch; not all bytes belong to nodes.</li>
+<li><strong>Use controlled geometry.</strong> One triangle, two separated triangles, one transformed instance and a changed count isolate different fields. Compare multiple captures with one changed input.</li>
+<li><strong>Check geometry invariants.</strong> Bounds should enclose the corresponding primitive in the correct space. Children should resolve into valid owned ranges. IDs should map consistently to source geometry. These are filters for hypotheses, not standalone proof.</li>
+<li><strong>Test representation variants.</strong> Empty trees, internal nodes, leaves, instances, compressed bounds, copies, refits and serialization can have different layouts or metadata. Keep format versions explicit.</li>
+</ol>
+<p>For each field, retain byte offset, width, endianness, signedness/float representation, producer expression, consumer expression, observed samples and unresolved bits. When two hypotheses fit, write a distinguishing experiment rather than picking the simpler struct.</p>
+<h3 id="toy-pointer">9.2 A toy pointer example—deliberately not RDNA encoding</h3>
+<p>Suppose an <strong>invented fixture</strong> uses two low bits as a tag, the remaining bits as a 64-byte node index, and a separately supplied allocation base. This example teaches address-domain discipline; none of these bit positions or units is claimed for PS5.</p>
+<pre>packed = 0x49 = 73 = binary 0100 1001
+tag    = packed &amp; 3  = 1
+index  = packed &gt;&gt; 2 = 18 = 0x12
+offset = index * 64  = 1152 = 0x480
+base   = 0x100000000
+guest node address = 0x100000480
+
+Required before a 64-byte read:
+  offset &lt;= allocation_size
+  64 &lt;= allocation_size - offset
+  base + offset does not overflow the address type
+  allocation generation and ownership still match</pre>
+<p>A real format might instead store a relative byte offset, a shifted address, a different tag or extra high bits. Replace this toy formula only when evidence supports the actual one. A guest node address, a host buffer device address and a Vulkan acceleration-structure address are distinct domains even if all three are represented by 64-bit integers.</p>
+
+
+<h2 id="oracle">10. Build a small reference oracle before the GPU backend</h2>
+<p><strong>Proposed first implementation artifact:</strong> a standalone CPU reference with a documented input/output contract and no implicit access to a running process. Start with mathematical ray/box and ray/triangle cases, then add a separately tested guest-layout reader and result packer. Keep the separation visible: correct geometry math does not validate pointer decoding or the guest's packed return format.</p>
+<h3 id="ray-box">10.1 Ray/box intervals, including parallel axes</h3>
+<p>For a finite, nonzero direction component, intersect the ray with the axis slab by calculating the two t values for its minimum/maximum planes, sorting them and intersecting that interval with the current ray interval. If the direction component is zero, the axis either imposes no extra bound (origin inside the slab) or rejects the ray (origin outside). This explicit branch avoids a toy implementation's accidental <code>0 × infinity</code> NaN.</p>
+<pre>Illustrative mathematical reference, NOT hardware-accurate RDNA pseudocode:
+lo = ray.t_min
+hi = ray.t_max
+for axis in x, y, z:
+    if direction[axis] == 0:
+        if origin[axis] &lt; box.min[axis] or origin[axis] &gt; box.max[axis]:
+            return MISS
+        continue
+    a = (box.min[axis] - origin[axis]) / direction[axis]
+    b = (box.max[axis] - origin[axis]) / direction[axis]
+    lo = max(lo, min(a, b))
+    hi = min(hi, max(a, b))
+    if lo &gt; hi:
+        return MISS
+return INTERVAL(lo, hi)</pre>
+<p>Fixture: O = (0,0,0), D = (0,0,2), box minimum (−1,−1,2), maximum (1,1,4), t interval [0,10]. The intersection interval is [1,2], not [2,4]. Normalizing D without changing t would change the program's result. With O.x = 2 and D.x = 0, the ray misses the x slab. With the origin inside the box, negative entry distances must be clipped according to the fixture's ray interval.</p>
+<p>This reference intentionally uses a simple finite-input policy and explicit inclusive endpoints. The guest instruction's precise treatment of signed zero, denormals, NaNs, infinity, near/far boundaries, reciprocals and ties needs separate evidence. Do not add an arbitrary epsilon to make a regression pass. Keep intermediate bit patterns where precision or packing matters.</p>
+<h3 id="ray-triangle">10.2 A triangle case you can solve by hand</h3>
+<p>Take A = (0,0,0), B = (1,0,0), C = (0,1,0), O = (0.25,0.25,1), D = (0,0,−1). In a simple two-sided mathematical test the hit is t = 1, u = 0.25, v = 0.25, with weight 1 − u − v = 0.5 on A. An origin at (0.75,0.75,1) misses because u + v &gt; 1. These are original teaching fixtures, not captured hardware results.</p>
+<p>Develop separate cases for front/back facing, zero-area triangles, shared edges, very thin geometry, equal-distance overlaps and non-unit directions. A conventional floating-point triangle routine is a starting oracle for uncomplicated inputs, not a substitute for measured edge behavior or the guest's result encoding. For host Vulkan traversal, candidate ordering is not generally fixed and watertightness constraints matter; see <a href="https://docs.vulkan.org/spec/latest/chapters/raytraversal.html">the Vulkan traversal specification</a>.</p>
+<h3 id="transforms">10.3 Preserve t across instance transforms</h3>
+<p>For an invertible affine world-to-object transform, transform O as a point and D as a vector. Then <code>M(O + tD) = M(O) + t M_linear(D)</code>. The same parameter t remains meaningful if the transformed direction is not silently renormalized. Handle normal transformation separately from ray direction. Negative scale may change facing; singular transforms need an explicit contract, not division by zero.</p>
+<p>Example: doubling the object-space z coordinate changes the previous ray to O.z = 2 and D.z = −2; its intersection with z = 0 still has t = 1. Renormalizing D to −1 would report t = 2. This is a useful regression before discussing packed hardware nodes.</p>
+<h3 id="result-oracle">10.4 The result packer needs its own tests</h3>
+<p>Use a semantic CPU result such as <code>{hit, t, u, v, primitive_id}</code> only inside the reference tool. Add a distinct conversion to the observed four-word guest result when that encoding is established. Test pointer/tag bits, sentinels, sorting/ties, integer IDs and float bitcasts independently. Preserve inactive destination registers rather than filling every lane with zeros. Missing nodes and unsupported formats should report an explicit diagnostic in the research harness, not silently masquerade as geometric misses.</p>
+
+<h2 id="architecture">11. Choose the boundary you can implement faithfully</h2>
+<div class="tw"><table><thead><tr><th>Strategy</th><th>What it preserves / requires</th><th>Recommended role</th></tr></thead><tbody>
+<tr><td>Software lowering of individual guest BVH operations</td><td>Runs inside the translated shader, reads guest-format nodes and returns the instruction's results. Requires the node/descriptor contract and numerical behavior; can preserve guest traversal and surrounding side effects.</td><td>First faithful backend and reference fallback for the supported subset. GPU ALU work, not a CPU callback per ray.</td></tr>
+<tr><td>Recognize a complete traversal operation and use a host ray query</td><td>Requires recoverable geometry/instances and a proven mapping of all observable results, filtering and side effects. Cannot generally expose guest internal-node traversal order.</td><td>Optional optimized path after equivalence tests. Recognition must be conservative and versioned.</td></tr>
+<tr><td>Replace a higher-level guest RT pipeline</td><td>Requires a verified guest API/runtime boundary, callable shader behavior, payloads, scheduling and geometry mapping. A compiled compute shader may not retain such a boundary.</td><td>Separate major project; do not assume every game is using an interceptable DXR-style API.</td></tr>
+<tr><td>Skip dispatch, force misses or disable game RT</td><td>Changes guest work or selects a different workload. Can hide a fault while leaving results missing.</td><td>Explicit compatibility workaround or controlled experiment only; never an implementation claim.</td></tr>
+</tbody></table></div>
+<p><strong>Recommended engineering sequence:</strong> start with software lowering because its boundary matches what the guest actually executes. This is a design recommendation, not proof that the software implementation will be fast or easy. Recovering layouts, preserving precision and handling indirect traversal remain substantial work.</p>
+<p>A possible hybrid accelerates known operations while retaining the software implementation for unrecognized forms. The host RT feature bit selects an available mechanism, not proof of equivalence. Never let the optimized path accept a workload merely because the GPU advertises ray queries. If unsupported state is encountered, use a verified fallback or produce an explicit unsupported result; do not mix partial old and new outputs.</p>
+
+<h2 id="compiler">12. Extend the actual compiler pipeline, not just the opcode enum</h2>
+<h3 id="decode-integration">12.1 Decode and control flow</h3>
+<p>In <code>ShaderDecoder.h</code> and <code>frontend/decode/ImageOps.cpp</code>, introduce distinct semantic instruction identities and correctly sized operands for the supported variants. They happen to use the MIMG encoding family; that does not make the BVH descriptor an ordinary sampled-image descriptor. Do not reuse generic coordinate counts or dmask output rules without verifying they apply.</p>
+<p>In <code>ShaderDecoder.cpp</code>, make full decoding available for supported execution. Continue after the BVH instruction, retain subsequent stores/branches and preserve literal/NSA length handling. Add truncated-input and operand-range tests. Follow indirect-call/control-flow support in <code>frontend/cfg</code> and <code>frontend/translate</code>; do not bypass a CFG failure by emitting an empty shader.</p>
+<p>Keep detection tests and execution tests separate. The existing workaround tests should still describe the legacy policy, while a new enabled mode must assert complete decoding and meaningful output. A global “has any BVH” bit is useful metadata but too coarse to prove every operation in a program is supported.</p>
+<h3 id="ir-contract">12.2 A proposed IR interface</h3>
+<p>The following is <strong>design pseudocode</strong>, not a class or function already in KytyPS5. It deliberately keeps raw result words at the guest boundary and makes memory dependencies explicit.</p>
+<pre>GuestBvhIntersect {
+    opcode_variant
+    descriptor_source
+    node_pointer_words
+    ray_operand_words
+    precision_and_encoding_flags
+    active_lane_predicate
+    guest_pc
+    guest_memory_read_dependency
+} -> four raw u32 result words
+
+For each destination register:
+    merged = select(active_lane, result_word, old_destination)
+</pre>
+<p>Specify source snapshotting if destinations overlap inputs. Model memory reads so dead-code elimination, common-subexpression elimination and instruction motion cannot reuse an intersection across an intervening write to the node data. Decide how the existing IR represents those dependencies; do not bolt on a pretend memory token that no pass respects. Audit <code>ir/Value.cpp</code>, <code>ir/opcodes/ValueOpcodes.inc</code>, translation dispatch and the relevant analysis passes together.</p>
+<p>Preserve EXEC semantics across divergence and reconvergence. Do not issue potentially invalid node loads for inactive lanes and merely select away the results afterward. Lane reads, ballot operations, traversal stacks and atomics around the instruction are part of the containing shader's semantics. Host subgroup size and guest wave size must not be conflated.</p>
+<h3 id="spirv-lowering">12.3 Software SPIR-V lowering</h3>
+<p>Route supported operations through the existing SPIR-V backend, with a helper that reads validated guest node data, performs the supported intersection calculation and packs the result. Candidate integration points are <code>backend/spirv/spirvEmitterInstructions.h</code>, <code>spirvEmitterImage.cpp</code>, <code>spirvEmitterMemory.cpp</code> and <code>SpirvEmitter.cpp</code> under the recompiler. These filenames are existing code; a dedicated future RT helper file is an architectural choice, not an existing implementation.</p>
+<p>Do not translate a node address directly into an unchecked physical host address. Reuse the emulator's memory/binding model. Keep byte addressing, alignment and 32/64-bit arithmetic explicit, and test high address bits. If bounds or format validation must happen on the CPU, ensure the validation remains true for the GPU operation's lifetime; GPU-written data can change after an earlier CPU check.</p>
+<p>Choose floating-point operations deliberately. Contraction, reassociation, reciprocal approximations and half conversion can change edge cases. Establish a correctness baseline before optimization; record precision requirements in the compiler contract and specialize only when necessary. A successful SPIR-V validation checks structural legality, not equivalence to the guest.</p>
+<h3 id="enable-path">12.4 Remove the skip only for proven-supported programs</h3>
+<p>Update <code>ShaderRecompiler.cpp</code>, the program cache and the compute dispatch path together. A supported program must yield valid stage information, bindings, shader module and dispatch. An unsupported form must retain a clear policy rather than reaching an empty program accidentally. If a mode can change while the process runs, rebuild affected cache state; otherwise explicitly require a restart. Do not leave successful shader entries and cached skips mixed under an identical key.</p>
+
+<h2 id="resources">13. Integrate descriptors, memory and output tracking</h2>
+<p>A new arithmetic operation with hidden memory accesses is not enough. The runtime must know which guest resources are read, which backing must be resident and which subsequent work observes writes. Traversal can follow pointers beyond the root node; validating one root-sized range does not establish the entire reachable footprint.</p>
+<div class="tw"><table><thead><tr><th>Existing integration area</th><th>Required design work</th></tr></thead><tbody>
+<tr><td><code>ir/passes/ResourceTracking.cpp</code></td><td>Track the BVH descriptor/root provenance without classifying it as an ordinary texture. Preserve dynamic versus specialization-dependent sources.</td></tr>
+<tr><td><code>ir/passes/SrtWalker.cpp</code> and <code>ResourceMaterialization.cpp</code></td><td>Materialize descriptor values from the right user-data/SRT state at the right time. Record which content changes invalidate assumptions.</td></tr>
+<tr><td><code>ir/passes/BindingLayout.cpp</code></td><td>Carry new resource/binding metadata consistently through analysis, snapshot indices, packed data and emitter lookup.</td></tr>
+<tr><td><code>renderer/pipeline/descriptors.cpp</code></td><td>Prepare the supported node/geometry/output ranges, residency and backend-specific bindings. Finalize before committing commands that cannot tolerate scheduler restart.</td></tr>
+<tr><td><code>renderer/renderContext.cpp</code>, <code>renderer/cache/bufferCache.cpp</code>, <code>pageManager.cpp</code></td><td>Use actual ownership and aliasing rules. Distinguish host allocation extent from guest descriptor bounds and include GPU-produced updates.</td></tr>
+<tr><td><code>renderer/renderCompute.cpp</code></td><td>Preserve dispatch dimensions, user data, ordinary writes and downstream barriers. An RT-containing shader is still a whole program, not just its BVH instruction.</td></tr>
+</tbody></table></div>
+<p>Paths in the first three rows are under <code>src/graphics/shader/recompiler/</code>; renderer/page-manager paths are under <code>src/graphics/host_gpu/</code>. Use the full source map at the end to navigate rather than relying on drifting line numbers.</p>
+<p><strong>Proposed binding policy:</strong> carry a validated mapping identity and generation alongside the guest address. For pointer-chasing traversal, either establish a conservative supported reachable range set or use a bounds-aware translation mechanism that can report unsupported residency safely. Do not pretend a small explicit descriptor read accounts for every indirect node load.</p>
+<p>Sparse backing deserves a separate test plan. The current emulator has owned-range/sparse-read mechanisms, but “zero-fill an owned hole” in one upload path does not automatically define the semantics of a BVH node read. An all-zero node can be interpreted as a valid pointer or a degenerate object. Decide the guest/backend policy from evidence and reject unknown cases in a reference harness rather than fabricating a miss.</p>
+
+<h2 id="vulkan">14. Add a Vulkan hardware path only behind a proven translation boundary</h2>
+<h3 id="features">14.1 Negotiate capabilities; do not assume Vulkan 1.3 implies RT</h3>
+<p>The current <code>src/graphics/presentation/window/vulkanWindow.cpp</code> already deals with buffer device addresses, but this is not ray-query support. A proposed query backend must enumerate the needed extensions/dependencies for the chosen API version, query feature structures and enable only supported features at device creation. Check <code>accelerationStructure</code> and <code>rayQuery</code> separately, and read the relevant properties/limits. Dedicated RT pipelines add a different feature path and are not required merely to use inline queries. See <a href="https://docs.vulkan.org/refpages/latest/refpages/source/VkPhysicalDeviceRayQueryFeaturesKHR.html">ray-query features</a> and <a href="https://docs.vulkan.org/refpages/latest/refpages/source/VkPhysicalDeviceAccelerationStructureFeaturesKHR.html">acceleration-structure features</a>.</p>
+<p>Design at least three visible outcomes: verified software backend available; verified hardware backend available for this workload; unsupported. Log the reason for refusal. Do not silently downgrade to the old skipped-dispatch workaround and present it as successful RT. Any future configuration name in the implementation plan is a proposal; this appendix does not introduce an existing <code>--ray-tracing</code> CLI option.</p>
+<h3 id="geometry-bridge">14.2 Recover build inputs, not opaque bytes</h3>
+<p>For a higher-level optimization, obtain geometry, indices, per-geometry metadata, instance transforms and flags from a verified producer or a validated guest-layout decoder. Preserve guest-visible primitive and instance identity through a mapping table. Host build order, compacted offsets and internal node IDs are not guest IDs.</p>
+<p>Host acceleration structures are opaque. Copying guest BVH bytes into a buffer with the correct usage flag does not build one. Serialization/capture-replay facilities likewise do not establish compatibility with a console format. Even a valid host AS address need not equal its backing buffer's device address plus offset. Keep separate typed handles/addresses and query the correct value. See <a href="https://docs.vulkan.org/spec/latest/chapters/accelstructures.html">acceleration structures</a> and <a href="https://docs.vulkan.org/refpages/latest/refpages/source/vkGetAccelerationStructureDeviceAddressKHR.html">AS device-address rules</a>.</p>
+<h3 id="build-host">14.3 A host build checklist</h3>
+<ol>
+<li>Construct the supported triangle/AABB geometry description and, separately, instance data. Verify vertex/index formats, counts, strides, transforms and range bounds.</li>
+<li>Query build sizes for that geometry and chosen build/update mode. Allocate appropriately flagged backing and scratch buffers using the queried requirements, not guessed per-triangle sizes.</li>
+<li>Create the host AS object and record its lifetime dependencies. Apply the device's scratch-address alignment requirement; a buffer allocation's base alignment does not justify arbitrary scratch suballocation offsets.</li>
+<li>Record the build, establish the required dependency before building a TLAS that references the BLAS, and then establish the dependency before traversal.</li>
+<li>Keep build inputs and scratch alive through their GPU use. Keep referenced BLAS objects alive for TLAS use, including later queries. Reuse or retire only after the relevant last-use completion.</li>
+<li>For refit/update, validate the API's update preconditions and supported geometry changes. Rebuild when they do not hold. For compaction/copy, update address mappings and dependent instances with correct ordering.</li>
+</ol>
+<p>This is a design checklist, not copy-ready Vulkan code. Use the exact valid-usage and access rules for your selected build path. In particular, a multi-build call does not implicitly order its builds. See <a href="https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdBuildAccelerationStructuresKHR.html">build-command requirements</a> and <a href="https://docs.vulkan.org/refpages/latest/refpages/source/VkPhysicalDeviceAccelerationStructurePropertiesKHR.html">queried limits/alignment</a>.</p>
+<h3 id="query-lowering">14.4 Translate a proven whole-query contract</h3>
+<p>SPIR-V ray queries have an object lifecycle: initialize, proceed, inspect/confirm or generate permitted candidate intersections, then inspect the committed result. An acceleration-structure address conversion accepts a valid host AS address, not an arbitrary guest pointer. The exact instruction, operand and capability rules are in <a href="https://github.com/KhronosGroup/SPIRV-Registry/blob/main/extensions/KHR/SPV_KHR_ray_query.asciidoc">SPV_KHR_ray_query</a>.</p>
+<pre>Conceptual host-query path; not a direct translation of a single BVH opcode:
+  resolve verified guest scene/version -> host AS + ID mapping
+  initialize query with equivalent origin, direction, interval and flags
+  while query can proceed:
+      apply required candidate handling at the correct semantic boundary
+  convert committed result into the proven guest-visible whole-query result
+  execute remaining guest-visible side effects</pre>
+<p>Prove what happens for misses, opaque versus non-opaque candidates, alpha-tested geometry, procedural AABBs, instance masks, facing, negative transforms and termination behavior. If guest code observes internal node IDs or relies on intermediate traversal results, this whole-query substitution is not justified. Candidate order differences can affect side-effectful filters even when the final closest hit is similar. Keep the instruction-level fallback.</p>
+<p>Do not map host primitive indices directly to guest packed node pointers. Preserve an explicit translation to the guest identity domain, and prove the relevant result fields. A hardcoded “triangle 0” is useful in the first fixture only; it is not an acceptable general mapping.</p>
+
+
+<h2 id="synchronization">15. Synchronization, residency and replay are part of correctness</h2>
+<p><strong>Design invariant:</strong> a ray must see the intended version of its geometry/BVH, and its consumers must see the intended output version. A correct intersection routine on stale bytes is still an emulator bug. Separate shader-to-shader ordering, host readback visibility, queue ownership and resource retirement; one completion counter does not express all four.</p>
+<h3 id="dependencies">15.1 Write the dependency chain for each backend</h3>
+<pre>Guest-format software path:
+  producer writes geometry/nodes
+  -> make relevant writes visible to the translated traversal's shader reads
+  -> traversal writes hit/output resources
+  -> make those writes visible to filtering/compositing consumers
+
+Host acceleration-structure path:
+  geometry/instance producer
+  -> host AS build reads its inputs
+  -> BLAS build dependency before dependent TLAS build
+  -> build writes visible to the actual query/ray-tracing shader stage
+  -> hit/output writes visible to later consumers</pre>
+<p>For ordinary storage buffers, derive masks from the real producer and consumer stages/accesses, not a universal “RT barrier.” A compute shader using a ray query is still a compute-stage consumer, not automatically a ray-tracing-pipeline-stage consumer. Image consumers also require appropriate subresource layout handling. Across queues, include semaphore ordering and ownership transfers where required. Use the <a href="https://docs.vulkan.org/guide/latest/synchronization_examples.html">Khronos synchronization examples</a> alongside the AS build command's specific access rules.</p>
+<p>Do not hide a missing dependency with an unconditional device-idle wait and call the feature finished. Such a wait can help a bounded diagnostic experiment, but it changes scheduling and may conceal both performance and lifetime bugs. Replace it with a justified dependency before claiming a production implementation.</p>
+<h3 id="scheduler">15.2 Respect the current scheduler's preparation boundary</h3>
+<p><strong>Verified source:</strong> <code>CommandScheduler::Wait</code> can submit the current work and begin another command buffer. The wrapper can remain stable while its Vulkan handle changes. <code>PopPendingOperations</code> observes the master timeline before running eligible deferred operations. Any new RT preparation that reads back metadata, allocates streaming storage or waits must fit those existing rules.</p>
+<p>Acquire the current Vulkan handle after operations that may restart the scheduler; retain resources referenced by recorded commands until their last GPU use completes. New AS builds and scratch allocations must not be destroyed when a temporary C++ preparation object leaves scope. Read <a href="t-trace-draw.html#completion">D3's completion trace</a> and reproduce <a href="t-debugging-labs.html#lifetime">the lifetime lab</a> before extending this layer.</p>
+<h3 id="faults">15.3 Do not turn a residency retry into duplicate side effects</h3>
+<p><strong>Proposed correctness requirement:</strong> if a backend discovers an unavailable page after some shader work has executed, blindly replaying the dispatch can duplicate atomics, append-buffer writes or other side effects. Simply suppressing a GPU fault or marking it handled cannot establish correct output.</p>
+<p>Prefer making required backing resident before the supported operation. If the design needs replay, define a transaction: identify all externally visible writes, snapshot or otherwise make them rollback-safe, populate backing, restore the pre-attempt state, refresh aliases/bindings and retry under a bounded policy. If the complete side-effect set cannot be identified—including global data and counters—do not advertise that workload as safely replayable. This is an implementation requirement, not a claim that the existing fault manager already provides that transaction.</p>
+<p>Keep invalid addresses distinct from valid-but-unavailable backing. Unknown node formats, out-of-range pointers and corrupted graphs should not all be routed through an infinite “retry and zero” loop. Use bounded traversal and diagnostics in the research harness; a debug step limit must report failure, not quietly convert an unfinished traversal into a miss.</p>
+
+<h2 id="cache">16. Cache identity must include content and lifetime, not only an address</h2>
+<p><strong>Proposed model:</strong> track separate code identity, descriptor/specialization identity, guest allocation generation, content version and host-backend representation. The exact data structures should fit the existing caches, but the following mistakes must be impossible.</p>
+<div class="tw"><table><thead><tr><th>Event</th><th>What must be reconsidered</th></tr></thead><tbody>
+<tr><td>A guest allocation is freed and another uses the same address.</td><td>Generation changes; an old BVH/host-AS mapping must not be reused merely because the base address matches.</td></tr>
+<tr><td>GPU builder refits nodes in place.</td><td>Content/version dependencies change even if CPU dirty tracking did not observe a write.</td></tr>
+<tr><td>Geometry stays fixed but instance transforms or masks change.</td><td>Dependent TLAS/query state may be stale while BLAS geometry remains reusable.</td></tr>
+<tr><td>Software/hardware/legacy-skip mode changes.</td><td>Program/pipeline compatibility and negative skip entries need distinct keys or invalidation.</td></tr>
+<tr><td>A descriptor changes while the shader code is identical.</td><td>Materialized resources and specialization must be refreshed; code hash alone is insufficient.</td></tr>
+<tr><td>AS compaction/copy changes the host representation/address.</td><td>Dependent references, ID maps, lifetime dependencies and already queued users must be tracked.</td></tr>
+</tbody></table></div>
+<pre>Illustrative identity, not an existing KytyPS5 struct:
+  GuestBvhIdentity {
+      allocation_id, allocation_generation,
+      root_offset, format_version,
+      content_version, geometry_version, instance_version
+  }
+  BackendCompatibility {
+      backend_kind, lowering_version,
+      required_host_features, precision_policy
+  }</pre>
+<p>Do not put every dynamic byte in the shader pipeline key: that can create unbounded recompilation without fixing coherency. Separate “must recompile” from “must rebind,” “must update/rebuild host AS” and “must wait.” Likewise, a CPU hash of stale node bytes is not a valid content-version tracker for GPU-written memory.</p>
+<p>At this snapshot the program cache retains resource-plan analysis and mutable snapshot storage; new permutations retranslate temporary IR. New RT metadata must respect that ownership. Borrowed stage pointers are not independently owned immutable copies. If retained across asynchronous work, prove their lifetime or copy a stable representation deliberately.</p>
+
+<h2 id="testing">17. A validation ladder that can catch believable wrong answers</h2>
+<h3 id="test-matrix">17.1 Use multiple independent oracles</h3>
+<div class="tw"><table><thead><tr><th>Layer</th><th>Required cases</th><th>What passing establishes</th></tr></thead><tbody>
+<tr><td>Decode</td><td>E6/E7, contiguous/NSA, A16 variants, literals that look like opcodes, branch tails, malformed/truncated buffers, stage policy.</td><td>Correct identification, operand order and instruction boundaries—not intersection.</td></tr>
+<tr><td>Layout</td><td>Node kinds, base/offset units, bounds, high address bits, generation reuse, headers/sideband data, endianness and unsupported tags.</td><td>Correct reading of the supported format—not whole traversal.</td></tr>
+<tr><td>Primitive math</td><td>Hit/miss, inside box, parallel axes, signed zero, non-unit direction, near/far endpoints, triangle edges/degeneracy and ties.</td><td>Agreement with the stated numerical oracle on these inputs.</td></tr>
+<tr><td>Guest result words</td><td>All four output words, child ordering, miss sentinels, IDs, bitcasts, inactive lanes and overlapping source/destination registers.</td><td>The guest-visible instruction result, not just a visually similar hit.</td></tr>
+<tr><td>Shader execution</td><td>Traversal loops, calls, EXEC divergence, multiple lanes/waves, ordinary writes/atomics and output consumers.</td><td>The supported reduced program executes rather than being skipped.</td></tr>
+<tr><td>Runtime memory</td><td>GPU-only node writes, aliases, sparse/unavailable backing, unmap/reuse, scratch wrap, refit/copy and in-flight destruction.</td><td>Version, visibility and lifetime invariants for these schedules.</td></tr>
+<tr><td>Hardware optimization</td><td>Software/reference versus host-query results, flags, ID mappings, masks, instances, non-opaque/procedural handling and unsupported fallback.</td><td>Equivalence for the recognized workload subset.</td></tr>
+<tr><td>Game integration</td><td>Repeatable scene, RT-dependent output inspection, camera/animation changes, reload and extended use.</td><td>Evidence for that title/version/route—not universal support.</td></tr>
+</tbody></table></div>
+<p>Use exact comparisons for integer fields and address/ID mappings. Choose floating-point acceptance criteria from the contract and numerical analysis; do not apply one loose tolerance to every output. Keep both deterministic hand-solvable cases and difficult boundary cases. An image-difference threshold alone can hide a broken low-energy effect; inspect intermediate hit/mask buffers as well.</p>
+<h3 id="reference-fixtures">17.2 Runnable teaching checks included with this appendix</h3>
+<p><a href="labs/raytracing-reference.cjs">raytracing-reference.cjs</a> checks the displayed opcode arithmetic, the toy packed-pointer formula, and simple finite-input ray/box, ray/triangle and transform examples. It deliberately implements neither a complete RDNA decoder nor a console BVH layout. JavaScript's binary64 arithmetic is not a model of the instruction's floating-point precision. No games, Vulkan or GPU execution are used.</p>
+<pre>From the learning repository:
+node docs/labs/raytracing-reference.cjs</pre>
+<p>The script fails on an unexpected result and prints its assertion count on success. Treat it as a check that the lesson's worked examples are internally consistent. Hardware/guest behavior still needs the independent evidence described above. Add a counterexample to a tempting incorrect optimization—for example, direction normalization without t compensation.</p>
+<h3 id="upstream-tests">17.3 Extend the existing upstream tests deliberately</h3>
+<p>From the emulator root, after configuring a compatible full test build with its dependencies, these are existing target and CTest names at the pinned revision:</p>
+<pre>cmake --build _Build/windows --target shader_cfg_tests resource_tracking_tests shader_recompiler_compute_tests
+ctest --test-dir _Build/windows -R "^(shader_cfg|resource_tracking|shader_recompiler_compute)$" --output-on-failure</pre>
+<p>These commands are a future implementation-validation recipe, not a claim that this documentation task ran the full emulator tests. The compute executable includes host-GPU coverage and needs its real environment. <code>ShaderRayTracingTests.inc</code> belongs to the <code>shader_cfg</code> test, not a separately registered <code>raytracing_tests</code> target. Do not invent a GoogleTest filter for these executables.</p>
+<p>Add instruction-execution fixtures near the shader tests, resource-provenance cases near the resource tests and real GPU-output/lifetime cases in the compute harness. Preserve existing non-RT tests and rasterization scenes. A future backend should pass both a device with the required RT capabilities and its explicit unsupported/software path; never use a skipped test as evidence that the feature works there.</p>
+
+<h2 id="diagnosis">18. Diagnose failures at the first wrong boundary</h2>
+<div class="tw"><table><thead><tr><th>Observation</th><th>Investigate first</th><th>Do not conclude</th></tr></thead><tbody>
+<tr><td>Removing the skip makes the compiler fail.</td><td>Truncated decoding, unsupported calls/control flow, missing operand/resource semantics, invalid IR or backend capabilities.</td><td>That the Vulkan driver is the original cause.</td></tr>
+<tr><td>Every ray misses.</td><td>Whether dispatch ran; root/descriptor mapping; coordinate space; interval; masks; stale/empty build; packed result interpretation.</td><td>That increasing tMax or forcing success is a fix.</td></tr>
+<tr><td>Hits appear on the wrong object.</td><td>Guest-to-host instance/primitive mapping, index offsets, transforms and reused allocations.</td><td>That visually nearby geometry is equivalent.</td></tr>
+<tr><td>Static scenes work, animation fails.</td><td>GPU-written updates, refit/rebuild policy, instance dependencies, content versions and synchronization.</td><td>That the intersection equation alone is wrong.</td></tr>
+<tr><td>Edge flicker or light leaks.</td><td>Precision, shared-edge rules, t interval, facing, transform consistency and candidate rejection.</td><td>That an arbitrary epsilon is harmless.</td></tr>
+<tr><td>Failure appears only without a forced wait.</td><td>Producer/consumer dependency, scheduler restart, resource lifetime and cross-queue ordering.</td><td>That permanent full-device serialization is a correct final design.</td></tr>
+<tr><td>A page retry changes counters or output twice.</td><td>Partial side effects, rollback completeness, stale aliases and replay eligibility.</td><td>That suppressing the fault preserves behavior.</td></tr>
+<tr><td>Host capture has no RT commands.</td><td>Skip path versus software lowering versus host-query backend selection.</td><td>That no guest RT-related work exists; software lowering may use ordinary compute.</td></tr>
+</tbody></table></div>
+<h3 id="performance">Measure cost only after correctness</h3>
+<p>Record build/refit time, shader compilation, traversal time, upload/readback volume, forced waits, node visits, rays, cache hits, AS memory, scratch high-water mark and deferred-resource backlog. Normalize comparisons by the same scene, ray count and settings. Separate cold compilation from warm runtime; count CPU time and GPU time independently.</p>
+<p>For the software path, investigate node fetch locality, divergence, register pressure, spills and repeated descriptor work. For a hardware path, measure conversion and AS build cost as well as query cost. A faster query can still make the whole frame slower if geometry conversion/readback dominates. Use existing <code>--profile</code> instrumentation deliberately; do not infer success from average FPS while the effect is disabled or incorrect.</p>
+
+<h2 id="milestones">19. A reviewable implementation sequence</h2>
+<p>Each milestone should leave the default emulator behavior stable and have a small, inspectable diff. Names for future helpers, modes and tests below are proposals, not existing APIs. Do not promise a calendar deadline before the guest-format evidence exists.</p>
+<div class="tw"><table><thead><tr><th>Milestone</th><th>Deliverable</th><th>Exit gate</th></tr></thead><tbody>
+<tr><td>M0 · Inventory</td><td>One shader/dispatch dossier; current skip chain; opcode/format coverage matrix; artifact provenance.</td><td>Every assumption is labeled and the first blocked semantic question is explicit.</td></tr>
+<tr><td>M1 · Decode</td><td>Full supported BVH decoding behind an experimental policy, exact operands and preserved CFG tail.</td><td>Positive/negative/truncated cases pass; no non-RT regressions.</td></tr>
+<tr><td>M2 · Reference</td><td>Independent CPU node reader, math oracle and guest result packer for one established format.</td><td>Known-good vectors plus unknown/invalid cases; no invented layout fields.</td></tr>
+<tr><td>M3 · Software GPU instruction</td><td>IR/resource semantics and SPIR-V lowering of the supported operation.</td><td>Output words and inactive lanes match the reference; validation is clean.</td></tr>
+<tr><td>M4 · Reduced traversal shader</td><td>Complete loop/call/dataflow execution with ordinary side effects intact.</td><td>Repeated deterministic output; no skip, fake miss or omitted stores.</td></tr>
+<tr><td>M5 · Runtime integration</td><td>Coherent GPU-produced BVHs, resource generations, cache policy and completion-based lifetime.</td><td>Update/reuse/alias/scratch-wrap tests; no hidden global-wait requirement.</td></tr>
+<tr><td>M6 · Controlled scene</td><td>One scene with known geometry and an inspectable RT-dependent output.</td><td>Correct masks/IDs/distances under camera and instance movement.</td></tr>
+<tr><td>M7 · Optional hardware optimization</td><td>Proven traversal recognition, host-AS build/cache and equivalent query lowering.</td><td>Differential agreement and conservative fallback for unrecognized semantics.</td></tr>
+<tr><td>M8 · Game coverage and release policy</td><td>Title/version/route matrix, feature reporting, diagnostics, performance and fallback documentation.</td><td>Claims match actual supported variants, stages, devices and observed runs.</td></tr>
+</tbody></table></div>
+<p>The first useful contribution may be M0 or M1, not a frame with reflections. Keep format recovery, numerical semantics, shader compiler changes and host resource-management changes separable enough to review. Do not include unrelated rendering “fixes” just because they make one game progress during the experiment.</p>
+<h3 id="first-task">A concrete first week of work, without promising a one-week implementation</h3>
+<ol>
+<li>Read the five current skip-chain locations and explain exactly which test asserts skipping.</li>
+<li>Reproduce the three encoding examples and the false-positive cases. Write the unsupported-variant matrix.</li>
+<li>Choose a lawful reduced workload; record the descriptor/root producer and each live result consumer.</li>
+<li>Recover one node form with producer/consumer agreement, or document precisely why it is still unknown.</li>
+<li>Build hand-solvable reference vectors and a review note. Only then propose the smallest execution patch.</li>
+</ol>
+<p>If node layout or result encoding remains unknown, the next deliverable is a discriminating experiment—not an implementation filled with guessed fields.</p>
+
+<h2 id="limits">20. What remains unknown, and what “ray tracing supported” should mean</h2>
+<p>This appendix does not establish every console BVH format, proprietary runtime ABI, builder version, packed return rule or hardware numerical edge case. It does not prove that a generic Vulkan ray query can replace a particular game's traversal routine. It does not run a game or add execution support to the emulator.</p>
+<p>A defensible eventual status report names the subset: supported instructions/forms/stages/node formats, how unsupported work is handled, tested host devices, covered title versions/scenes, correctness evidence and known performance limits. “RT enabled” is too broad if only one opcode form or one node kind works. “Game reaches menu” is not RT validation; “skipped dispatch no longer warns” is not execution validation.</p>
+<div class="check"><p class="check-h">Appendix completion checkpoint</p><ul class="check-list">
+<li class="check-item"><input type="checkbox"><label>I can distinguish guest node intersection, guest traversal and host whole-scene ray queries.</label></li>
+<li class="check-item"><input type="checkbox"><label>I can decode the worked words without mistaking literals/NSA payloads for opcodes.</label></li>
+<li class="check-item"><input type="checkbox"><label>My reverse-engineering dossier links CPU setup, GPU operands, node producers and result consumers, with unknowns labeled.</label></li>
+<li class="check-item"><input type="checkbox"><label>My proposed implementation covers memory dependencies, lane behavior, packed results, cache invalidation and GPU lifetime—not only intersection math.</label></li>
+<li class="check-item"><input type="checkbox"><label>I can define a small milestone with independent tests and explain what passing those tests does not prove.</label></li>
+</ul></div>
+<p>Finish with the <a href="developer-curriculum.html#report">developer evidence record</a>. Keep raw game material out of a public report where permission is absent; include minimized tests, precise source references and the scope of human review required by the upstream contribution policy.</p>
+
+<h2 id="references">21. Source map and primary references</h2>
+<p>Local paths below are relative to the emulator root. Online links pin the inspected KytyPS5 revision; public vendor/spec links can evolve, so record the version used for implementation. The current-state analysis is based on local source, not an assertion that future main still behaves identically.</p>
+<div class="tw"><table><thead><tr><th>Responsibility</th><th>Existing source anchor</th></tr></thead><tbody>
+<tr><td>Feature detection and full decoding</td><td><code>src/graphics/shader/recompiler/frontend/decode/ShaderDecoder.cpp</code>, <code>ShaderDecoder.h</code>, <code>ImageOps.cpp</code> in that decode directory.</td></tr>
+<tr><td>Translation gate</td><td><code>src/graphics/shader/recompiler/ShaderRecompiler.cpp</code> / <code>ShaderRecompiler.h</code>.</td></tr>
+<tr><td>Translation dispatch and IR effects</td><td><code>src/graphics/shader/recompiler/frontend/translate/Dispatch.cpp</code>, <code>src/graphics/shader/recompiler/ir/Value.cpp</code>, <code>src/graphics/shader/recompiler/ir/opcodes/ValueOpcodes.cpp</code>.</td></tr>
+<tr><td>Resource provenance and binding shape</td><td><code>src/graphics/shader/recompiler/ir/passes/ResourceTracking.cpp</code>, <code>SrtWalker.cpp</code>, <code>ResourceMaterialization.cpp</code>, <code>BindingLayout.cpp</code> in that passes directory.</td></tr>
+<tr><td>SPIR-V emission</td><td><code>src/graphics/shader/recompiler/backend/spirv/SpirvEmitter.cpp</code> and the <code>spirvEmitter*.cpp</code> helpers in that directory.</td></tr>
+<tr><td>Programs and descriptors</td><td><code>src/graphics/host_gpu/renderer/pipeline/pipelineCache.cpp</code>, <code>src/graphics/host_gpu/renderer/pipeline/descriptors.cpp</code>.</td></tr>
+<tr><td>Dispatch and synchronization</td><td><code>src/graphics/host_gpu/renderer/renderCompute.cpp</code>, <code>src/graphics/host_gpu/renderer/commandScheduler.cpp</code>, <code>src/graphics/host_gpu/renderer/pipeline/shaderResourceBarrier.cpp</code>.</td></tr>
+<tr><td>Ownership, residency and faults</td><td><code>src/graphics/host_gpu/renderer/renderContext.cpp</code>, <code>src/graphics/host_gpu/renderer/cache/bufferCache.cpp</code>, <code>src/graphics/host_gpu/renderer/cache/faultManager.cpp</code>, <code>src/graphics/host_gpu/pageManager.cpp</code>.</td></tr>
+<tr><td>Host features</td><td><code>src/graphics/presentation/window/vulkanWindow.cpp</code>, <code>src/graphics/host_gpu/graphicContext.h</code>.</td></tr>
+<tr><td>Tests</td><td><code>tests/ShaderRayTracingTests.inc</code>, <code>tests/shaderCfgTests.cpp</code>, <code>tests/ShaderRecompilerComputeTests.cpp</code>, and root <code>CMakeLists.txt</code>.</td></tr>
+</tbody></table></div>
+<ul>
+<li><a href="https://github.com/KytyPS5/KytyPS5/blob/2650478d92c394c092b36ee129962060c623ca16/src/graphics/shader/recompiler/ShaderRecompiler.cpp">Pinned KytyPS5 translation gate</a> and <a href="https://github.com/KytyPS5/KytyPS5/blob/2650478d92c394c092b36ee129962060c623ca16/tests/ShaderRayTracingTests.inc">detection regression fixtures</a>.</li>
+<li><a href="https://docs.amd.com/v/u/en-US/rdna2-shader-instruction-set-architecture">AMD RDNA 2 ISA, document 70648</a>: consult section 8.2.10 and the associated encoding/register descriptions. Newer ISA generations are not substitutes.</li>
+<li><a href="https://rocmdocs.amd.com/projects/llvm-project/en/latest/LLVM/llvm/html/AMDGPU/AMDGPUAsmGFX1030.html">LLVM GFX1030 syntax</a> and <a href="https://llvm.org/docs/AMDGPU/gfx1030_vaddr_c5ab43.html">BVH address-operand syntax</a>: an independent assembler-facing cross-check.</li>
+<li><a href="https://github.com/GPUOpen-Drivers/gpurt">AMD GPURT</a>: open implementation research; pin a revision and hardware-generation path, and do not assume console compatibility.</li>
+<li><a href="https://docs.vulkan.org/guide/latest/extensions/ray_tracing.html">Khronos ray-tracing guide</a>, <a href="https://docs.vulkan.org/spec/latest/chapters/raytraversal.html">traversal semantics</a> and <a href="https://docs.vulkan.org/spec/latest/chapters/accelstructures.html">acceleration structures</a>.</li>
+<li><a href="https://github.com/KhronosGroup/SPIRV-Registry/blob/main/extensions/KHR/SPV_KHR_ray_query.asciidoc">Khronos SPIR-V ray-query extension</a>: capabilities and object/instruction rules for the optional host-query backend.</li>
+</ul>
+<p>Return to the <a href="developer-curriculum.html#coverage">coverage map</a>. This appendix provides a detailed implementation plan; it intentionally does not relabel planned functionality as implemented functionality.</p>
+
+</div></section>
+</main>
+<script src="assets/topics.js?v=20260929" defer></script>
+<script src="assets/search-index.js?v=20260929" defer></script>
+<script src="assets/app.js?v=20260929" defer></script>
+<script src="assets/highlight.js?v=20260929" defer></script>
+<script src="assets/tutor.js?v=20260929" defer></script>
+</body>
+</html>

@@ -17,7 +17,7 @@ you source. Use the link above.
 `docs/index.html` is the front door. Every subject is one **topic page** carrying its
 explanation, the animation for that idea, an interactive tool and a checkpoint against the
 real source: 20 numbered topics in six parts (foundations, loading a game, memory, execution,
-graphics, working on it), a C++ appendix (C1–C10 plus a glossary), a set of whole-system
+graphics, working on it), C++ and implementation appendices (C1–C11 plus a glossary), a set of whole-system
 simulations (one full run, a browser micro-emulator, a system explorer, the machine running),
 and the Playground. The **[developer curriculum](https://almo7aya.dev/leaning-something/developer-curriculum.html)**
 adds D1–D4: a coverage map and contribution gates, ELF-to-entry and PM4-to-completion
@@ -27,6 +27,17 @@ The developer track tests range coverage, last-use lifetime bookkeeping and an
 explicitly fictional output contract. It includes expected failures, reference fixes,
 negative/boundary cases and an evidence-record capstone. It does not claim exhaustive
 emulator coverage or turn a passing fixture into game-compatibility evidence.
+
+**[C11: Implementing ray tracing](https://almo7aya.dev/leaning-something/t-ray-tracing.html)**
+is a detailed research and implementation roadmap: current BVH skipping, RDNA 2
+encoding/semantics, CPU and GPU reverse engineering, node-layout recovery, reference
+math, software shader lowering, a conditional Vulkan acceleration path, coherency,
+lifetime, caching, diagnostics and staged validation. Public AMD/Khronos/LLVM sources
+are linked beside the relevant claims. Unknown console formats are labeled; this is
+documentation of proposed work, **not newly implemented emulator RT support**.
+
+Run `node docs/labs/raytracing-reference.cjs` to check its 27 illustrative encoding,
+address and geometry cases. These are not hardware or guest-conformance tests.
 
 The five original long-form documents are still served while their content is ported into
 topics, and were updated to the same commit:
@@ -96,7 +107,7 @@ tasks against the real repository; progress is saved in your browser's local sto
 ```
 docs/                          served by GitHub Pages
 ├─ index.html                  landing page and progress
-├─ t-*.html                    the topic pages (20 topics + C1–C10 + D2–D4 + glossary)
+├─ t-*.html                    the topic pages (20 topics + C1–C11 + D2–D4 + glossary)
 ├─ developer-curriculum.html   D1: developer gates, coverage map and capstone
 ├─ labs/                       optional native C++ fixtures and isolated CMake build
 ├─ lifetime / machine / system-explorer / browser-emulator / advanced-emulator .html   whole-system simulations
@@ -130,6 +141,8 @@ Run `node scripts/check-docs.cjs`, `node scripts/check-doc-examples.cjs`,
 These validate local references, selected examples, curriculum anchors and search
 headings; source paths/symbols are checked when the optional clone exists. They
 cannot establish the correctness of every explanatory claim.
+The ray-tracing appendix has a separate Node.js fixture check:
+`node docs/labs/raytracing-reference.cjs`.
 
 For the optional native labs, from this repository root:
 
