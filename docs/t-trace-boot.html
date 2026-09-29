@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en" class="notranslate" translate="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ELF to the first guest instruction — KytyPS5</title>
+<meta name="description" content="Follow one boot path across file offsets, mapped addresses, relocation and the native guest-entry boundary.">
+<link rel="stylesheet" href="assets/viz.css?v=20260929">
+<link rel="stylesheet" href="assets/atlas.css?v=20260929">
+<link rel="stylesheet" href="assets/lab.css?v=20260929">
+<link rel="stylesheet" href="assets/tutor.css?v=20260929">
+<link rel="stylesheet" href="assets/app.css?v=20260929">
+<link rel="stylesheet" href="assets/highlight.css?v=20260929">
+</head>
+<body>
+<main class="topic" data-app-content>
+<p class="topic-eyebrow">Developer curriculum · D2</p>
+<h1 id="overview">ELF to the first guest instruction</h1>
+<p class="topic-deck">Follow one boot path across file offsets, mapped addresses, relocation and the native guest-entry boundary.</p>
+<section class="band band-read">
+<div class="band-h"><span class="band-t">Read, trace, prove</span></div>
+<div class="prose">
+
+<p>Prerequisites: <a href="t-elf-and-self.html">ELF/SELF</a>, <a href="t-nids.html">NIDs</a>, <a href="t-calling-conventions.html">the ABI</a> and <a href="t-threads.html">threads</a>. This is a source-reading trace at <code>2650478</code>, with an optional debugger worksheet. It is not a captured run of a particular game.</p>
+<div class="callout k"><span class="lbl">Define the endpoint first</span>
+<p><strong>First guest instruction</strong> may be a shared module initializer called by <code>StartModule</code>. <strong>Main executable entry</strong> is a later transfer through <code>RunEntry</code>. Neither necessarily means the game's C/C++ <code>main()</code>. A failure before the “Execute: Main” log can therefore already be executing guest code.</p></div>
+
+<h2 id="chain">The selected boot chain</h2>
+<pre>Host startup: Emulator::Run
+  initialize subsystems and mount guest paths
+  Libs::InitAll -> registered HLE symbol database
+  LoadElf -> RuntimeLinker::LoadProgram
+    Elf64::Open -> LoadProgramToMemory
+    ParseProgramDynamicInfo -> CreateSymbolDatabase
+  Execute starts guest thread; host main continues WindowRun
+
+Guest thread: RuntimeLinker::Execute
+  initialize main guest thread and allocate its guest stack
+  PreloadAdjacentPrograms -> RelocateAll -> optional GamePatch::Apply
+  StartAllModules -> StartModule -> guest module initializer, if any
+  GetEntry -> RunEntry -> guest executable entry -> guest startup code</pre>
+<p>The ordering comes from <code>src/emulator.cpp</code> and <code>src/loader/runtimeLinker.cpp</code>. A source trace tells you where to look; a live run establishes which branches and modules were actually used.</p>
+
+<h2 id="load">1. Establish the file, mapping and symbols</h2>
+<div class="tw"><table>
+<thead><tr><th>Boundary</th><th>Inspect</th><th>Invariant / artifact to record</th></tr></thead>
+<tbody>
+<tr><td>Guest path → host file</td><td><code>Emulator::Run</code>, <code>LoadElf</code>; <code>FileSystem::GetRealFilename</code>.</td><td>Record the resolved ELF and mounted app directory. A path inside the guest namespace is not automatically a host filesystem path.</td></tr>
+<tr><td>File → parsed object</td><td><code>RuntimeLinker::LoadProgram</code> calls <code>Elf64::Open</code> and checks validity.</td><td>Record ELF type, entry, program headers and whether this is a shared module. Do not equate a filename extension with a valid executable.</td></tr>
+<tr><td>Object → mapped program</td><td><code>LoadProgramToMemory</code>, <code>CalcBaseSize</code>, <code>Memory::AllocateProgramMemory</code>.</td><td>Record <code>base_vaddr</code>, base size, aligned size and mapped size separately. Allocation/rounding checks are part of loading, not a reason to trust arbitrary ELF sizes.</td></tr>
+<tr><td>Segments → host bytes</td><td><code>PT_LOAD</code>/<code>PT_OS_RELRO</code> loop, <code>Elf64::LoadSegment</code>.</td><td>Destination is base + segment virtual address; source bytes start at the file offset. File size and memory extent need not match. Inspect any zero-fill tail and actual allocation behavior rather than reading beyond the file payload.</td></tr>
+<tr><td>Code → executable mapping</td><td><code>PatchProgram</code>, protection changes, instruction-cache flush and platform-specific guest instruction patching.</td><td>Record the relevant flags and any generated trampoline range. Loaded bytes can differ from the original ELF after patching.</td></tr>
+<tr><td>Metadata → runtime structures</td><td><code>PT_TLS</code>, <code>PT_OS_PROCPARAM</code>, <code>ParseProgramDynamicInfo</code>, <code>CreateSymbolDatabase</code>.</td><td>Identify the TLS template, dynamic imports/exports and owning module. A mapped address alone is not a resolved import.</td></tr>
+</tbody></table></div>
+<p>The guest page constant used by this loader is <code>0x4000</code> = 16,384 bytes. Do not reuse it blindly as a host page size, allocation granularity or GPU alignment. See <a href="t-debugging-labs.html#alignment">Lab A</a> for a concrete page-boundary failure.</p>
+
+<h2 id="addresses">2. Work an address through every coordinate system</h2>
+<p>This is an <strong>invented arithmetic fixture</strong>, not an observed game mapping. Use hexadecimal for addresses and decimal for byte counts; never silently interchange a virtual address and file offset.</p>
+<div class="tw"><table>
+<thead><tr><th>Quantity</th><th>Fixture</th></tr></thead><tbody>
+<tr><td>Load base</td><td><code>0x100000000</code> = 4,294,967,296</td></tr>
+<tr><td>Segment p_vaddr / p_offset</td><td><code>0x4000</code> / <code>0x1000</code></td></tr>
+<tr><td>Segment p_filesz / p_memsz</td><td><code>0x2000</code> = 8,192 / <code>0x4000</code> = 16,384</td></tr>
+<tr><td>ELF e_entry</td><td><code>0x4100</code></td></tr>
+<tr><td>Mapped segment start</td><td><code>0x100004000</code> = base + p_vaddr</td></tr>
+<tr><td>Runtime entry PC</td><td><code>0x100004100</code> = base + e_entry</td></tr>
+<tr><td>Entry byte's file offset</td><td><code>0x1100</code> = p_offset + (e_entry − p_vaddr)</td></tr>
+</tbody></table></div>
+<p>The file-offset conversion is valid only if the relative virtual address lies inside this segment's <em>file-backed</em> portion. An address in its remaining memory tail has no corresponding byte in this segment's file payload. A generated stub has no original ELF file offset at all.</p>
+<details><summary>Self-check: where is runtime PC 0x100006100?</summary>
+<p>Its relative address is <code>0x6100</code>. It is inside the fixture's memory extent <code>[0x4000,0x8000)</code>, but beyond its file-backed extent <code>[0x4000,0x6000)</code>. The formula would produce a number, but not a valid byte of this segment's file payload. First identify the region, then do the subtraction.</p></details>
+
+<h2 id="relocate">3. Resolve before executing</h2>
+<p>On the guest thread, <code>RuntimeLinker::Execute</code> establishes main-thread state and allocates the main guest stack, preloads adjacent programs, then calls <code>RelocateAll</code>. Inspect the relocation kind, target slot, addend, imported identity and resolved destination as a unit. HLE registrations were installed earlier; module exports are another possible resolution source.</p>
+<p>Dynamic imports are eagerly relocated in this snapshot. Successful dynamic relocation slots retain resolved state; unresolved callable imports can receive a <strong>34-byte diagnostic thunk</strong> that logs and returns zero in RAX/XMM0. This is not lazy binding that retries and forwards on first call, and returning zero does not establish correct guest behavior. Different relocation kinds and resolution-failure policies must be checked in their own code paths.</p>
+<p>At a selected import, record the slot's runtime address, its value after relocation and the owner of that destination: host HLE, guest module, generated diagnostic code, or unresolved failure. Breaking on a thunk proves only that a fallback was reached. For a real implementation, follow <a href="t-first-change.html#step-5-prove-the-contract">the contract checks</a>.</p>
+
+<h2 id="first-transfer">4. Locate the first transfer into guest code</h2>
+<p><code>StartAllModules</code> arranges shared-module startup; <code>StartModule</code> invokes the initializer at <code>program-&gt;base_vaddr + program-&gt;dynamic_info-&gt;init_vaddr</code> through the module initializer function type. If such a module is started, this guest call happens before the executable-entry transfer. Inspect the actual dependency order; do not infer it from directory enumeration.</p>
+<p>After module startup, <code>GetEntry</code> supplies the main ELF entry plus its load base. <code>Execute</code> writes a zero-initialized entry-parameter block near the top of the guest stack, sets <code>argc = 1</code> and <code>argv[0] = "KytyEmu"</code>, then calls <code>RunEntry</code> with an exit handler and a stack top below the parameter block.</p>
+<p><code>RunEntry</code> is the native boundary, not a CPU interpreter loop. Its stack-switch path aligns the supplied stack, places root frame words, sets RSP/RBP and performs a native call with the parameter pointer and exit callback in the required ABI argument registers. Read the platform-specific assembly; Windows also handles host stack-bound metadata. Do not assume that the earlier module-initializer call uses this same stack-switch path.</p>
+<p>For the selected stack-switch path, an aligned top minus two eight-byte root words is still 16-byte aligned before the call; the call pushes an eight-byte return address. Thus the callee sees <code>RSP % 16 == 8</code> at entry. This is an ABI check, not evidence that TLS, imports or the game's own startup logic are correct.</p>
+
+<h2 id="worksheet">5. Debugger worksheet: expected evidence, not guessed addresses</h2>
+<p>Optional runtime work needs your own lawful executable and a matching build with symbols. Use <a href="t-debugging.html">the debugging topic</a> to prepare a debugger. On Windows include <code>--redzone</code> when launching a game. Do not stop on every expected memory-tracking exception; that changes normal emulator operation. No game run is required for the arithmetic exercise.</p>
+<ol>
+<li>Break at <code>LoadProgram</code>. Write down the resolved path and program identity.</li>
+<li>At the end of mapping, compute entry from the actual base/header. Identify its owning segment, permissions and any applicable patching.</li>
+<li>At <code>RelocateAll</code>, choose one import and inspect its slot before/after. Classify the destination by its owning region.</li>
+<li>Break at <code>StartModule</code> and <code>RunEntry</code>. Record which occurs first and which thread hits it. Step to the actual target instruction rather than counting a host wrapper as guest entry.</li>
+<li>At executable entry, verify PC, RSP alignment and argument pointer contents. Continue only as far as the scope of your investigation permits.</li>
+<li>If a boundary is never reached, report the last observed boundary. Do not infer that mapping, relocation or initialization succeeded from a window appearing.</li>
+</ol>
+<pre>Module / resolved file:
+Base / entry RVA / runtime PC / owning segment:
+Original file offset (or why none):
+Import identity / slot / destination owner:
+First initializer observed (or none):
+Executable entry PC / thread / RSP alignment:
+Argument block / exit callback:
+Last verified boundary / unresolved question:</pre>
+
+<h2 id="checkpoint">Pass the boot gate</h2>
+<div class="check"><p class="check-h">Checkpoint</p><ul class="check-list">
+<li class="check-item"><input type="checkbox"><label>I can reconstruct the chain without confusing host main, the guest thread, module init and guest main().</label></li>
+<li class="check-item"><input type="checkbox"><label>I completed the address fixture and rejected a file-offset conversion for the memory-only tail.</label></li>
+<li class="check-item"><input type="checkbox"><label>I can classify an import target and explain why a zero-return thunk is not an implementation.</label></li>
+<li class="check-item"><input type="checkbox"><label>My worksheet says whether each result came from static inspection or an actual debugger run.</label></li>
+</ul></div>
+<h2 id="sources">Source anchors and next step</h2>
+<ul>
+<li><code>src/emulator.cpp</code>: <code>Run</code>, <code>LoadElf</code>, <code>Execute</code>.</li>
+<li><code>src/loader/runtimeLinker.cpp</code>: <code>LoadProgram</code>, <code>LoadProgramToMemory</code>, <code>RelocateAll</code>, <code>StartAllModules</code>, <code>StartModule</code>, <code>GetEntry</code>, <code>RunEntry</code>.</li>
+<li><code>src/loader/elf.cpp</code>: file parsing and <code>LoadSegment</code>.</li>
+</ul>
+<p>Continue with <a href="t-trace-draw.html">one draw through the renderer</a>, or return to the <a href="developer-curriculum.html#gates">developer gates</a>. Dynamic loading/unloading, every relocation type and every exception/TLS path are outside this selected trace.</p>
+
+</div></section>
+</main>
+<script src="assets/topics.js?v=20260929" defer></script>
+<script src="assets/search-index.js?v=20260929" defer></script>
+<script src="assets/app.js?v=20260929" defer></script>
+<script src="assets/highlight.js?v=20260929" defer></script>
+<script src="assets/tutor.js?v=20260929" defer></script>
+</body>
+</html>

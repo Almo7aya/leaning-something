@@ -288,7 +288,7 @@
     this.vklog("vkCreateInstance", "VK_API_VERSION_1_3");
     this.vklog("vkCreateDevice", "AMD RDNA host GPU + VMA");
     this.vklog("vkCreateSwapchainKHR", "2 images · VIDEO_OUT_0");
-    this.vklog("vkCreatePipelineCache", !this.diskEnabled ? "disk cache disabled" : diskN ? "loaded " + diskN + " pipelines from disk" : "empty — first run", (this.diskEnabled && diskN) ? "gpu" : "");
+    this.vklog("vkCreatePipelineCache", !this.diskEnabled ? "disk cache disabled" : diskN ? "loaded driver data for " + diskN + " simulated pipelines" : "empty — first run", (this.diskEnabled && diskN) ? "gpu" : "");
     this.log("boot", "reserve 512 KB guest space", "ok");
 
     var rlen = this.code[0].length * 8, mlen = this.code[1].length * 8;
@@ -506,17 +506,17 @@
     this.act.gpu = 1; this.act.flip = 1;
   };
   Emu.prototype.startCompile = function (key, name, async) {
-    var l2 = this.diskEnabled && !!this.disk[hashOf(key)];   // SPIR-V already persisted on disk?
-    this.compileAnim = { key: key, name: name || permName(key), stage: 0, t: 0, full: !l2, async: !!async };
+    var l2 = this.diskEnabled && !!this.disk[hashOf(key)];   // Driver pipeline data may assist host pipeline creation.
+    this.compileAnim = { key: key, name: name || permName(key), stage: 0, t: 0, full: true, diskHit: l2, async: !!async };
     this.recompile = { key: key, arts: shaderArtifacts(key) };
-    this.shaders.stage = l2 ? 3 : 0;
-    if (l2) this.log("gpu", "VkPipelineCache HIT " + permName(key) + " — reuse SPIR-V", "gpu");
-    else { this.log("gpu", "L1+L2 miss " + permName(key) + " → TranslateProgram", "gpu"); this.vklog("vkCreateShaderModule", "compile VS+FS from RDNA 2", "gpu"); }
+    this.shaders.stage = 0;
+    this.log("gpu", "L1 miss " + permName(key) + " → TranslateProgram" + (l2 ? "; disk driver cache available for pipeline creation" : ""), "gpu");
+    this.vklog("vkCreateShaderModule", "compile VS+FS from RDNA 2", "gpu");
   };
   Emu.prototype.advanceCompile = function (dt, doDraw) {
     var ca = this.compileAnim; ca.t += dt;
     var nStages = ca.full ? 5 : 2;
-    if (ca.t >= this.compMs) {
+    if (ca.t >= this.compMs * (ca.diskHit && ca.stage === 4 ? 0.5 : 1)) {
       ca.t = 0; ca.stage++;
       this.shaders.stage = ca.full ? Math.min(ca.stage, 4) : Math.min(3 + ca.stage, 4);
       if (ca.stage < nStages) this.log("gpu", (ca.full ? SH[ca.stage] : ["VkPipelineCache read", "vkCreateGraphicsPipelines"][ca.stage]) + " · " + permName(ca.key), "gpu");
@@ -527,7 +527,7 @@
       if (this.diskEnabled && full && !this.disk[hashOf(key)]) { this.disk[hashOf(key)] = 1; this.diskBytes += 8192 + (key % 9) * 512; }
       this.vklog("vkCreateGraphicsPipelines", "0x" + hex(hashOf(key)) + " " + permName(key), "gpu");
       this.compileAnim = null;
-      this.log("gpu", "pipeline ready 0x" + hex(hashOf(key)) + (full ? " · compiled + saved to disk" : " · from VkPipelineCache"), "gpu");
+      this.log("gpu", "pipeline ready 0x" + hex(hashOf(key)) + (this.diskEnabled ? " · compiled; driver cache updated" : " · compiled; disk cache off"), "gpu");
     }
     if (doDraw) this.draw();
   };
@@ -878,7 +878,7 @@
     }
     c.fillStyle = "#b2bfca"; c.font = "10px monospace";
     c.fillText(ca.full ? "first-encounter compile — a real pipeline miss stalls the frame here"
-      : "SPIR-V already on disk — skip recompile, just recreate the VkPipeline", 320, 230);
+      : "driver cache may accelerate host pipeline creation; translation still runs", 320, 230);
     c.textAlign = "left";
   };
 
@@ -1277,7 +1277,7 @@
     var last = emu.draws.length ? emu.draws[emu.draws.length - 1] : null;
     var lastKey = last ? last.key : null;
     var l2on = emu.diskEnabled;
-    var lookup = lastKey == null ? "—" : (emu.shaders.has(lastKey) ? "L1 hit — reuse program" : (l2on && emu.disk[hashOf(lastKey)]) ? "L1 miss → L2 hit (recreate pipeline, no recompile)" : "L1+L2 miss → full RDNA2→SPIR-V compile");
+    var lookup = lastKey == null ? "—" : (emu.shaders.has(lastKey) ? "L1 hit — reuse program" : (l2on && emu.disk[hashOf(lastKey)]) ? "L1 miss → translate + compile; disk assists pipeline creation" : "L1+L2 miss → full RDNA2→SPIR-V compile");
     $("ax-cache").innerHTML =
       "<div class='ax-cache-row'><b>L1 · Kyty ProgramCache</b><span>in-memory std::unordered_map&lt;key,Program&gt;</span></div>" +
       "<div class='ax-cache-kv'><span>entries</span><code>" + l1 + "</code><span>hits / misses</span><code>" + emu.shaders.hits + " / " + emu.shaders.misses + "</code></div>" +
@@ -1337,7 +1337,7 @@
   };
   $("ax-flush").onclick = function () {
     emu.shaders = new Cache(); emu.focusKey = null;
-    emu.log("gpu", "L1 dropped — next draws recreate pipelines from the disk cache", "gpu");
+    emu.log("gpu", "L1 dropped — next draws translate again; disk may assist host pipeline creation", "gpu");
     emu.vklog("vkDestroyPipeline", "flush L1 program cache");
     paint();
   };

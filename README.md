@@ -2,7 +2,7 @@
 
 Unofficial learning material for the [KytyPS5](https://github.com/KytyPS5/KytyPS5)
 PlayStation 5 emulator. The source-specific material was last checked against
-**`main` at commit `5b7d334` (18 September 2026)**. The material is pinned to a commit,
+**`main` at commit `2650478` (29 September 2026)**. The material is pinned to a commit,
 not a release tag; the CMake project version at that commit is 0.3.0.
 
 **Read it online → [almo7aya.dev/leaning-something](https://almo7aya.dev/leaning-something/)**
@@ -17,9 +17,16 @@ you source. Use the link above.
 `docs/index.html` is the front door. Every subject is one **topic page** carrying its
 explanation, the animation for that idea, an interactive tool and a checkpoint against the
 real source: 20 numbered topics in six parts (foundations, loading a game, memory, execution,
-graphics, working on it), a C++ appendix (C1–C9 plus a glossary), a set of whole-system
+graphics, working on it), a C++ appendix (C1–C10 plus a glossary), a set of whole-system
 simulations (one full run, a browser micro-emulator, a system explorer, the machine running),
-and the Playground.
+and the Playground. The **[developer curriculum](https://almo7aya.dev/leaning-something/developer-curriculum.html)**
+adds D1–D4: a coverage map and contribution gates, ELF-to-entry and PM4-to-completion
+source traces, and three reproducible native C++ debugging labs.
+
+The developer track tests range coverage, last-use lifetime bookkeeping and an
+explicitly fictional output contract. It includes expected failures, reference fixes,
+negative/boundary cases and an evidence-record capstone. It does not claim exhaustive
+emulator coverage or turn a passing fixture into game-compatibility evidence.
 
 The five original long-form documents are still served while their content is ported into
 topics, and were updated to the same commit:
@@ -89,7 +96,9 @@ tasks against the real repository; progress is saved in your browser's local sto
 ```
 docs/                          served by GitHub Pages
 ├─ index.html                  landing page and progress
-├─ t-*.html                    the topic pages (20 topics + C1–C9 + glossary)
+├─ t-*.html                    the topic pages (20 topics + C1–C10 + D2–D4 + glossary)
+├─ developer-curriculum.html   D1: developer gates, coverage map and capstone
+├─ labs/                       optional native C++ fixtures and isolated CMake build
 ├─ lifetime / machine / system-explorer / browser-emulator / advanced-emulator .html   whole-system simulations
 ├─ loadlink / guest-run / host-run .html   step-by-step diagrams: load & link, the guest side, the host side
 ├─ playground.html             decode your own command buffers, modules and logs
@@ -104,7 +113,8 @@ docs/                          served by GitHub Pages
 KytyPS5/                       a plain clone of the emulator (not tracked here) used to check the material
 ```
 
-No build step, no dependencies, no tracking. The animations consume the host page's design
+The website has no build step, no dependencies and no tracking. The optional native
+labs need CMake, a C++20 toolchain and the emulator source checkout. The animations consume the host page's design
 tokens, so they theme themselves — light and dark both follow your system preference.
 
 To add an animation anywhere, drop in `<figure data-viz="NAME"></figure>` and link
@@ -113,29 +123,45 @@ To add an animation anywhere, drop in `<figure data-viz="NAME"></figure>` and li
 
 ---
 
+## Documentation checks
+
+Run `node scripts/check-docs.cjs`, `node scripts/check-doc-examples.cjs`,
+`node scripts/check-curriculum.cjs` and `node scripts/build-search-index.cjs`.
+These validate local references, selected examples, curriculum anchors and search
+headings; source paths/symbols are checked when the optional clone exists. They
+cannot establish the correctness of every explanatory claim.
+
+For the optional native labs, from this repository root:
+
+```text
+cmake -S docs/labs -B _Build/curriculum -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=clang++
+cmake --build _Build/curriculum
+ctest --test-dir _Build/curriculum --output-on-failure
+```
+
+See [the lab setup](docs/labs/README.md) for prerequisites and source-path overrides.
+The teaching baseline has seven CTest checks, including three exact expected
+failures and the real upstream LRU tests. After solving a fixture, update its
+expected-failure test to expect success; see D4 for the red-to-green workflow.
+
 ## Upstream snapshot
 
-Pinned to **`main` at `5b7d334` (18 September 2026)**. CMake project version 0.3.0.
+Pinned to **`main` at `2650478` (29 September 2026)**, CMake project version 0.3.0.
 
-- Shader pipeline: `TranslateProgram()` (once per binary → immutable `ResourcePlan`) and
-  `CompileProgram()` (once per resource specialisation). Materialisation runs in the
-  pipeline cache. Failures `EXIT`; there is no error-string return.
-- Merged ES/GS geometry stages compile as `VK_EXT_mesh_shader` (`ShaderType::Mesh`).
-- `sizeof(PipelineStaticParameters) == 166` — non-dynamic state only.
-- TLS patch: `Jit::Call9` is `48 E8 … 48 89 C0`. POSIX builds use per-thread signal stacks.
-- Crash dump: `--- Guest fault context ---` (guest registers, code around PC, stack). Three
-  handler branches: illegal-instruction emulation, GPU fault, crash.
-- DualSense HIDAPI (light bar, adaptive triggers, touchpad), 12-channel AudioOut2,
-  `systemOverlay`, launcher update checker / theme / `--gpu`.
-- Sixteen test executables (~48,200 lines); ~980 `EXIT_NOT_IMPLEMENTED`, ~500 `EXIT`.
+- Program-cache entries refresh borrowed resource snapshots in place; new permutations rebuild temporary IR. Native tessellation is opt-in with `--tessellation`; BVH compute dispatches remain unsupported and are skipped.
+- `RenderContext` owns memory/resource caches. Static pipeline state is **126 bytes**, including logical-alpha remapping; stencil is dynamic. Oversized readbacks retain temporary buffers until GPU completion.
+- Extended guest memory uses a separate 512 GiB arena. Sparse mip uploads validate address-space ownership, copy resident backing and zero-fill owned holes.
+- Dynamic imports are eagerly relocated; unresolved calls use 34-byte diagnostic stubs returning zero. Timed umtx waits and blocking short sleeps use current synchronization paths; APR preserves append order without blocking other ready priorities on address waits.
+- SDL3, read-only `.zar` loading, Unicode paths, persistent SaveDataMemory2, split audio modules, Opus, microphone capture and DualSense haptics/speaker routing are covered in their owning topics.
+- Mailbox is the default presentation mode. `--profile` enables Tracy while `TRACY_NO_CRASH_HANDLER` preserves emulator fault handlers. CMake supports Qt-free builds, compiler caches and Nix; tests include 25 portable executables plus macOS SSE4a coverage.
 
-Use `git -C KytyPS5 rev-parse HEAD` when following the exercises against a local
-checkout. If it is newer than `5b7d334`, search by type or function name rather
-than trusting a line number.
+The updated flow diagrams, simulator, and C10 pointers-and-memory appendix remain
+part of the current site. Simulations are teaching models, not the emulator itself.
+Use `git -C KytyPS5 rev-parse HEAD` to check the source revision.
 
 ## Caveats
 
-- **Line references drift.** The checked commit is `5b7d334`; treat a reference
+- **Line references drift.** The checked commit is `2650478`; treat a reference
   as "look for this function", not "go to this line". Most pages now cite a function
   or struct name instead of a line.
 - **These are unofficial.** A reading of the source, not maintainer-authored

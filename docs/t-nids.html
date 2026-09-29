@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>NIDs and the runtime linker — KytyPS5</title>
 <meta name="description" content="How an encoded id in a module's import table becomes the address of a C++ function in the emulator.">
-<link rel="stylesheet" href="assets/viz.css?v=26">
-<link rel="stylesheet" href="assets/atlas.css?v=26">
-<link rel="stylesheet" href="assets/lab.css?v=26">
-<link rel="stylesheet" href="assets/tutor.css?v=26">
-<link rel="stylesheet" href="assets/app.css?v=26">
-<link rel="stylesheet" href="assets/highlight.css?v=26">
+<link rel="stylesheet" href="assets/viz.css?v=20260929">
+<link rel="stylesheet" href="assets/atlas.css?v=20260929">
+<link rel="stylesheet" href="assets/lab.css?v=20260929">
+<link rel="stylesheet" href="assets/tutor.css?v=20260929">
+<link rel="stylesheet" href="assets/app.css?v=20260929">
+<link rel="stylesheet" href="assets/highlight.css?v=20260929">
 </head>
 <body>
 
@@ -28,7 +28,7 @@
 <p class="deck">This is the join between guest and emulator. Understanding it makes the entire HLE design obvious.</p>
 
   <h4 id="what-a-relocation-record-contains">What a relocation record contains</h4>
-  <div class="filename">src/loader/elf.h:229</div>
+  <div class="filename">src/loader/elf.h</div>
 <pre>struct Elf64_Rela {
     Elf64_Word GetSymbol() const { return r_info &gt;&gt; 32u; }        <i>// index into symtab</i>
     Elf64_Word GetType()   const { return r_info &amp; 0xffffffff; }  <i>// R_X86_64_*</i>
@@ -43,7 +43,7 @@
   <h4 id="resolution">Resolution</h4>
   <p>For the types that reference a symbol, the loader takes the symbol's name from the string table and calls <code>Resolve</code>. The name is a NID triple:</p>
 
-  <div class="filename">src/loader/runtimeLinker.cpp:1506</div>
+  <div class="filename">src/loader/runtimeLinker.cpp</div>
 <pre>void RuntimeLinker::Resolve(const std::string&amp; name, SymbolType type, Program* program,
                             SymbolRecord* out_info, bool* bind_self) {
     Common::LockGuard lock(m_mutex);
@@ -74,10 +74,15 @@
 
   <p><strong>The HLE database is searched first.</strong> That is the whole trick: if Kyty implements a function, the guest gets Kyty's address even when a real module also exports it.</p>
 
+<h4 id="dynamic-module-lifetimes">Eager relocation and dynamic-module lifetimes</h4>
+  <p><code>RelocateRecord()</code> resolves both relocation tables eagerly. <code>Program::rela_bits</code> records successful bindings, so loading another module retries unresolved imports without overwriting existing guest-modified slots. <code>RelocateProgram()</code> refreshes all loaded importers after a dynamic load. Guest PLT/GOT records still exist, but the emulator's former lazy-PLT setup and <code>DynamicInfo::pltgot_vaddr</code> field have been removed.</p>
+  <p>Explicit module loads increment <code>Program::load_count</code>; the final explicit unload releases the module. Before unmapping, <code>UnloadProgram()</code> identifies imports bound to that module's exact exported address, clears their resolved bits and relocates them again. Matching only a NID could unlink a different provider, so <code>SymbolDatabase::FindByNid()</code> also accepts an address filter.</p>
+  <p>Unresolved function imports still receive diagnostic thunks; unresolved objects point at invalid memory. A thunk is the fallback for an unresolved import, not the ordinary mechanism for deferring all symbol binding until first call.</p>
+
   <h4 id="how-the-hle-database-is-populated">How the HLE database is populated</h4>
   <p>Every implementation registers itself with two macros. <code>LIB_VERSION</code> declares the identity of the module being impersonated, and <code>LIB_FUNC</code> binds a NID to a C++ function pointer:</p>
 
-  <div class="filename">src/libs/libs.h:30</div>
+  <div class="filename">src/libs/libs.h</div>
 <pre>#define LIB_ADD(n, f, t)                                            \
     {                                                               \
         Loader::SymbolResolve sr {};                                \
@@ -141,58 +146,29 @@ LIB_DEFINE(InitGraphicsDriver_1) {
       <tbody>
         <tr><td>Abort at load time</td><td>Almost nothing boots. Games import far more than they call — an unused code path drags in an entire library.</td></tr>
         <tr><td>Write null into the GOT</td><td>The game crashes on the first call with no context. The log says nothing useful.</td></tr>
-        <tr><td><strong>Write a generated stub</strong></td><td>Only code paths actually taken can break; the stub can retry resolution and log exactly which NID was missing. <strong>This is what Kyty does.</strong></td></tr>
+        <tr><td><strong>Write a generated stub</strong></td><td>Only code paths actually taken can break; the stub logs which NID is missing and returns zero. <strong>This is what Kyty does.</strong></td></tr>
       </tbody>
     </table>
   </div>
 
   <h4 id="the-thunk-byte-by-byte">The thunk, byte by byte</h4>
-  <p>Kyty assembles 162 bytes per unresolved import. Reading it teaches you the System V ABI faster than any specification:</p>
-
-  <div class="filename">src/loader/runtimeLinker.cpp:150 — annotated</div>
-<pre>emit(0x50);              <b>push rax</b>    <i>// preserve AL: variadic SysV calls put the</i>
-                                      <i>//   vector-register count there</i>
-emit(0x57);              push rdi     <i>// arg 1</i>
-emit(0x56);              push rsi     <i>// arg 2</i>
-emit(0x52);              push rdx     <i>// arg 3</i>
-emit(0x51);              push rcx     <i>// arg 4</i>
-emit(0x41); emit(0x50);  push r8      <i>// arg 5</i>
-emit(0x41); emit(0x51);  push r9      <i>// arg 6</i>
-
-emit(0x48); emit(0x81); emit(0xec); emit32(0x80);    <b>sub rsp, 0x80</b>
-for (uint8_t reg = 0; reg &lt; 8; reg++)
-    save_xmm(reg, reg * 0x10u);                      <i>// movdqu [rsp+n], xmm0..7</i>
-
-emit(0x48); emit(0xbf); emit64(record_id);           <b>mov rdi, record_id</b>
-emit(0x48); emit(0xb8); emit64(target);              mov rax, ResolveImportStubWithId
-emit(0xff); emit(0xd0);                              <b>call rax</b>
-emit(0x49); emit(0x89); emit(0xc3);                  mov r11, rax    <i>// stash the answer</i>
-
-for (uint8_t reg = 0; reg &lt; 8; reg++)
-    load_xmm(reg, reg * 0x10u);                      <i>// restore xmm0..7</i>
-emit(0x48); emit(0x81); emit(0xc4); emit32(0x80);    add rsp, 0x80
-                         pop r9 / r8 / rcx / rdx / rsi / rdi / rax
-
-emit(0x4d); emit(0x85); emit(0xdb);                  <b>test r11, r11</b>
-emit(0x74); emit(0x03);                              jz +3
-emit(0x41); emit(0xff); emit(0xe3);                  <b>jmp r11</b>   <i>// tail-call the real function</i>
-emit(0x31); emit(0xc0);                              xor eax, eax
-emit(0xc3);                                          <b>ret</b>        <i>// give up: return 0</i></pre>
-
-  <p>Four things this achieves:</p>
-  <ol>
-    <li><strong>Every argument survives.</strong> All six integer registers and all eight vector registers are preserved, so if resolution succeeds the original call proceeds as though the thunk never existed.</li>
-    <li><strong>Resolution is retried lazily.</strong> By the time the call happens, more modules may be loaded and the symbol may now exist.</li>
-    <li><strong>Success is a tail call.</strong> <code>jmp r11</code> — not <code>call</code> — so the stack frame and return address are exactly what the caller set up.</li>
-    <li><strong>Failure returns zero.</strong> A great many console functions return an error code, and zero conventionally means success, so many games simply continue. That is a pragmatic gamble, and it is why a stubbed function can produce strange behaviour rather than a clean failure.</li>
-  </ol>
+  <p><code>AllocateUnresolvedImportThunk()</code> emits a 34-byte diagnostic stub. It calls <code>UnresolvedImportStub(record_id)</code>, which logs the missing import (subject to the shared 1,024-call log limit) and returns zero. It does not preserve arguments for a lazy retry or tail-call a newly found target.</p>
+  <div class="filename">src/loader/runtimeLinker.cpp — AllocateUnresolvedImportThunk</div>
+<pre>48 83 EC 08                sub rsp, 8        <i>// align stack for the SysV call</i>
+48 BF &lt;record_id:8 bytes&gt;  mov rdi, record_id
+48 B8 &lt;stub:8 bytes&gt;       mov rax, UnresolvedImportStub
+FF D0                      call rax          <i>// RAX receives zero</i>
+48 83 C4 08                add rsp, 8
+0F 57 C0                   xorps xmm0, xmm0  <i>// zero floating return register too</i>
+C3                         ret</pre>
+  <p>A later dynamic module load retries unresolved relocation slots eagerly through <code>RelocateAll()</code>. The thunk itself only diagnoses an unresolved call. Returning zero can let a game continue while still hiding missing behavior, so a title that boots with stubs is not evidence that those APIs are implemented.</p>
 
   <h4 id="allocation-and-bookkeeping">Allocation and bookkeeping</h4>
 <pre>static std::vector&lt;StubbedImportRecord&gt; g_stubbed_imports;
 static std::vector&lt;uint64_t&gt;            g_unresolved_stub_thunk_pages;
 static constexpr uint64_t               UNRESOLVED_STUB_PAGE_SIZE = 4096;
 
-<i>// thunks are packed into 4 KB executable pages, 162 bytes each (25 per page)</i>
+<i>// thunks are packed into 4 KB executable pages, 34 bytes each (120 per page)</i>
 if (g_unresolved_stub_thunk_pages.empty() ||
     g_unresolved_stub_thunk_offset + thunk_size &gt; UNRESOLVED_STUB_PAGE_SIZE) {
     auto page = Memory::AllocateRuntimeMemory(0, UNRESOLVED_STUB_PAGE_SIZE,
@@ -203,22 +179,14 @@ if (g_unresolved_stub_thunk_pages.empty() ||
 ...
 Common::VirtualMemory::<b>FlushInstructionCache</b>(code, thunk_size);</pre>
 
-  <p>The record ID baked into each thunk indexes <code>g_stubbed_imports</code>, which holds the NID, symbol type, binding and owning program — everything needed to log a useful message and to retry.</p>
+  <p>The record ID baked into each thunk indexes <code>g_stubbed_imports</code>, which holds the NID, symbol type, binding and owning program — everything needed to log a useful message.</p>
 
   <div class="callout k">
     <span class="lbl">Practical consequence for you</span>
     <p>When a game misbehaves rather than crashing, the first thing to check is the log for stubbed imports. A function returning 0 when the game expected a real value is a very common cause of "boots but the menu is empty" bugs — and fixing it is often a twenty-line <code>LIB_FUNC</code> addition.</p>
   </div>
 
-  <h4 id="the-custom-plt">The custom PLT</h4>
-  <p>Alongside the thunks, Kyty builds its own PLT for cases where the guest's own table must be intercepted. <code>Jit::CallPlt</code> generates a table of 16-byte entries, each pushing its index and jumping to a shared handler:</p>
-
-  <div class="filename">src/loader/jit.h:10</div>
-<pre>struct JmpWithIndex {
-    <i>// 68 xx xx xx xx    push &lt;index&gt;</i>
-    <i>// E9 xx xx xx xx    jmp  &lt;handler&gt;</i>
-    uint8_t code[16] = {0x68,0,0,0,0, 0xE9,0,0,0,0, 0x90,0x90,0x90,0x90,0x90,0x90};
-};</pre>
+  <h4 id="the-custom-plt">Guest PLT records and eager binding</h4><p>Guest ELF files still contain PLT relocations and GOT slots. Current Kyty resolves those slots eagerly with the other relocations; the old custom PLT code generator and shared lazy handler have been removed. Read <code>ForEachRelocation()</code>, <code>RelocateRecord()</code> and <code>Program::rela_bits</code> for the current implementation.</p>
     </div>
   </section>
 
@@ -276,16 +244,16 @@ Common::VirtualMemory::<b>FlushInstructionCache</b>(code, thunk_size);</pre>
 
 </main>
 
-<script src="assets/topics.js?v=26" defer></script>
-<script src="assets/search-index.js?v=26" defer></script>
-<script src="assets/app.js?v=26" defer></script>
-<script src="assets/viz.js?v=26" defer></script>
-<script src="assets/atlas.js?v=26" defer></script>
-<script src="assets/lab.js?v=26" defer></script>
-<script src="assets/figs.js?v=26" defer></script>
-<script src="assets/figures.js?v=26" defer></script>
-<script src="assets/highlight.js?v=26" defer></script>
-<script src="assets/tutor.js?v=26" defer></script>
+<script src="assets/topics.js?v=20260929" defer></script>
+<script src="assets/search-index.js?v=20260929" defer></script>
+<script src="assets/app.js?v=20260929" defer></script>
+<script src="assets/viz.js?v=20260929" defer></script>
+<script src="assets/atlas.js?v=20260929" defer></script>
+<script src="assets/lab.js?v=20260929" defer></script>
+<script src="assets/figs.js?v=20260929" defer></script>
+<script src="assets/figures.js?v=20260929" defer></script>
+<script src="assets/highlight.js?v=20260929" defer></script>
+<script src="assets/tutor.js?v=20260929" defer></script>
 </body>
 </html>
 

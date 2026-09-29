@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>What an emulator is — KytyPS5</title>
 <meta name="description" content="High-level vs low-level emulation, and what the PlayStation 5 actually is as a machine.">
-<link rel="stylesheet" href="assets/viz.css?v=26">
-<link rel="stylesheet" href="assets/atlas.css?v=26">
-<link rel="stylesheet" href="assets/lab.css?v=26">
-<link rel="stylesheet" href="assets/tutor.css?v=26">
-<link rel="stylesheet" href="assets/app.css?v=26">
-<link rel="stylesheet" href="assets/highlight.css?v=26">
+<link rel="stylesheet" href="assets/viz.css?v=20260929">
+<link rel="stylesheet" href="assets/atlas.css?v=20260929">
+<link rel="stylesheet" href="assets/lab.css?v=20260929">
+<link rel="stylesheet" href="assets/tutor.css?v=20260929">
+<link rel="stylesheet" href="assets/app.css?v=20260929">
+<link rel="stylesheet" href="assets/highlight.css?v=20260929">
 </head>
 <body>
 
@@ -93,7 +93,7 @@ for (;;) {
   <div class="primer">
     <span class="lbl">Jargon · LLE versus HLE</span>
     <p><strong>Low-level emulation (LLE)</strong> simulates the hardware and runs the console's own firmware and libraries on top. Maximum accuracy, terrible speed, and it requires copyrighted system files that users must dump from a console they own.</p>
-    <p><strong>High-level emulation (HLE)</strong> replaces those libraries with reimplementations. Much faster, legally cleaner — no console files needed — but every function you have not implemented is a crash waiting to happen, and subtle behavioural differences produce bugs that look like nothing else.</p>
+    <p><strong>High-level emulation (HLE)</strong> replaces those libraries with reimplementations. It can avoid executing those system-library binaries, but each replacement must match the guest-visible contract. A missing function can fail immediately or fall back to a logging zero-return stub; silent incorrect results can cause failures much later. HLE does not by itself establish compatibility.</p>
     <p>KytyPS5 is HLE throughout. Its README states that "no external low-level emulation modules are currently required," which is a deliberate design goal, not an accident.</p>
   </div>
 
@@ -169,7 +169,7 @@ for (;;) {
 ├─ *.prx / *.sprx         optional extra modules shipped with the game
 └─ (game data files)</pre>
   <p>Kyty reads <code>param.json</code> for the title ID and the flexible-memory budget, mounts the directory as <code>/app0</code>, then loads <code>eboot.bin</code>.</p>
-  <div class="srcs"><span class="src">src/emulator.cpp:192</span><span class="src">src/loader/systemContent.cpp</span></div>
+  <div class="srcs"><span class="src">src/emulator.cpp</span><span class="src">src/loader/systemContent.cpp</span></div>
 
   <div class="learn">
     <div class="lh">Learn more · console internals</div>
@@ -228,16 +228,16 @@ for (;;) {
 
 </main>
 
-<script src="assets/topics.js?v=26" defer></script>
-<script src="assets/search-index.js?v=26" defer></script>
-<script src="assets/app.js?v=26" defer></script>
-<script src="assets/viz.js?v=26" defer></script>
-<script src="assets/atlas.js?v=26" defer></script>
-<script src="assets/lab.js?v=26" defer></script>
-<script src="assets/figs.js?v=26" defer></script>
-<script src="assets/figures.js?v=26" defer></script>
-<script src="assets/highlight.js?v=26" defer></script>
-<script src="assets/tutor.js?v=26" defer></script>
+<script src="assets/topics.js?v=20260929" defer></script>
+<script src="assets/search-index.js?v=20260929" defer></script>
+<script src="assets/app.js?v=20260929" defer></script>
+<script src="assets/viz.js?v=20260929" defer></script>
+<script src="assets/atlas.js?v=20260929" defer></script>
+<script src="assets/lab.js?v=20260929" defer></script>
+<script src="assets/figs.js?v=20260929" defer></script>
+<script src="assets/figures.js?v=20260929" defer></script>
+<script src="assets/highlight.js?v=20260929" defer></script>
+<script src="assets/tutor.js?v=20260929" defer></script>
 </body>
 </html>
 

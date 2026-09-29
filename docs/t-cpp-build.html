@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Building, linking &amp; debugging — KytyPS5</title>
 <meta name="description" content="The toolchain, the compile-and-link pipeline, the EXIT macros, and how to read the crash log this project writes.">
-<link rel="stylesheet" href="assets/viz.css?v=26">
-<link rel="stylesheet" href="assets/atlas.css?v=26">
-<link rel="stylesheet" href="assets/lab.css?v=26">
-<link rel="stylesheet" href="assets/tutor.css?v=26">
-<link rel="stylesheet" href="assets/app.css?v=26">
-<link rel="stylesheet" href="assets/highlight.css?v=26">
+<link rel="stylesheet" href="assets/viz.css?v=20260929">
+<link rel="stylesheet" href="assets/atlas.css?v=20260929">
+<link rel="stylesheet" href="assets/lab.css?v=20260929">
+<link rel="stylesheet" href="assets/tutor.css?v=20260929">
+<link rel="stylesheet" href="assets/app.css?v=20260929">
+<link rel="stylesheet" href="assets/highlight.css?v=20260929">
 </head>
 <body>
 
@@ -66,11 +66,21 @@ cmake -S . -B _Build/windows -G Ninja ^
 cmake --build _Build/windows --target launcher
 cmake --install _Build/windows --prefix _Build/windows/install</pre>
 
-  <p><strong>Step 1 — dependencies.</strong> Most of what the emulator links against lives in <code>3rdparty/</code> as git submodules: SDL2 (windows/input), FFmpeg (audio/video decode, now bundled as <code>ffmpeg-core</code> with a fallback to a system FFmpeg), SPIRV-Tools, VulkanMemoryAllocator, fmt, magic_enum, imgui, LibAtrac9, and more. Two more — Zydis (x86 disassembler) and xbyak (x86 assembler) — are pulled by CMake with <code>FetchContent</code> at configure time rather than as submodules. This is the equivalent of <code>npm install</code> — except the versions are pinned as commits, like a lockfile.</p>
+  <p><strong>Step 1 — dependencies.</strong> Dependencies are configured from <code>3rdparty/</code> through a mix of pinned submodules, source downloads and prebuilt packages: SDL3 (windows/input), FFmpeg (audio/video decode), SPIRV-Tools, VulkanMemoryAllocator, fmt, gtest, magic_enum, imgui, Zydis (x86 disassembler), xbyak (x86 assembler), LibAtrac9. This is the equivalent of <code>npm install</code> — except the versions are pinned as commits, like a lockfile.</p>
 
   <p><strong>Step 2 — configure.</strong> CMake's configure pass does the <em>detection</em> work: verifies 64-bit (<code>if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8) message(FATAL_ERROR ...)</code>), detects endianness (<code>test_big_endian</code>), checks the compiler is Clang, finds <code>glslangValidator</code>, and generates two headers — <code>cmake_config.h</code> (compiler/linker/platform macros) and <code>kytyGitVersion.h</code> (the git hash from <code>generate_version.cmake</code>). Nothing compiles yet.</p>
 
   <p><strong>Step 3 — build.</strong> Compile and link. Everything after this is the rest of the page.</p>
+
+<h4 id="current-build-options">Current build options</h4>
+  <p>The root <code>CMakeLists.txt</code> requires CMake 3.22.1 or newer. Use <code>clang-cl</code> on Windows and the documented Clang toolchain on Linux/macOS. <code>glslangValidator</code> must be on <code>PATH</code>. CMake automatically selects <code>sccache</code>, then <code>ccache</code>, unless a compiler launcher was already supplied.</p>
+  <p>Qt is optional: configure a separate directory with <code>-DKYTY_BUILD_LAUNCHER=OFF</code> to build <code>kyty_emulator</code> and <code>kyty_tests</code> without it. SDL3 provides window, input and audio services. FFmpeg comes from the pinned static FFmpeg-core release, including VP9/WebM; system FFmpeg packages are not required. Dependencies include both submodules and configure-time downloads, including ZArchive and zstd.</p>
+<pre>cmake -S . -B _Build/no-qt -G Ninja -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+  -DKYTY_BUILD_LAUNCHER=OFF
+cmake --build _Build/no-qt --target kyty_emulator kyty_tests --parallel
+ctest --test-dir _Build/no-qt --output-on-failure</pre>
+  <p>On NixOS, enter <code>nix develop</code> or <code>nix-shell</code> first. The shell supplies the toolchain, Qt paths and SDL3 backend dependencies; configure still needs network access. See <code>flake.nix</code> and <code>nix/devshell.nix</code>.</p>
 
   <h4 id="what-actually-compiles">What actually compiles</h4>
   <p>The source list is collected by explicit <code>file(GLOB ... CONFIGURE_DEPENDS)</code> entries in the root <code>CMakeLists.txt</code>. The shader entries now spell out <code>frontend/cfg</code>, <code>frontend/decode</code>, <code>frontend/translate</code>, <code>ir</code>, <code>ir/opcodes</code>, <code>ir/passes</code> and <code>backend/spirv</code>. Adding a new directory requires a new glob; adding a file to a listed directory triggers a CMake re-run.</p>
@@ -298,15 +308,15 @@ ctest --test-dir _Build/windows --output-on-failure</pre>
 
 </main>
 
-<script src="assets/topics.js?v=26" defer></script>
-<script src="assets/search-index.js?v=26" defer></script>
-<script src="assets/app.js?v=26" defer></script>
-<script src="assets/viz.js?v=26" defer></script>
-<script src="assets/atlas.js?v=26" defer></script>
-<script src="assets/lab.js?v=26" defer></script>
-<script src="assets/figs.js?v=26" defer></script>
-<script src="assets/figures.js?v=26" defer></script>
-<script src="assets/highlight.js?v=26" defer></script>
-<script src="assets/tutor.js?v=26" defer></script>
+<script src="assets/topics.js?v=20260929" defer></script>
+<script src="assets/search-index.js?v=20260929" defer></script>
+<script src="assets/app.js?v=20260929" defer></script>
+<script src="assets/viz.js?v=20260929" defer></script>
+<script src="assets/atlas.js?v=20260929" defer></script>
+<script src="assets/lab.js?v=20260929" defer></script>
+<script src="assets/figs.js?v=20260929" defer></script>
+<script src="assets/figures.js?v=20260929" defer></script>
+<script src="assets/highlight.js?v=20260929" defer></script>
+<script src="assets/tutor.js?v=20260929" defer></script>
 </body>
 </html>

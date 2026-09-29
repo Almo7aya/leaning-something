@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en" class="notranslate" translate="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The developer curriculum — KytyPS5</title>
+<meta name="description" content="A source-grounded route from understanding KytyPS5 to making and verifying a focused contribution.">
+<link rel="stylesheet" href="assets/viz.css?v=20260929">
+<link rel="stylesheet" href="assets/atlas.css?v=20260929">
+<link rel="stylesheet" href="assets/lab.css?v=20260929">
+<link rel="stylesheet" href="assets/tutor.css?v=20260929">
+<link rel="stylesheet" href="assets/app.css?v=20260929">
+<link rel="stylesheet" href="assets/highlight.css?v=20260929">
+</head>
+<body>
+<main class="topic" data-app-content>
+<p class="topic-eyebrow">Developer curriculum · D1</p>
+<h1 id="overview">The developer curriculum</h1>
+<p class="topic-deck">A source-grounded route from understanding KytyPS5 to making and verifying a focused contribution.</p>
+<section class="band band-read">
+<div class="band-h"><span class="band-t">Read, trace, prove</span></div>
+<div class="prose">
+
+<div class="callout k"><span class="lbl">Scope, not a promise of completeness</span>
+<p>This is a route from reading the emulator to making a defensible change. It is pinned to <code>2650478</code> (29 September 2026), not a guarantee about future main. The traces follow selected real source paths; the labs deliberately introduce caller mistakes in isolated fixtures. They do not demonstrate that a game works, and they do not claim upstream has these bugs.</p></div>
+
+<h2 id="prerequisites">Before you start</h2>
+<p>You should be able to build a small C++20 executable, read pointers and half-open ranges, distinguish an integer from an address, and explain ownership and a mutex. If those are unfamiliar, start with <a href="t-pointers-memory.html">C10: pointers and memory</a>, <a href="t-cpp-language.html">C1: C++</a>, <a href="t-calling-conventions.html">calling conventions</a> and <a href="t-cpp-concurrency.html">C4: concurrency</a>. Use the <a href="path.html">seven-level reading path</a> for orientation; use the gates below for developer readiness.</p>
+<p>Keep two roots distinct: this learning repository, and the emulator checkout at <code>KytyPS5/</code>. Run the native labs from the learning root. Run emulator build commands from the emulator root. The site itself has no build step; the optional native labs need CMake and a C++20 toolchain.</p>
+<pre>git -C KytyPS5 rev-parse HEAD
+git -C KytyPS5 status --short
+git status --short</pre>
+<p>Record the full source SHA, compiler, OS and test command. If your checkout differs, compare the named functions before trusting the trace. Do not reset an existing worktree just to match a lesson.</p>
+
+<h2 id="gates">The developer route: pass by evidence</h2>
+<div class="tw"><table>
+<thead><tr><th>Gate</th><th>Work</th><th>Evidence needed to pass</th></tr></thead>
+<tbody>
+<tr><td>0 · Orientation</td><td>Read the foundations and build material. Classify guest CPU code, HLE code, GPU command processing and host Vulkan work.</td><td>A source map with one owning function per boundary, plus a successful build of the standalone labs.</td></tr>
+<tr><td>1 · Boot</td><td><a href="t-trace-boot.html">D2: ELF to first guest instruction</a>.</td><td>An address worksheet, the ordered boot chain, and a correct distinction between module initialization, executable entry and main(). Static-only work is labelled as such.</td></tr>
+<tr><td>2 · Memory correctness</td><td><a href="t-debugging-labs.html#alignment">Lab A: page coverage</a>.</td><td>The original failing case, a local correction, and passing boundary/overflow checks. Explain why aligning size alone fails.</td></tr>
+<tr><td>3 · One draw</td><td><a href="t-trace-draw.html">D3: PM4 to completion</a>.</td><td>A packet/state/binding/submission ledger. Identify the actual completion condition and one legal early-return path.</td></tr>
+<tr><td>4 · Lifetime and contracts</td><td><a href="t-debugging-labs.html#lifetime">Lab B</a> and <a href="t-debugging-labs.html#contract">Lab C</a>.</td><td>Reproduce all three intentional failures, fix the marked callers, and justify error-path output preservation and completion-based retirement.</td></tr>
+<tr><td>5 · Contribution</td><td><a href="t-first-change.html">A bounded first change</a>, or a regression test for existing behavior.</td><td>A test that fails before and passes after, adjacent negative tests, a focused diff, and an honest report separating build, unit, integration and game evidence.</td></tr>
+</tbody></table></div>
+<p>A checked box records your progress, not certification. If a test passes only after weakening an assertion, disabling validation, skipping a draw, or inventing a success result, the gate has not been passed.</p>
+
+<h2 id="coverage">Coverage map: what you can learn here</h2>
+<p><strong>Overview</strong> means orientation and source pointers. <strong>Guided trace</strong> follows a selected implementation path and its invariants. <strong>Executable lab</strong> has a deterministic oracle, but only within the stated fixture. <strong>Not covered</strong> names the next work instead of implying mastery. A detailed trace of one path is not comprehensive coverage of its subsystem.</p>
+<div class="tw"><table>
+<thead><tr><th>Area</th><th>Current depth and starting point</th><th>Still not covered in depth</th></tr></thead>
+<tbody>
+<tr><td>C++, ABI, native guest execution</td><td>Foundations + C1–C4/C10; <a href="t-trace-boot.html">guided boot trace</a>.</td><td>Complete x86 instruction semantics, all platform exception/unwind behavior and all patcher edge cases.</td></tr>
+<tr><td>ELF, NIDs, relocation, TLS</td><td>Loading topics and D2; address arithmetic and actual source checkpoints.</td><td>Every ELF/SELF variant, every relocation type, exhaustive TLS and module unload/reload behavior.</td></tr>
+<tr><td>Guest memory and coherency</td><td>Memory topics; <a href="t-debugging-labs.html#alignment">executable alignment lab</a>; draw ownership trace.</td><td>Full sparse/direct/flexible allocation proofs, all fault/replay interleavings, mapping races and stress coverage.</td></tr>
+<tr><td>PM4 and ordinary graphics draws</td><td>PM4/register topics and <a href="t-trace-draw.html">guided non-indexed draw</a>.</td><td>Every opcode, predication/indirect interactions, all metadata operations and every format/tiling mode.</td></tr>
+<tr><td>Shader compilation and caches</td><td>Shader topic + <a href="t-program-cache.html">C9 program cache</a>; cache hit/miss checkpoints in D3.</td><td>Instruction-by-instruction compiler correctness, full SSA/CFG derivation, all SPIR-V emission and specialization cases.</td></tr>
+<tr><td>GPU lifetime and synchronization</td><td>D3 completion trace + <a href="t-debugging-labs.html#lifetime">executable LRU caller lab</a>.</td><td>Complete Vulkan synchronization/queue-family proof, GPU-driven stress tests, all download/page-manager races.</td></tr>
+<tr><td>HLE and guest-visible contracts</td><td><a href="t-first-change.html">First-change workflow</a> + <a href="t-debugging-labs.html#contract">fictional output-contract lab</a>.</td><td>All library contracts, pointer validation policy, real ABI integration for the fixture, full libc/kernel behavior.</td></tr>
+<tr><td>APR, files, .zar and savedata</td><td><a href="t-cpp-system.html">C5 overview</a>; real test entry points in <a href="t-debugging-labs.html#upstream">D4</a>.</td><td>Step-by-step APR scheduler, cancellation/error semantics, SaveDataMemory2 persistence/recovery lab and archive corruption cases.</td></tr>
+<tr><td>Audio, NGS2, video, input</td><td>C5 overview and owning-source references.</td><td>Codec/mixer routing internals, timing/resampling, microphone and haptics labs, AV sync and hardware matrix.</td></tr>
+<tr><td>Tessellation, mesh and BVH</td><td>Source overview and branching notes in D3.</td><td>Complete tessellation/mesh traces. Tessellation is opt-in; BVH compute is skipped in this snapshot, not a working ray-tracing lesson.</td></tr>
+<tr><td>Profiling, presentation, platforms</td><td>Debugging/performance topics and existing teaching diagrams.</td><td>Measured cross-driver benchmarks, full swapchain/video-out trace, launcher workflows and platform-specific conformance.</td></tr>
+</tbody></table></div>
+
+<h2 id="capstone">Capstone: make one claim you can defend</h2>
+<p>Choose a small behavior whose contract you can establish. A regression test for a working subsystem is a valid contribution; a guessed HLE success stub is not automatically one. For memory work, start from a boundary case. For graphics work, narrow a mismatch to a specific draw, shader or binding before changing the compiler.</p>
+<ol>
+<li>Write the expected behavior, its source of evidence, and a falsifiable failure condition.</li>
+<li>Preserve the pre-change failure: exact input, source revision, output and exit status. Remove unrelated variables.</li>
+<li>Make the smallest fix; test ordinary, boundary and error behavior. Explain why the fix belongs at this layer.</li>
+<li>Inspect ownership and concurrency across callers. A correct return value can still conceal stale memory or early destruction.</li>
+<li>Build the affected targets. Run focused tests, then broader checks in proportion to the risk. Keep game verification separate and use your own lawful content if needed.</li>
+<li>Review the diff for accidental formatting, probes and unsupported claims. Follow upstream's contribution policy before submitting.</li>
+</ol>
+<h3 id="report">Evidence record to hand off</h3>
+<pre>Source SHA / branch:
+Binary and symbols / compiler / OS:
+Claim and contract evidence:
+Minimal input and reproduction command:
+Before: actual result, exit code:
+After: actual result, exit code:
+Negative and boundary checks:
+Ownership / synchronization implications:
+Integration or game route, if tested:
+Not tested / remaining risks:
+Files changed and why:</pre>
+<p>Do not report “game fixed” from a unit test, “GPU completed” from a CPU log, or “all platforms supported” from one Windows build. Record missing evidence explicitly.</p>
+
+<h2 id="maintaining">Keep the curriculum current</h2>
+<p>On an upstream update, compare the old and new source revisions, re-walk the functions named by D2/D3, rebuild the labs and re-run the documentation checks. Update examples, legacy copies, navigation and search together. A source-symbol check detects a renamed function, not a semantic change; manual review is still required.</p>
+<pre>node scripts/check-docs.cjs
+node scripts/check-doc-examples.cjs
+node scripts/check-curriculum.cjs
+node scripts/build-search-index.cjs</pre>
+<p>The browser animations are bounded teaching models. They illustrate state transitions, not a replacement for actual source, debugger evidence, Vulkan validation or a guest behavior test.</p>
+
+</div></section>
+</main>
+<script src="assets/topics.js?v=20260929" defer></script>
+<script src="assets/search-index.js?v=20260929" defer></script>
+<script src="assets/app.js?v=20260929" defer></script>
+<script src="assets/highlight.js?v=20260929" defer></script>
+<script src="assets/tutor.js?v=20260929" defer></script>
+</body>
+</html>

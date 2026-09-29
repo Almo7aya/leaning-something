@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PM4 &amp; the command processor — KytyPS5</title>
 <meta name="description" content="How a draw call travels from guest code into PM4 command packets, through a software command processor, and out to Vulkan.">
-<link rel="stylesheet" href="assets/viz.css?v=26">
-<link rel="stylesheet" href="assets/atlas.css?v=26">
-<link rel="stylesheet" href="assets/lab.css?v=26">
-<link rel="stylesheet" href="assets/tutor.css?v=26">
-<link rel="stylesheet" href="assets/app.css?v=26">
-<link rel="stylesheet" href="assets/highlight.css?v=26">
+<link rel="stylesheet" href="assets/viz.css?v=20260929">
+<link rel="stylesheet" href="assets/atlas.css?v=20260929">
+<link rel="stylesheet" href="assets/lab.css?v=20260929">
+<link rel="stylesheet" href="assets/tutor.css?v=20260929">
+<link rel="stylesheet" href="assets/app.css?v=20260929">
+<link rel="stylesheet" href="assets/highlight.css?v=20260929">
 </head>
 <body>
 
@@ -64,7 +64,7 @@ void SubmitCompute(uint32_t queue, std::span&lt;const uint32_t&gt; commands);</p
   makes lifetime bugs visible instead of hiding them behind an emulator-only copy.</p>
 
   <h4 id="the-queue-model">The queue model</h4>
-  <div class="filename">src/graphics/guest_gpu/graphicsRun.cpp:79</div>
+  <div class="filename">src/graphics/guest_gpu/graphicsRun.cpp</div>
 <pre>class GuestGpu {
 public:
     static constexpr uint32_t ComputePipeCount     = 7;
@@ -116,7 +116,7 @@ void SendCommandSync(Common::UniqueFunction&lt;void&gt;&amp;&amp; command);    <
   <h4 id="packet-format">Packet format</h4>
   <p>The stream is a sequence of 32-bit dwords. Each packet begins with a header whose top two bits give the type. Everything Kyty handles is type 3:</p>
 
-  <div class="filename">src/graphics/guest_gpu/pm4.h:13</div>
+  <div class="filename">src/graphics/guest_gpu/pm4.h</div>
 <pre>#define KYTY_PM4(len, op, r)                                        \
     (0xC0000000u | (((static_cast&lt;uint16_t&gt;(len) - 2u) &amp; 0x3fffu) &lt;&lt; 16u) | \
      (((op) &amp; 0xffu) &lt;&lt; 8u) | (((r) &amp; (Pm4::R_NUM - 1u)) &lt;&lt; 2u))
@@ -125,7 +125,7 @@ void SendCommandSync(Common::UniqueFunction&lt;void&gt;&amp;&amp; command);    <
 #define KYTY_PM4_LEN(cmd_id) ((((cmd_id) &gt;&gt; 16u) &amp; 0x3fffu) + 2u)</pre>
 
   <p>And the extraction, from the packet dumper:</p>
-  <div class="filename">src/graphics/guest_gpu/pm4.cpp:122</div>
+  <div class="filename">src/graphics/guest_gpu/pm4.cpp</div>
 <pre>const auto packet_type = static_cast&lt;PacketType&gt;(cmd_id &gt;&gt; <b>30u</b>);
 const bool sh_gx       = (cmd_id &amp; 0x2u) == 0;
 const uint8_t op       = ((cmd_id &gt;&gt; <b>8u</b>) &amp; 0xffu);
@@ -149,7 +149,7 @@ len                    = ((cmd_id &gt;&gt; <b>16u</b>) &amp; 0x3fffu) + 1;   <i>
   <h4 id="dispatch-by-jump-table">Dispatch by jump table</h4>
   <p>With around 50 opcodes and thousands of register offsets, a switch would be unmanageable. Kyty builds four function-pointer tables and indexes them directly:</p>
 
-  <div class="filename">src/graphics/guest_gpu/command_processor/pm4Dispatch.h:25</div>
+  <div class="filename">src/graphics/guest_gpu/command_processor/pm4Dispatch.h</div>
 <pre>extern const std::array&lt;cp_op_parser_func_t, 256&gt;       <b>g_cp_op_func</b>;        <i>// by opcode</i>
 extern const std::array&lt;cp_op_parser_func_t, Pm4::R_NUM&gt; g_cp_op_custom_func; <i>// IT_NOP sub-ops</i>
 extern const std::array&lt;hw_ctx_parser_func_t, Pm4::CX_NUM&gt; <b>g_hw_ctx_func</b>;   <i>// context registers</i>
@@ -160,7 +160,7 @@ void GraphicsInitJmpTables();</pre>
 
   <p>A handler receives the header, a pointer to the body and the remaining size, and returns how many dwords it consumed — which is how multi-register writes advance correctly:</p>
 
-  <div class="filename">…/pm4Handlers.cpp:2084 — a complete handler</div>
+  <div class="filename">…/pm4Handlers.cpp — a complete handler</div>
 <pre>KYTY_CP_OP_PARSER(<b>CpOpDrawIndexAuto</b>) {
     KYTY_PROFILER_FUNCTION();
 
@@ -218,7 +218,7 @@ void GraphicsInitJmpTables();</pre>
   </div>
 
   <h4 id="the-resumable-cursor">The resumable cursor</h4>
-  <div class="filename">…/command_processor/commandProcessor.h:18</div>
+  <div class="filename">…/command_processor/commandProcessor.h</div>
 <pre>class Pm4Execution {
     struct BufferCursor {
         uint32_t* next_packet         = nullptr;
@@ -338,16 +338,16 @@ Pm4ProcessResult Process(Pm4Execution&amp; execution, uint32_t* buffer, uint32_t
 
 </main>
 
-<script src="assets/topics.js?v=26" defer></script>
-<script src="assets/search-index.js?v=26" defer></script>
-<script src="assets/highlight.js?v=26" defer></script>
-<script src="assets/app.js?v=26" defer></script>
-<script src="assets/viz.js?v=26" defer></script>
-<script src="assets/atlas.js?v=26" defer></script>
-<script src="assets/lab.js?v=26" defer></script>
-<script src="assets/figs.js?v=26" defer></script>
-<script src="assets/figures.js?v=26" defer></script>
-<script src="assets/tutor.js?v=26" defer></script>
+<script src="assets/topics.js?v=20260929" defer></script>
+<script src="assets/search-index.js?v=20260929" defer></script>
+<script src="assets/highlight.js?v=20260929" defer></script>
+<script src="assets/app.js?v=20260929" defer></script>
+<script src="assets/viz.js?v=20260929" defer></script>
+<script src="assets/atlas.js?v=20260929" defer></script>
+<script src="assets/lab.js?v=20260929" defer></script>
+<script src="assets/figs.js?v=20260929" defer></script>
+<script src="assets/figures.js?v=20260929" defer></script>
+<script src="assets/tutor.js?v=20260929" defer></script>
 </body>
 </html>
 

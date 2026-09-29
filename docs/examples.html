@@ -5,11 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Examples — KytyPS5 Learning Platform</title>
 <meta name="description" content="Complete worked examples: implement a missing HLE function, follow a draw call end to end, translate a shader instruction, trace a memory allocation.">
-<link rel="stylesheet" href="assets/app.css?v=26">
-<link rel="stylesheet" href="assets/tutor.css?v=26">
-<link rel="stylesheet" href="assets/playground.css?v=26">
-<link rel="stylesheet" href="assets/examples.css?v=26">
-<link rel="stylesheet" href="assets/highlight.css?v=26">
+<link rel="stylesheet" href="assets/app.css?v=20260929">
+<link rel="stylesheet" href="assets/tutor.css?v=20260929">
+<link rel="stylesheet" href="assets/playground.css?v=20260929">
+<link rel="stylesheet" href="assets/examples.css?v=20260929">
+<link rel="stylesheet" href="assets/highlight.css?v=20260929">
 </head>
 <body>
 
@@ -46,16 +46,16 @@
     </div>
 
     <p class="ex-lede">
-      This is the smallest complete loop in the whole project: a game asks for a function that
-      does not exist, you write it, the game gets further. Do this once and the rest of the
-      emulator stops looking like magic.
+      This is a binding walkthrough using an already implemented function, not a request to
+      add a duplicate export. For an actual contribution, establish a bounded contract and
+      regression test first; reaching a function or advancing one title does not prove correctness.
     </p>
 
     <div class="ex-step">
       <h3 id="1-find-something-that-is-missing"><span class="ex-s">1</span> Find something that is missing</h3>
       <p>Run a title with logging on and let it get as far as it can:</p>
       <pre class="ex-pre"><code>.\_Build\windows-prod\kyty_emulator.exe --game "&lt;title&gt;" `
-  --printf-direction File --printf-output-file _kyty.txt</code></pre>
+  --redzone --printf-direction File --printf-output-file _kyty.txt</code></pre>
       <p>
         Then drop that file into the <a href="playground.html#log-triage">log triage tool</a>. The
         "Unresolved imports" bucket is your work queue. Each entry looks roughly like:
@@ -78,10 +78,11 @@
       <pre class="ex-pre"><code>rg "rPo6tV8D9bM" src/
 rg "LIB_DEFINE" src/libs/libSystemService.cpp</code></pre>
       <p>
-        If it is genuinely unknown, the community NID databases (shadPS4's
-        <code>aerolib</code>, the ps4libdoc project) map most of them to names, and the name tells
-        you the signature by convention: <code>sceSystemServiceGetStatus</code> takes a status
-        struct out-pointer and returns an <code>int</code> error code.
+        A community NID database can suggest a name, not establish its signature. Verify argument
+        count, types, structure layout and ABI against source and call-site evidence. In this
+        snapshot, <code>SystemServiceGetStatus</code> already exists in the source file below;
+        use that definition to study its status pointer and integer return rather than guessing
+        either from the name. The unresolved line above is illustrative, not a current bug report.
       </p>
     </div>
 
@@ -98,7 +99,8 @@ rg "LIB_DEFINE" src/libs/libSystemService.cpp</code></pre>
 		return SYSTEM_SERVICE_ERROR_PARAMETER;
 	}
 
-	*status = SystemServiceStatus {};   // zero it — the guest reads every field
+	*status = SystemServiceStatus {};
+	status-&gt;is_system_ui_overlaid = Dialog::ErrorDialog::GetVisualState().active;
 	return OK;
 }</code></pre>
       <div class="ex-callout">
@@ -141,15 +143,17 @@ rg "LIB_DEFINE" src/libs/libSystemService.cpp</code></pre>
           actually called through, not just that the link succeeded.</li>
       </ul>
       <p>
-        If the symbol resolves but your trace never fires, the game is not reaching that code path
-        yet — which is fine, and usually means there is an earlier missing function to do first.
+        These are binding/reachability checks, not behavior tests. Verify the return code and
+        every relevant output field, including the overlay state, plus defined error paths.
+        Preserve a failing-before/passing-after regression for any actual change. If the trace
+        never fires, report the path as untested; do not assume the reason is another missing import.
       </p>
     </div>
 
     <div class="ex-next">
-      <b>Now you try.</b> Take the second entry in your unresolved list and repeat. The second one
-      takes fifteen minutes instead of forty. By the fifth you will be reading the log for
-      <em>which</em> missing function is blocking the others.
+      <b>Now you try.</b> Work through <a href="t-debugging-labs.html#contract">the output-contract lab</a>,
+      then use <a href="t-first-change.html#step-5-prove-the-contract">the behavioral checklist</a>
+      for a small, understood API. Choose by scope and evidence, not unresolved-import order.
     </div>
   </article>
 
@@ -571,11 +575,11 @@ constexpr uint32_t IT_SET_CONTEXT_REG = 0x69;
 
 </main>
 
-<script src="assets/search-index.js?v=26" defer></script>
-<script src="assets/topics.js?v=26" defer></script>
-<script src="assets/app.js?v=26" defer></script>
-<script src="assets/highlight.js?v=26" defer></script>
-<script src="assets/tutor.js?v=26" defer></script>
+<script src="assets/search-index.js?v=20260929" defer></script>
+<script src="assets/topics.js?v=20260929" defer></script>
+<script src="assets/app.js?v=20260929" defer></script>
+<script src="assets/highlight.js?v=20260929" defer></script>
+<script src="assets/tutor.js?v=20260929" defer></script>
 </body>
 </html>
 

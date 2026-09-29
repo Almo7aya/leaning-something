@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>The codebase map &amp; the toolbox — KytyPS5</title>
 <meta name="description" content="Which file does what, the entry points and boot sequence, and the third-party toolbox behind it all — one page to keep open while you read.">
-<link rel="stylesheet" href="assets/viz.css?v=26">
-<link rel="stylesheet" href="assets/atlas.css?v=26">
-<link rel="stylesheet" href="assets/lab.css?v=26">
-<link rel="stylesheet" href="assets/tutor.css?v=26">
-<link rel="stylesheet" href="assets/app.css?v=26">
-<link rel="stylesheet" href="assets/highlight.css?v=26">
+<link rel="stylesheet" href="assets/viz.css?v=20260929">
+<link rel="stylesheet" href="assets/atlas.css?v=20260929">
+<link rel="stylesheet" href="assets/lab.css?v=20260929">
+<link rel="stylesheet" href="assets/tutor.css?v=20260929">
+<link rel="stylesheet" href="assets/app.css?v=20260929">
+<link rel="stylesheet" href="assets/highlight.css?v=20260929">
 </head>
 <body>
 
@@ -37,7 +37,7 @@ src/loader/                   <i>ELF/SELF loading, the runtime linker, NIDs, JIT
                               <i>the red-zone patcher, guest instruction emulation</i>
 src/kernel/                   <i>the guest OS surface: memory, address space, threads,</i>
                               <i>event queues, semaphores, filesystem</i>
-src/libs/                     <i>the HLE libraries (70 files) — topic C5's translation table</i>
+src/libs/                     <i>the HLE libraries — topic C5's translation table</i>
 src/graphics/                 <i>the GPU half: guest formats, Vulkan host, shader recompiler</i>
 src/launcher/                 <i>the Qt launcher that finds games, runs the emulator, checks for updates</i>
 tests/                        <i>16 focused test executables — topic C3</i></pre>
@@ -80,7 +80,7 @@ tests/                        <i>16 focused test executables — topic C3</i></p
     <table>
       <thead><tr><th>Library</th><th>What it does</th><th>Where it shows up</th></tr></thead>
       <tbody>
-        <tr><td><code>SDL2</code></td><td>window, input, audio host layer</td><td><code>WindowRun</code>, <code>controller.cpp</code>, the audio backend</td></tr>
+        <tr><td><code>SDL3</code></td><td>window, input, audio host layer</td><td><code>WindowRun</code>, <code>controller.cpp</code>, the audio backend</td></tr>
         <tr><td><code>FFmpeg</code></td><td>audio &amp; video decode</td><td><code>ajm.cpp</code>, <code>avPlayer.cpp</code>, <code>libVideoDec2</code></td></tr>
         <tr><td><code>Vulkan-Headers</code> + <code>SPIRV-Tools</code></td><td>the Vulkan API and SPIR-V validation/optimisation</td><td>the whole <code>host_gpu</code> layer; <code>spirv-tools-opt</code> in the link list</td></tr>
         <tr><td><code>VulkanMemoryAllocator</code> (VMA)</td><td>GPU memory allocation</td><td>image/buffer allocation in <code>host_gpu</code>; wrapped entirely inside <code>vma.cpp</code></td></tr>
@@ -95,7 +95,7 @@ tests/                        <i>16 focused test executables — topic C3</i></p
         <tr><td><code>Qt 6</code> (system)</td><td>the launcher UI</td><td><code>src/launcher/</code> — game list, per-game settings, input mapping, trophy viewer, compatibility database, update checker, theme</td></tr>
         <tr><td><code>LibAtrac9</code></td><td>the console's ATRAC9 audio codec</td><td>AJM decode jobs</td></tr>
         <tr><td><code>imgui</code></td><td>immediate-mode UI</td><td>the system overlay in <code>presentation/systemOverlay.cpp</code> — the IME keyboard and the error dialogs drawn over the game</td></tr>
-        <tr><td><code>tracy</code></td><td>frame profiler</td><td><code>--profiler-direction Network</code> (topic C3)</td></tr>
+        <tr><td><code>tracy</code></td><td>frame profiler</td><td><code>--profile</code> (topic C3)</td></tr>
         <tr><td><code>winpthread</code></td><td>pthread shim on Windows</td><td>linked on <code>clang-cl</code> builds</td></tr>
         <tr><td><code>gtest</code></td><td>the test framework</td><td>the <code>kyty_tests</code> executables (topic C3)</td></tr>
         <tr><td><code>cpuinfo</code></td><td>CPU feature detection</td><td>runtime capability checks</td></tr>
@@ -166,7 +166,7 @@ tests/                        <i>16 focused test executables — topic C3</i></p
         </li>
         <li class="check-item">
           <input type="checkbox">
-          <label>For each of SDL2, FFmpeg, fmt, magic_enum, Zydis, xbyak, spdlog — name the subsystem that uses it.</label>
+          <label>For each of SDL3, FFmpeg, fmt, magic_enum, Zydis, xbyak, spdlog — name the subsystem that uses it.</label>
         </li>
         <li class="check-item">
           <input type="checkbox">
@@ -186,15 +186,15 @@ tests/                        <i>16 focused test executables — topic C3</i></p
 
 </main>
 
-<script src="assets/topics.js?v=26" defer></script>
-<script src="assets/search-index.js?v=26" defer></script>
-<script src="assets/app.js?v=26" defer></script>
-<script src="assets/viz.js?v=26" defer></script>
-<script src="assets/atlas.js?v=26" defer></script>
-<script src="assets/lab.js?v=26" defer></script>
-<script src="assets/figs.js?v=26" defer></script>
-<script src="assets/figures.js?v=26" defer></script>
-<script src="assets/highlight.js?v=26" defer></script>
-<script src="assets/tutor.js?v=26" defer></script>
+<script src="assets/topics.js?v=20260929" defer></script>
+<script src="assets/search-index.js?v=20260929" defer></script>
+<script src="assets/app.js?v=20260929" defer></script>
+<script src="assets/viz.js?v=20260929" defer></script>
+<script src="assets/atlas.js?v=20260929" defer></script>
+<script src="assets/lab.js?v=20260929" defer></script>
+<script src="assets/figs.js?v=20260929" defer></script>
+<script src="assets/figures.js?v=20260929" defer></script>
+<script src="assets/highlight.js?v=20260929" defer></script>
+<script src="assets/tutor.js?v=20260929" defer></script>
 </body>
 </html>

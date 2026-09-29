@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>C++ language, by example — KytyPS5</title>
 <meta name="description" content="The C++ you will actually meet in this tree — templates, move semantics, constexpr, casts, packing and the preprocessor — each one shown as it really appears.">
-<link rel="stylesheet" href="assets/viz.css?v=26">
-<link rel="stylesheet" href="assets/atlas.css?v=26">
-<link rel="stylesheet" href="assets/lab.css?v=26">
-<link rel="stylesheet" href="assets/tutor.css?v=26">
-<link rel="stylesheet" href="assets/app.css?v=26">
-<link rel="stylesheet" href="assets/highlight.css?v=26">
+<link rel="stylesheet" href="assets/viz.css?v=20260929">
+<link rel="stylesheet" href="assets/atlas.css?v=20260929">
+<link rel="stylesheet" href="assets/lab.css?v=20260929">
+<link rel="stylesheet" href="assets/tutor.css?v=20260929">
+<link rel="stylesheet" href="assets/app.css?v=20260929">
+<link rel="stylesheet" href="assets/highlight.css?v=20260929">
 </head>
 <body>
 
@@ -270,6 +270,8 @@ static_assert(sizeof(VirtualQueryInfo) == 72, "VirtualQueryInfo struct size is i
 <pre>(ctx).va_list.gp_offset         = offsetof(VaRegSave, gp);
 (ctx).va_list.fp_offset         = offsetof(VaRegSave, fp);</pre>
 
+<p>Cleanup removed the byte-buffer, magic-enum and several string/virtual-memory forwarding wrappers. Follow <code>std::vector</code>, direct <code>magic_enum</code> calls, <code>std::filesystem::path</code> and <code>common/alignment.h</code> in current code. Profiler macros create native <code>tracy::ScopedZone</code> objects; the former manual block-end bookkeeping is gone.</p>
+
   <h4 id="attributes-messages-to-the-compiler">Attributes — messages to the compiler</h4>
   <p>Attributes are contracts with the compiler, not runtime features. The ones that recur:</p>
 
@@ -277,9 +279,9 @@ static_assert(sizeof(VirtualQueryInfo) == 72, "VirtualQueryInfo struct size is i
     <table>
       <thead><tr><th>Attribute</th><th>Promise</th><th>Seen at</th></tr></thead>
       <tbody>
-        <tr><td><code>[[nodiscard]]</code></td><td>"The return value must not be ignored" — the compiler warns if you drop it</td><td><code>memory.h:112</code>, most of <code>byteBuffer.h</code></td></tr>
+        <tr><td><code>[[nodiscard]]</code></td><td>"The return value must not be ignored" — the compiler warns if you drop it</td><td><code>memory.h</code> and <code>common/archive.h</code></td></tr>
         <tr><td><code>[[maybe_unused]]</code></td><td>"I know I never use this; do not warn"</td><td>the <code>thread_local</code> flag in <code>libs.h</code></td></tr>
-        <tr><td><code>noexcept</code></td><td>"This function does not throw"</td><td><code>memory.h:113</code></td></tr>
+        <tr><td><code>noexcept</code></td><td>"This function does not throw"</td><td><code>memory.h</code></td></tr>
         <tr><td><code>__attribute__((format(printf, a, b)))</code></td><td>check <code>printf</code>-style arguments at compile time, like the C runtime does</td><td><code>KYTY_FORMAT_PRINTF</code> in <code>common.h</code></td></tr>
         <tr><td><code>noreturn</code>, <code>naked</code>, <code>returns_twice</code>, <code>sysv_abi</code>/<code>ms_abi</code></td><td>the ABI and machine-code edge — the subject of <a href="t-cpp-asm.html">the next topic</a></td><td><code>runtimeLinker.cpp</code>, <code>libKernel.cpp</code>, <code>abi.h</code></td></tr>
       </tbody>
@@ -331,7 +333,7 @@ public:                                                                         
         <tr><td><code>std::optional&lt;T&gt;</code></td><td>a value that may be absent — like <code>T | null</code></td><td><code>redZonePatcher.cpp</code>, <code>profiler.h</code>; read with <code>.has_value()</code> / <code>.value()</code></td></tr>
         <tr><td><code>std::span&lt;const T&gt;</code></td><td>a non-owning view of contiguous data — like a typed slice</td><td><code>redZonePatcher.h</code>, <code>shader.h</code></td></tr>
         <tr><td><code>std::from_chars</code></td><td>fast, allocation-free number parsing</td><td><code>main.cpp</code>, <code>gamePatch.cpp</code></td></tr>
-        <tr><td>Lambdas</td><td>anonymous functions, passed as comparators/callbacks</td><td><code>std::sort</code> comparators, <code>ForEach</code> visitors, everywhere</td></tr>
+        <tr><td>Lambdas</td><td>anonymous functions, passed as comparators/callbacks</td><td><code>std::ranges::find_if</code> in the program cache</td></tr>
         <tr><td><code>&lt;bit&gt;</code> helpers</td><td>bit tricks: <code>std::countr_zero</code>, <code>std::countl_one</code></td><td><code>bitArray.h</code> scanning for set-bit runs</td></tr>
         <tr><td><code>std::atomic</code>, <code>std::mutex</code></td><td>thread-safe counters and locks</td><td><code>agc.cpp</code>, <code>ajm.cpp</code>, <code>memoryAddressSpace.inc</code></td></tr>
       </tbody>
@@ -416,7 +418,7 @@ public:                                                                         
         </li>
         <li class="check-item">
           <input type="checkbox">
-          <label>In <code>src/loader/jit.h</code>, find the placement-new expression in <code>CallPlt</code>'s constructor. What is being constructed, and into what?</label>
+          <label>In <code>RuntimeLinker::SetupTlsHandler</code>, find the placement-new expression that constructs <code>Jit::SafeCall</code>. What is being constructed, and into what?</label>
         </li>
         <li class="check-item">
           <input type="checkbox">
@@ -432,15 +434,15 @@ public:                                                                         
 
 </main>
 
-<script src="assets/topics.js?v=26" defer></script>
-<script src="assets/search-index.js?v=26" defer></script>
-<script src="assets/app.js?v=26" defer></script>
-<script src="assets/viz.js?v=26" defer></script>
-<script src="assets/atlas.js?v=26" defer></script>
-<script src="assets/lab.js?v=26" defer></script>
-<script src="assets/figs.js?v=26" defer></script>
-<script src="assets/figures.js?v=26" defer></script>
-<script src="assets/highlight.js?v=26" defer></script>
-<script src="assets/tutor.js?v=26" defer></script>
+<script src="assets/topics.js?v=20260929" defer></script>
+<script src="assets/search-index.js?v=20260929" defer></script>
+<script src="assets/app.js?v=20260929" defer></script>
+<script src="assets/viz.js?v=20260929" defer></script>
+<script src="assets/atlas.js?v=20260929" defer></script>
+<script src="assets/lab.js?v=20260929" defer></script>
+<script src="assets/figs.js?v=20260929" defer></script>
+<script src="assets/figures.js?v=20260929" defer></script>
+<script src="assets/highlight.js?v=20260929" defer></script>
+<script src="assets/tutor.js?v=20260929" defer></script>
 </body>
 </html>

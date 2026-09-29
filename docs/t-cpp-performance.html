@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Performance: why this design is fast — KytyPS5</title>
 <meta name="description" content="The design choices that make an HLE emulator fast — native execution, one-jump imports, batched GPU work, cached shaders — and where the time actually goes.">
-<link rel="stylesheet" href="assets/viz.css?v=26">
-<link rel="stylesheet" href="assets/atlas.css?v=26">
-<link rel="stylesheet" href="assets/lab.css?v=26">
-<link rel="stylesheet" href="assets/tutor.css?v=26">
-<link rel="stylesheet" href="assets/app.css?v=26">
-<link rel="stylesheet" href="assets/highlight.css?v=26">
+<link rel="stylesheet" href="assets/viz.css?v=20260929">
+<link rel="stylesheet" href="assets/atlas.css?v=20260929">
+<link rel="stylesheet" href="assets/lab.css?v=20260929">
+<link rel="stylesheet" href="assets/tutor.css?v=20260929">
+<link rel="stylesheet" href="assets/app.css?v=20260929">
+<link rel="stylesheet" href="assets/highlight.css?v=20260929">
 </head>
 <body>
 
@@ -75,7 +75,7 @@
 
   <div class="callout h">
     <span class="lbl">Measuring, not guessing</span>
-    <p>Two switches exist for this. <code>--profiler-direction Network</code> streams into the <a href="https://github.com/wolfpld/tracy">Tracy</a> profiler (the trace appears in the 3rdparty toolbox from <a href="t-cpp-codebase.html">topic C6</a>), and the <code>KYTY_PROFILER_FUNCTION</code> scopes sprinkled through <code>shader.cpp</code> and the renderer light it up. If you ever need to answer "what is slow", that is the instrument.</p>
+    <p>Two switches exist for this. <code>--profile</code> streams into the <a href="https://github.com/wolfpld/tracy">Tracy</a> profiler (the trace appears in the 3rdparty toolbox from <a href="t-cpp-codebase.html">topic C6</a>), and the <code>KYTY_PROFILER_FUNCTION</code> scopes sprinkled through <code>shader.cpp</code> and the renderer light it up. If you ever need to answer "what is slow", that is the instrument.</p>
   </div>
 
   <div class="learn">
@@ -146,15 +146,15 @@
 
 </main>
 
-<script src="assets/topics.js?v=26" defer></script>
-<script src="assets/search-index.js?v=26" defer></script>
-<script src="assets/app.js?v=26" defer></script>
-<script src="assets/viz.js?v=26" defer></script>
-<script src="assets/atlas.js?v=26" defer></script>
-<script src="assets/lab.js?v=26" defer></script>
-<script src="assets/figs.js?v=26" defer></script>
-<script src="assets/figures.js?v=26" defer></script>
-<script src="assets/highlight.js?v=26" defer></script>
-<script src="assets/tutor.js?v=26" defer></script>
+<script src="assets/topics.js?v=20260929" defer></script>
+<script src="assets/search-index.js?v=20260929" defer></script>
+<script src="assets/app.js?v=20260929" defer></script>
+<script src="assets/viz.js?v=20260929" defer></script>
+<script src="assets/atlas.js?v=20260929" defer></script>
+<script src="assets/lab.js?v=20260929" defer></script>
+<script src="assets/figs.js?v=20260929" defer></script>
+<script src="assets/figures.js?v=20260929" defer></script>
+<script src="assets/highlight.js?v=20260929" defer></script>
+<script src="assets/tutor.js?v=20260929" defer></script>
 </body>
 </html>

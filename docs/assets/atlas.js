@@ -253,12 +253,14 @@
      ============================================================ */
   V.register("addrmap", function (host) {
     var body = frame(host, "The guest address space, filling up", "who owns which addresses, and why",
-      "Kyty does not let the host OS choose where anything goes. It claims whole bands up front and hands out pieces itself — which is what makes a guest pointer distinguishable from a host pointer by value alone, and what lets the crash handler walk a guest stack by range-checking return addresses.");
+      "Kyty does not let the host OS choose where anything goes. It reserves the ordinary bands and a separate extended arena, then maps backing as needed. The diagram uses Windows/Linux low-band constants; macOS adjusts its low ranges. Loaded mappings, rather than pointer prefixes alone, determine ownership.");
 
     var BANDS = [
       { k: "h", n: "system managed", a: "0x00_0004_0000", w: 22, d: "host OS, emulator image, Qt, SDL, Vulkan driver" },
-      { k: "k", n: "system reserved", a: "0x07_FFFF_C000", w: 22, d: "loaded guest modules + generated PLT tables" },
-      { k: "g", n: "user area", a: "0x10_0000_0000", w: 42, d: "every guest allocation" },
+      { k: "k", n: "system reserved", a: "0x07_FFFF_C000", w: 22, d: "loaded guest modules + diagnostic import stubs" },
+      { k: "g", n: "user area", a: "0x10_0000_0000", w: 28, d: "ordinary guest allocations" },
+      { k: "g", n: "extended guest", a: "0x0800_0000_0000", w: 14, d: "separate 512 GiB arena" },
+
       { k: "x", n: "host high", a: "0xFC…", w: 14, d: "emulator linked up here on purpose" }
     ];
     var ITEMS = [
@@ -267,7 +269,7 @@
       { at: 3, band: 2, label: "direct memory (GPU-visible)", note: "<b>Direct memory</b> is a reservation out of <em>physical</em> memory identified by a physical offset; mapping it to a virtual address is a separate step, and one physical range may be mapped twice." },
       { at: 4, band: 2, label: "flexible memory", note: "<b>Flexible memory</b> is ordinary paged memory from a fixed per-title budget declared in <code>param.json</code> — applied before the memory subsystem initialises, because pools are sized during init." },
       { at: 5, band: 2, label: "guest thread stacks", note: "Each guest thread needs a stack <em>inside</em> the guest bands, because guest code computes addresses relative to it and those addresses may be handed to the GPU." },
-      { at: 6, band: 1, label: "unresolved-import thunks", note: "162 bytes per unresolved import, packed into executable pages — 25 to a 4 KB page." }
+      { at: 6, band: 1, label: "unresolved-import thunks", note: "34 bytes per unresolved import, packed into executable pages — 120 to a 4 KB page." }
     ];
 
     var wrap = el("div");
@@ -279,12 +281,12 @@
       bar.appendChild(d);
     });
     wrap.appendChild(bar);
-    wrap.appendChild(el("div", "atl-scale", "<span>low addresses</span><span>log scale — the user area is far larger than it looks</span><span>high</span>"));
+    wrap.appendChild(el("div", "atl-scale", "<span>low addresses</span><span>schematic widths — extended arena is separate from the low bands</span><span>high</span>"));
 
     var CAPS = [
-      "Four bands. Nothing crosses between them. On Windows this is enforced by passing an explicit lowest/highest address pair to <code>VirtualAlloc2</code>, so the allocator physically cannot return an address outside the band it was asked for."
+      "Schematic bands, not to scale: low ordinary ranges plus the separate extended arena. On Windows this is enforced by passing an explicit lowest/highest address pair to <code>VirtualAlloc2</code>, so the allocator physically cannot return an address outside the band it was asked for."
     ].concat(ITEMS.map(function (it) { return it.note; })).concat([
-      "Notice the shape of the result: a value beginning <code>0x9…</code> is guest module code, <code>0x1…</code> is guest heap, and anything above <code>0x7000_0000_0000</code> is the emulator itself. That is not decoration — it turns a whole class of pointer-confusion bug into something you can spot in a hex dump."
+      "In this example, <code>0x9…</code> identifies module code and <code>0x1…</code> the ordinary heap; the separate extended arena starts at <code>0x080000000000</code>. Check the mapping table for actual ownership. That is not decoration — it turns a whole class of pointer-confusion bug into something you can spot in a hex dump."
     ]);
 
     var drv = driver(body, CAPS, function (i) {
@@ -394,13 +396,13 @@
      ============================================================ */
   V.register("relocgot", function (host) {
     var body = frame(host, "Relocation — wiring the imports", "one pointer per row, and the game never changes",
-      "Every import the emulator implements is bound here. Everything it does not gets a generated 162-byte thunk that retries resolution at call time and, failing that, returns zero — which is why a stubbed function produces odd behaviour rather than a clean crash.");
+      "Every import the emulator implements is bound here. Everything it does not gets a generated 34-byte thunk that logs the unresolved call and returns zero — which is why a stubbed function produces odd behaviour rather than a clean crash.");
 
     var ROWS = [
       { nid: "lUwEK9UwLNo", lib: "libSceGnmDriver", to: "Gen5::GraphicsSubmit", kind: "hle" },
       { nid: "4J2sUJmuHZQ", lib: "libkernel", to: "KernelGetProcessTime", kind: "hle" },
       { nid: "7H0iTOciTLo", lib: "Posix", to: "pthread_mutex_lock", kind: "hle" },
-      { nid: "aBcDeFgHiJk", lib: "libSceSomething", to: "lazy thunk (unresolved)", kind: "stub" },
+      { nid: "aBcDeFgHiJk", lib: "libSceSomething", to: "diagnostic thunk (unresolved)", kind: "stub" },
       { nid: "0GnN4QCgIfs", lib: "ContentExport", to: "ContentExportInit2", kind: "hle" }
     ];
 
@@ -572,7 +574,7 @@
       "A shader receives up to 64 dwords in its first scalar registers, written by <code>SET_SH_REG</code> packets. Inside those dwords the game may place inline descriptors, plain constants, or <b>pointers to tables</b> — in any arrangement it likes.",
       "In the machine code you see the shader loading a pointer out of its own user data, then loading a 256-bit descriptor from that table. Tables may point at further tables, to arbitrary depth.",
       "<b>TranslateProgram + RewriteToSsa</b> create a typed value graph that exposes how descriptor addresses depend on user data, constants, arithmetic and memory reads.",
-      "<b>BuildSrtPlan</b> walks those values and records the reads needed to recover each descriptor. Constant offsets get flattened slots; genuinely dynamic reads stay explicit.",
+      "<b>TrackResources</b> walks those values and records the reads needed to recover each descriptor. Constant offsets get flattened slots; genuinely dynamic reads stay explicit.",
       "<b>MaterializeResources</b> executes the recipe against the <em>current</em> user data and guest memory, producing a <code>ResourceSnapshot</code> of concrete descriptors: this address, this format, these dimensions, this tiling mode.",
       "Which finally becomes a Vulkan image view. The snapshot also decides the <em>specialization</em> the SPIR-V is compiled against, so one immutable <code>ResourcePlan</code> can serve many draws while <code>CompileProgram</code> runs only when a new specialization appears. A descriptor read that cannot be satisfied is a hard <code>EXIT_IF</code> — the emulator would rather stop than bind garbage."
     ];

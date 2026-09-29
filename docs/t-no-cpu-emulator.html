@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Why there's no CPU emulator — KytyPS5</title>
 <meta name="description" content="Guest PS5 code runs natively on your CPU. There is no interpreter and no JIT. What that buys, and what it costs.">
-<link rel="stylesheet" href="assets/viz.css?v=26">
-<link rel="stylesheet" href="assets/atlas.css?v=26">
-<link rel="stylesheet" href="assets/lab.css?v=26">
-<link rel="stylesheet" href="assets/tutor.css?v=26">
-<link rel="stylesheet" href="assets/app.css?v=26">
-<link rel="stylesheet" href="assets/highlight.css?v=26">
+<link rel="stylesheet" href="assets/viz.css?v=20260929">
+<link rel="stylesheet" href="assets/atlas.css?v=20260929">
+<link rel="stylesheet" href="assets/lab.css?v=20260929">
+<link rel="stylesheet" href="assets/tutor.css?v=20260929">
+<link rel="stylesheet" href="assets/app.css?v=20260929">
+<link rel="stylesheet" href="assets/highlight.css?v=20260929">
 </head>
 <body>
 
@@ -89,6 +89,10 @@
   </section>
 
   <!-- ---------------------------------------------------------- -->
+  <section class="band band-read"><div class="band-h"><span class="band-t">Current compatibility paths</span></div><div class="prose"><h4 id="optional-instruction-emulation">Optional AMD patches and host instruction gaps</h4>
+  <p><code>--amd-cpu</code> gates AMD CPU instruction patches. The loader can replace reciprocal-square-root instructions with traps so <code>X64InstructionEmulator::TryEmulate()</code> supplies guest-compatible behavior. <code>PatchGuestInstructions(..., protect_memory, emulate_rsqrt)</code> coordinates fault-site protection with those replacements; on Windows it must preserve the guest's System V red zone.</p>
+  <p>The x86-64 macOS path emulates immediate and register SSE4a forms, including EXTRQ, through the signal context. Native TLS now holds fiber context across host-thread migration, and fiber ownership preserves small guest stacks. These are compatibility paths around native execution, not a general CPU interpreter.</p></div></section>
+
   <section class="band band-watch">
     <div class="band-h"><span class="band-t">Watch</span></div>
     <p class="band-why">
@@ -155,16 +159,16 @@
 
 </main>
 
-<script src="assets/topics.js?v=26" defer></script>
-<script src="assets/search-index.js?v=26" defer></script>
-<script src="assets/highlight.js?v=26" defer></script>
-<script src="assets/app.js?v=26" defer></script>
-<script src="assets/viz.js?v=26" defer></script>
-<script src="assets/atlas.js?v=26" defer></script>
-<script src="assets/lab.js?v=26" defer></script>
-<script src="assets/figs.js?v=26" defer></script>
-<script src="assets/figures.js?v=26" defer></script>
-<script src="assets/tutor.js?v=26" defer></script>
+<script src="assets/topics.js?v=20260929" defer></script>
+<script src="assets/search-index.js?v=20260929" defer></script>
+<script src="assets/highlight.js?v=20260929" defer></script>
+<script src="assets/app.js?v=20260929" defer></script>
+<script src="assets/viz.js?v=20260929" defer></script>
+<script src="assets/atlas.js?v=20260929" defer></script>
+<script src="assets/lab.js?v=20260929" defer></script>
+<script src="assets/figs.js?v=20260929" defer></script>
+<script src="assets/figures.js?v=20260929" defer></script>
+<script src="assets/tutor.js?v=20260929" defer></script>
 </body>
 </html>
 

@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>How the guest runs — KytyPS5</title>
 <meta name="description" content="A game's frame loop from the guest side: updating its world, using its heap and threads, calling the sce* API, building PM4 command buffers, submitting to the GPU, audio and flip — all running natively.">
-<link rel="stylesheet" href="assets/tutor.css?v=26">
-<link rel="stylesheet" href="assets/app.css?v=26">
-<link rel="stylesheet" href="assets/highlight.css?v=26">
-<link rel="stylesheet" href="assets/flowdiagram.css?v=1">
+<link rel="stylesheet" href="assets/tutor.css?v=20260929">
+<link rel="stylesheet" href="assets/app.css?v=20260929">
+<link rel="stylesheet" href="assets/highlight.css?v=20260929">
+<link rel="stylesheet" href="assets/flowdiagram.css?v=20260929">
 </head>
 <body>
 
@@ -39,7 +39,7 @@
       the GPU work.</p>
 
       <p><b>It talks to a console that isn't there.</b> Every service is a normal function call —
-      <code>sceKernelAllocateDirectMemory</code>, <code>sceGnmSubmitCommandBuffers</code>,
+      <code>sceKernelAllocateDirectMemory</code>, <code>sceAgcDriverSubmitCommandBuffer</code>,
       <code>sceVideoOutSubmitFlip</code> — that happens to land in KytyPS5's C++ instead of Sony's
       firmware. The game builds real PM4 packets and hands over real shader binaries, exactly as it
       would on hardware.</p>
@@ -57,12 +57,12 @@
 
 </main>
 
-<script src="assets/topics.js?v=26" defer></script>
-<script src="assets/search-index.js?v=26" defer></script>
-<script src="assets/highlight.js?v=26" defer></script>
-<script src="assets/app.js?v=26" defer></script>
-<script src="assets/flowdiagram.js?v=1" defer></script>
-<script src="assets/guest-run.js?v=1" defer></script>
-<script src="assets/tutor.js?v=26" defer></script>
+<script src="assets/topics.js?v=20260929" defer></script>
+<script src="assets/search-index.js?v=20260929" defer></script>
+<script src="assets/highlight.js?v=20260929" defer></script>
+<script src="assets/app.js?v=20260929" defer></script>
+<script src="assets/flowdiagram.js?v=20260929" defer></script>
+<script src="assets/guest-run.js?v=20260929" defer></script>
+<script src="assets/tutor.js?v=20260929" defer></script>
 </body>
 </html>

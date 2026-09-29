@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Assembly, the ABI &amp; machine code — KytyPS5</title>
 <meta name="description" content="Why the emulator drops to raw assembly, how to read inline asm, explicit register variables, naked functions and the machine-code buffers in jit.h.">
-<link rel="stylesheet" href="assets/viz.css?v=26">
-<link rel="stylesheet" href="assets/atlas.css?v=26">
-<link rel="stylesheet" href="assets/lab.css?v=26">
-<link rel="stylesheet" href="assets/tutor.css?v=26">
-<link rel="stylesheet" href="assets/app.css?v=26">
-<link rel="stylesheet" href="assets/highlight.css?v=26">
+<link rel="stylesheet" href="assets/viz.css?v=20260929">
+<link rel="stylesheet" href="assets/atlas.css?v=20260929">
+<link rel="stylesheet" href="assets/lab.css?v=20260929">
+<link rel="stylesheet" href="assets/tutor.css?v=20260929">
+<link rel="stylesheet" href="assets/app.css?v=20260929">
+<link rel="stylesheet" href="assets/highlight.css?v=20260929">
 </head>
 <body>
 
@@ -36,7 +36,7 @@
         <tr><td>Guest thread entry</td><td>Jump onto a freshly allocated guest stack — swap <code>rsp</code>/<code>rbp</code> to guest memory, call the entry point, swap back</td><td><code>runtimeLinker.cpp</code></td></tr>
         <tr><td>Context save / restore</td><td>Dump the CPU state into a struct, and later restore it — a hand-rolled fiber switch</td><td><code>libKernel.cpp</code> — <code>FiberSaveContext</code> / <code>FiberRestoreContext</code></td></tr>
         <tr><td>Return-address repair</td><td>An unrecoverable stub returns by <em>adjusting the stack</em> and <code>ret</code> — no C++ body at all</td><td><code>runtimeLinker.cpp</code> — <code>RelocateHandlerReturnStub</code></td></tr>
-        <tr><td>Generated thunks</td><td>Import stubs, PLT trampolines and TLS guards emitted as bytes at runtime</td><td><code>loader/jit.h</code></td></tr>
+        <tr><td>Generated thunks</td><td>TLS guards and call bridges emitted as bytes at runtime; diagnostic import stubs live in runtimeLinker.cpp</td><td><code>loader/jit.h</code></td></tr>
       </tbody>
     </table>
   </div>
@@ -117,7 +117,7 @@ register uintptr_t    guest_rbp_reg asm("r15") = guest_rbp;</pre>
 
   <p>Here is the naked stub in full — the whole function is its own epilogue, because its job <em>is</em> stack surgery:</p>
 
-  <div class="filename">src/loader/runtimeLinker.cpp:1115</div>
+  <div class="filename">src/loader/runtimeLinker.cpp</div>
 <pre>__attribute__((naked)) static KYTY_SYSV_ABI void RelocateHandlerReturnStub() {
     asm volatile("addq $8, %rsp\n\t"   <i>// drop the saved handler return address</i>
                  "retq\n");            <i>// return to whoever called the stubbed import</i>
@@ -153,53 +153,33 @@ xorl %%eax, %%eax        <i>return 0</i></pre>
 <pre>auto* func = reinterpret_cast&lt;entry_func_t&gt;(addr);
 func(params, atexit_func);</pre>
 
-  <p>One ABI subtlety worth knowing before the JIT section: under System V, a variadic function reports how many vector registers are in use through the low byte of <code>rax</code>. That is why generated import thunks begin with <code>push rax</code> — the value must survive a call that may itself land in a variadic function. It is also why <code>guestPrintf.cpp</code> implements its own format-string interpreter: a System V argument list cannot be forwarded to a Microsoft-convention <code>vprintf</code>.</p>
+  <p>System V variadic calls carry the vector-register argument count in <code>al</code>. A call-forwarding bridge must honor that ABI; current unresolved-import stubs instead log and return zero. <code>guestPrintf.cpp</code> interprets the guest argument list because it cannot be forwarded directly to Microsoft-convention <code>vprintf</code>.</p>
 
   <h4 id="machine-code-as-data">Machine code as data — <code>jit.h</code></h4>
   <p>The strangest and most instructive file to read is <code>src/loader/jit.h</code>. Its structs are not <em>described by</em> machine code — their member <code>uint8_t code[N]</code> arrays <em>are</em> the machine code. The emulator writes bytes into these buffers at runtime and then calls them.</p>
 
-  <p>Start with the smallest one. A jmp with an index baked in:</p>
-
-  <div class="filename">src/loader/jit.h — JmpWithIndex</div>
-<pre>#pragma pack(1)
-
-struct JmpWithIndex {
-    void SetIndex(uint32_t index) { *reinterpret_cast&lt;uint32_t*&gt;(&amp;code[1]) = index; }
-
-    void SetFunc(void* handler) {
-        auto func_addr = reinterpret_cast&lt;int64_t&gt;(handler);
-        auto rip_addr  = reinterpret_cast&lt;int64_t&gt;(&amp;code[10]);
-        auto offset32  = static_cast&lt;uint32_t&gt;(static_cast&lt;uint64_t&gt;(func_addr - rip_addr) &amp; 0xffffffffu);
-        *reinterpret_cast&lt;uint32_t*&gt;(&amp;code[6]) = offset32;
+  <p>Start with <code>Call9</code>, the nine-byte call replacement used by TLS patching:</p>
+  <div class="filename">src/loader/jit.h — Call9 (abridged)</div>
+<pre>struct Call9 {
+    template &lt;class Handler&gt;
+    void SetFunc(Handler func) {
+        auto func_addr = reinterpret_cast&lt;int64_t&gt;(reinterpret_cast&lt;void*&gt;(func));
+        auto rip_addr  = reinterpret_cast&lt;int64_t&gt;(&amp;code[6]);
+        auto offset32 = static_cast&lt;uint32_t&gt;(static_cast&lt;uint64_t&gt;(func_addr - rip_addr) &amp; 0xffffffffu);
+        *reinterpret_cast&lt;uint32_t*&gt;(&amp;code[2]) = offset32;
     }
-
-    static uint64_t GetSize() { return 16; }
-
-    <i>// 68 00 00 00 00          push     &lt;index&gt;</i>
-    <i>// E9 E0 FF FF FF          jmp      &lt;handler&gt;</i>
-    uint8_t code[16] = {0x68, 0x00, 0x00, 0x00, 0x00, 0xE9, 0x00, 0x00,
-                        0x00, 0x00, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90};
+    uint8_t code[9] = {0x48, 0xE8, 0, 0, 0, 0, 0x48, 0x89, 0xC0};
 };</pre>
-
-  <p>Three ideas to extract:</p>
   <ul>
-    <li><strong>The struct is a template for instructions.</strong> <code>code</code> starts as the two instruction skeletons — <code>0x68</code> is <code>push imm32</code>, <code>0xE9</code> is <code>jmp rel32</code> — with the operands zeroed and trailing <code>0x90</code> (<code>nop</code>) padding to a fixed size. <code>#pragma pack(1)</code> guarantees the struct has no padding, so <code>&amp;code[6]</code> really is the <code>rel32</code> operand.</li>
-    <li><strong>Writing an operand is a cast to a pointer, then a store.</strong> <code>*reinterpret_cast&lt;uint32_t*&gt;(&amp;code[6]) = offset32;</code> says: treat these four bytes as a <code>uint32_t</code> and store into them. No memcpy needed.</li>
-    <li><strong>Relative offsets are computed in C++.</strong> The jmp's displacement is <code>target − address_of_next_instruction</code>. <code>rip_addr = &amp;code[10]</code> is where <code>rip</code> will be after the jmp begins, so <code>offset32 = func_addr − rip_addr</code> is the exact value the CPU expects. The emulator is doing the arithmetic the assembler would do.</li>
+    <li><strong>The bytes are instructions:</strong> <code>48 E8 rel32</code> calls the handler; <code>48 89 C0</code> initially copies RAX to itself. <code>SetOutputReg()</code> changes that destination register.</li>
+    <li><strong>The four-byte displacement starts at offset 2.</strong> It is the target minus the next instruction address, <code>&amp;code[6]</code>. The allocator must keep the target within signed 32-bit reach.</li>
+    <li><strong>The REX.W prefix matters on AMD:</strong> it prevents a retained <code>0x66</code> prefix from turning the near call into <code>callw</code>.</li>
   </ul>
-
-  <p>The next level is constructing objects <em>inside</em> a code buffer — placement new. <code>CallPlt</code> lays a table of <code>JmpWithIndex</code> stubs out at offsets into its own byte array:</p>
-
-  <div class="filename">src/loader/jit.h — CallPlt</div>
-<pre>explicit CallPlt(uint32_t table_size) {
-    for (uint32_t index = 0; index &lt; table_size; index++) {
-        auto* c = new (&amp;code[32] + JmpWithIndex::GetSize() * index) JmpWithIndex;
-        c-&gt;SetIndex(index);
-        c-&gt;SetFunc(this);
-    }
-}</pre>
-
-  <p><code>new (address) Type</code> runs the constructor on memory that already exists instead of allocating — here it initialises each <code>JmpWithIndex</code> at the right offset inside the <code>code</code> buffer, so that by the time the game runs, this struct <em>is</em> a runnable PLT.</p>
+  <p>Placement new is still used, but the old custom PLT classes are gone. In <code>RuntimeLinker::SetupTlsHandler()</code>, it constructs the TLS bridge in an existing allocation:</p>
+  <div class="filename">src/loader/runtimeLinker.cpp — SetupTlsHandler</div>
+<pre>auto* code = new (reinterpret_cast&lt;void*&gt;(program-&gt;tls.handler_vaddr)) Jit::SafeCall;
+code-&gt;SetFunc(TlsMainGetAddr);</pre>
+  <p><code>new (address) Type</code> runs a constructor on memory that already exists; it does not allocate that memory. The function also installs per-register <code>TlsRegStub</code> objects, protects the allocation as executable, and flushes the instruction cache.</p>
 
   <p>The most elaborate one is <code>SafeCall</code>, a whole function hand-written in bytes, and it shows the two ABI rules from earlier being honoured by hand. Windows requires 32 bytes of shadow space and 16-byte stack alignment at a <code>call</code>:</p>
 
@@ -214,7 +194,7 @@ movabs rcx, &lt;handler&gt;             <i>the handler pointer is patched in at 
 call   rcx
 mov    rsp, rbx                   <i>restore, pop everything back, ret</i></pre>
 
-  <p>Everything you need to read the tree is in that file: <code>#pragma pack(1)</code>, <code>reinterpret_cast</code> writes, relative-offset arithmetic, placement new, and function pointers carrying their own ABI. Read it top to bottom once and the rest of the loader stops being opaque.</p>
+  <p>Everything you need to read the tree is in that file: <code>#pragma pack(1)</code>, <code>reinterpret_cast</code> writes, relative-offset arithmetic and function pointers carrying their own ABI. Read it top to bottom once and the rest of the loader stops being opaque.</p>
 
   <h4 id="the-red-zone">The red zone — a guest promise that breaks on Windows</h4>
   <p>System V grants a leaf function 128 bytes <em>below</em> <code>rsp</code> — the red zone — to use freely without adjusting the stack pointer. Guest code was compiled assuming that promise. Windows never made it: a kernel-delivered exception or signal handler will use that exact space, silently overwriting the guest's data.</p>
@@ -238,7 +218,7 @@ mov    rsp, rbx                   <i>restore, pop everything back, ret</i></pre>
     <div class="lh">Learn more · assembly and machine code</div>
     <ul>
       <li><span class="kind spec">Spec</span><div><a href="https://gcc.gnu.org/onlinedocs/gcc/Extended-Asm.html">GCC — Extended Asm</a><span class="d">The definitive grammar for everything in the inline-asm section: the four-part template, constraints, and clobbers. Clang implements the same syntax.</span></div></li>
-      <li><span class="kind">Reference</span><div><a href="https://www.felixcloutier.com/x86/">Felix Cloutier — x86 instruction reference</a><span class="d">The opcode bytes in <code>jit.h</code> are plain text here. Look up <code>E8</code> (call), <code>E9</code> (jmp) or <code>68</code> (push imm32) to see exactly why the offsets line up the way they do.</span></div></li>
+      <li><span class="kind">Reference</span><div><a href="https://www.felixcloutier.com/x86/">Felix Cloutier — x86 instruction reference</a><span class="d">The opcode bytes in <code>jit.h</code> are plain text here. Look up <code>E8</code> (call), <code>B8</code> (mov immediate) or <code>FF /4</code> (indirect jmp) to see exactly why the offsets line up the way they do.</span></div></li>
       <li><span class="kind">Reference</span><div><a href="https://www.agner.org/optimize/">Agner Fog — calling conventions and optimization manuals</a><span class="d">The canonical independent account of the System V and Microsoft x64 ABIs, including register preservation rules and stack alignment.</span></div></li>
       <li><span class="kind spec">Spec</span><div><a href="https://wiki.osdev.org/System_V_ABI">OSDev Wiki — System V ABI</a><span class="d">A friendlier summary of the same rules, including the red zone and the variadic <code>al</code> rule.</span></div></li>
       <li><span class="kind">Book</span><div><a href="https://www.agner.org/optimize/">+ <a href="https://asm.sourceforge.net/intro/hello.html">A Tiny Guide to GCC Inline Assembly</a><span class="d">A short tutorial that builds from the empty form to outputs, inputs and clobbers — ideal for the ten-minute version of this topic.</span></div></li>
@@ -285,7 +265,7 @@ mov    rsp, rbx                   <i>restore, pop everything back, ret</i></pre>
         </li>
         <li class="check-item">
           <input type="checkbox">
-          <label>Find the placement-new expression in <code>CallPlt</code>. Re-explain it in terms of "a constructor running on pre-existing memory".</label>
+          <label>Find the placement-new expression in <code>RuntimeLinker::SetupTlsHandler</code>. Explain how it constructs <code>Jit::SafeCall</code> in already reserved guest memory.</label>
         </li>
         <li class="check-item">
           <input type="checkbox">
@@ -301,15 +281,15 @@ mov    rsp, rbx                   <i>restore, pop everything back, ret</i></pre>
 
 </main>
 
-<script src="assets/topics.js?v=26" defer></script>
-<script src="assets/search-index.js?v=26" defer></script>
-<script src="assets/app.js?v=26" defer></script>
-<script src="assets/viz.js?v=26" defer></script>
-<script src="assets/atlas.js?v=26" defer></script>
-<script src="assets/lab.js?v=26" defer></script>
-<script src="assets/figs.js?v=26" defer></script>
-<script src="assets/figures.js?v=26" defer></script>
-<script src="assets/highlight.js?v=26" defer></script>
-<script src="assets/tutor.js?v=26" defer></script>
+<script src="assets/topics.js?v=20260929" defer></script>
+<script src="assets/search-index.js?v=20260929" defer></script>
+<script src="assets/app.js?v=20260929" defer></script>
+<script src="assets/viz.js?v=20260929" defer></script>
+<script src="assets/atlas.js?v=20260929" defer></script>
+<script src="assets/lab.js?v=20260929" defer></script>
+<script src="assets/figs.js?v=20260929" defer></script>
+<script src="assets/figures.js?v=20260929" defer></script>
+<script src="assets/highlight.js?v=20260929" defer></script>
+<script src="assets/tutor.js?v=20260929" defer></script>
 </body>
 </html>

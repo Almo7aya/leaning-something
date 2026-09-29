@@ -6,8 +6,8 @@
 <title>KytyPS5 — The Complete Book</title>
 <meta name="description" content="A complete book on the KytyPS5 PlayStation 5 emulator: foundations, loader, memory, HLE libraries, PM4, shader recompilation and the Vulkan renderer.">
 <meta name="color-scheme" content="light dark">
-<link rel="stylesheet" href="assets/viz.css?v=26">
-<script src="assets/viz.js?v=26" defer></script>
+<link rel="stylesheet" href="assets/viz.css?v=20260929">
+<script src="assets/viz.js?v=20260929" defer></script>
 <style>
 .xlinks{margin-top:var(--s6);padding-top:var(--s4);border-top:1px solid var(--rule);font-family:var(--mono);font-size:10.5px;line-height:1.8;color:var(--faint)}
 .xlinks b{display:block;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);margin-bottom:4px;font-weight:600}
@@ -15,7 +15,7 @@
 .xlinks a:hover{color:var(--ink);text-decoration:underline}
 .xlinks a.here{color:var(--ink);font-weight:600}
 </style>
-<link rel="stylesheet" href="assets/highlight.css?v=26">
+<link rel="stylesheet" href="assets/highlight.css?v=20260929">
 </head>
 <body><style>
 :root{
@@ -400,7 +400,7 @@ for (;;) {
   <div class="primer">
     <span class="lbl">Jargon · LLE versus HLE</span>
     <p><strong>Low-level emulation (LLE)</strong> simulates the hardware and runs the console's own firmware and libraries on top. Maximum accuracy, terrible speed, and it requires copyrighted system files that users must dump from a console they own.</p>
-    <p><strong>High-level emulation (HLE)</strong> replaces those libraries with reimplementations. Much faster, legally cleaner — no console files needed — but every function you have not implemented is a crash waiting to happen, and subtle behavioural differences produce bugs that look like nothing else.</p>
+    <p><strong>High-level emulation (HLE)</strong> replaces those libraries with reimplementations. It can avoid executing those system-library binaries, but each replacement must match the guest-visible contract. A missing function can fail immediately or fall back to a logging zero-return stub; silent incorrect results can cause failures much later. HLE does not by itself establish compatibility.</p>
     <p>KytyPS5 is HLE throughout. Its README states that "no external low-level emulation modules are currently required," which is a deliberate design goal, not an accident.</p>
   </div>
 
@@ -481,7 +481,7 @@ for (;;) {
 ├─ *.prx / *.sprx         optional extra modules shipped with the game
 └─ (game data files)</pre>
   <p>Kyty reads <code>param.json</code> for the title ID and the flexible-memory budget, mounts the directory as <code>/app0</code>, then loads <code>eboot.bin</code>.</p>
-  <div class="srcs"><span class="src">src/emulator.cpp:192</span><span class="src">src/loader/systemContent.cpp</span></div>
+  <div class="srcs"><span class="src">src/emulator.cpp</span><span class="src">src/loader/systemContent.cpp</span></div>
 
   <div class="learn">
     <div class="lh">Learn more · console internals</div>
@@ -538,21 +538,21 @@ for (;;) {
   <p>Measured in lines of C++ in <code>src/</code>:</p>
 
   <div class="fig">
-    <div class="fig-head"><span>Where the code is</span><span>131,582 lines · 369 files</span></div>
+    <div class="fig-head"><span>Where the code is</span><span>156,135 lines · 382 files</span></div>
     <div class="fig-body">
       <div class="chart" style="display:grid;gap:6px">
-        <div style="display:grid;grid-template-columns:minmax(120px,220px) minmax(0,1fr) 7ch;gap:12px;align-items:center"><div style="font-family:var(--mono);font-size:11.5px">libs — HLE system libraries</div><div style="height:16px;background:var(--surface-3);border-radius:0 3px 3px 0"><div style="height:100%;width:100%;background:var(--guest);border-radius:0 3px 3px 0"></div></div><div style="font-family:var(--mono);font-size:11.5px;text-align:right;color:var(--muted)">50,747</div></div>
-        <div style="display:grid;grid-template-columns:minmax(120px,220px) minmax(0,1fr) 7ch;gap:12px;align-items:center"><div style="font-family:var(--mono);font-size:11.5px">graphics/shader — recompiler</div><div style="height:16px;background:var(--surface-3);border-radius:0 3px 3px 0"><div style="height:100%;width:62.1%;background:var(--guest);border-radius:0 3px 3px 0"></div></div><div style="font-family:var(--mono);font-size:11.5px;text-align:right;color:var(--muted)">31,497</div></div>
-        <div style="display:grid;grid-template-columns:minmax(120px,220px) minmax(0,1fr) 7ch;gap:12px;align-items:center"><div style="font-family:var(--mono);font-size:11.5px">graphics/host_gpu — Vulkan</div><div style="height:16px;background:var(--surface-3);border-radius:0 3px 3px 0"><div style="height:100%;width:35.6%;background:var(--guest);border-radius:0 3px 3px 0"></div></div><div style="font-family:var(--mono);font-size:11.5px;text-align:right;color:var(--muted)">18,079</div></div>
-        <div style="display:grid;grid-template-columns:minmax(120px,220px) minmax(0,1fr) 7ch;gap:12px;align-items:center"><div style="font-family:var(--mono);font-size:11.5px">kernel — threads, memory, files</div><div style="height:16px;background:var(--surface-3);border-radius:0 3px 3px 0"><div style="height:100%;width:27.8%;background:var(--guest);border-radius:0 3px 3px 0"></div></div><div style="font-family:var(--mono);font-size:11.5px;text-align:right;color:var(--muted)">14,118</div></div>
-        <div style="display:grid;grid-template-columns:minmax(120px,220px) minmax(0,1fr) 7ch;gap:12px;align-items:center"><div style="font-family:var(--mono);font-size:11.5px">graphics/guest_gpu — PM4</div><div style="height:16px;background:var(--surface-3);border-radius:0 3px 3px 0"><div style="height:100%;width:21.3%;background:var(--guest);border-radius:0 3px 3px 0"></div></div><div style="font-family:var(--mono);font-size:11.5px;text-align:right;color:var(--muted)">10,830</div></div>
-        <div style="display:grid;grid-template-columns:minmax(120px,220px) minmax(0,1fr) 7ch;gap:12px;align-items:center"><div style="font-family:var(--mono);font-size:11.5px">common — platform layer</div><div style="height:16px;background:var(--surface-3);border-radius:0 3px 3px 0"><div style="height:100%;width:14.3%;background:var(--guest);border-radius:0 3px 3px 0"></div></div><div style="font-family:var(--mono);font-size:11.5px;text-align:right;color:var(--muted)">7,265</div></div>
-        <div style="display:grid;grid-template-columns:minmax(120px,220px) minmax(0,1fr) 7ch;gap:12px;align-items:center"><div style="font-family:var(--mono);font-size:11.5px">loader — ELF, linking</div><div style="height:16px;background:var(--surface-3);border-radius:0 3px 3px 0"><div style="height:100%;width:14.8%;background:var(--guest);border-radius:0 3px 3px 0"></div></div><div style="font-family:var(--mono);font-size:11.5px;text-align:right;color:var(--muted)">7,531</div></div>
-        <div style="display:grid;grid-template-columns:minmax(120px,220px) minmax(0,1fr) 7ch;gap:12px;align-items:center"><div style="font-family:var(--mono);font-size:11.5px">graphics/presentation</div><div style="height:16px;background:var(--surface-3);border-radius:0 3px 3px 0"><div style="height:100%;width:13.4%;background:var(--guest);border-radius:0 3px 3px 0"></div></div><div style="font-family:var(--mono);font-size:11.5px;text-align:right;color:var(--muted)">6,792</div></div>
-        <div style="display:grid;grid-template-columns:minmax(120px,220px) minmax(0,1fr) 7ch;gap:12px;align-items:center"><div style="font-family:var(--mono);font-size:11.5px">launcher — Qt front end</div><div style="height:16px;background:var(--surface-3);border-radius:0 3px 3px 0"><div style="height:100%;width:8.7%;background:var(--guest);border-radius:0 3px 3px 0"></div></div><div style="font-family:var(--mono);font-size:11.5px;text-align:right;color:var(--muted)">4,432</div></div>
+        <div style="display:grid;grid-template-columns:minmax(120px,220px) minmax(0,1fr) 7ch;gap:12px;align-items:center"><div style="font-family:var(--mono);font-size:11.5px">libs — HLE system libraries</div><div style="height:16px;background:var(--surface-3);border-radius:0 3px 3px 0"><div style="height:100%;width:100.0%;background:var(--guest);border-radius:0 3px 3px 0"></div></div><div style="font-family:var(--mono);font-size:11.5px;text-align:right;color:var(--muted)">52,888</div></div>
+        <div style="display:grid;grid-template-columns:minmax(120px,220px) minmax(0,1fr) 7ch;gap:12px;align-items:center"><div style="font-family:var(--mono);font-size:11.5px">graphics/shader — recompiler</div><div style="height:16px;background:var(--surface-3);border-radius:0 3px 3px 0"><div style="height:100%;width:61.6%;background:var(--guest);border-radius:0 3px 3px 0"></div></div><div style="font-family:var(--mono);font-size:11.5px;text-align:right;color:var(--muted)">32,561</div></div>
+        <div style="display:grid;grid-template-columns:minmax(120px,220px) minmax(0,1fr) 7ch;gap:12px;align-items:center"><div style="font-family:var(--mono);font-size:11.5px">graphics/host_gpu — Vulkan</div><div style="height:16px;background:var(--surface-3);border-radius:0 3px 3px 0"><div style="height:100%;width:34.6%;background:var(--guest);border-radius:0 3px 3px 0"></div></div><div style="font-family:var(--mono);font-size:11.5px;text-align:right;color:var(--muted)">18,280</div></div>
+        <div style="display:grid;grid-template-columns:minmax(120px,220px) minmax(0,1fr) 7ch;gap:12px;align-items:center"><div style="font-family:var(--mono);font-size:11.5px">kernel — threads, memory, files</div><div style="height:16px;background:var(--surface-3);border-radius:0 3px 3px 0"><div style="height:100%;width:27.2%;background:var(--guest);border-radius:0 3px 3px 0"></div></div><div style="font-family:var(--mono);font-size:11.5px;text-align:right;color:var(--muted)">14,400</div></div>
+        <div style="display:grid;grid-template-columns:minmax(120px,220px) minmax(0,1fr) 7ch;gap:12px;align-items:center"><div style="font-family:var(--mono);font-size:11.5px">graphics/guest_gpu — PM4</div><div style="height:16px;background:var(--surface-3);border-radius:0 3px 3px 0"><div style="height:100%;width:20.3%;background:var(--guest);border-radius:0 3px 3px 0"></div></div><div style="font-family:var(--mono);font-size:11.5px;text-align:right;color:var(--muted)">10,719</div></div>
+        <div style="display:grid;grid-template-columns:minmax(120px,220px) minmax(0,1fr) 7ch;gap:12px;align-items:center"><div style="font-family:var(--mono);font-size:11.5px">common — platform layer</div><div style="height:16px;background:var(--surface-3);border-radius:0 3px 3px 0"><div style="height:100%;width:14.3%;background:var(--guest);border-radius:0 3px 3px 0"></div></div><div style="font-family:var(--mono);font-size:11.5px;text-align:right;color:var(--muted)">7,568</div></div>
+        <div style="display:grid;grid-template-columns:minmax(120px,220px) minmax(0,1fr) 7ch;gap:12px;align-items:center"><div style="font-family:var(--mono);font-size:11.5px">loader — ELF, linking</div><div style="height:16px;background:var(--surface-3);border-radius:0 3px 3px 0"><div style="height:100%;width:13.6%;background:var(--guest);border-radius:0 3px 3px 0"></div></div><div style="font-family:var(--mono);font-size:11.5px;text-align:right;color:var(--muted)">7,207</div></div>
+        <div style="display:grid;grid-template-columns:minmax(120px,220px) minmax(0,1fr) 7ch;gap:12px;align-items:center"><div style="font-family:var(--mono);font-size:11.5px">graphics/presentation</div><div style="height:16px;background:var(--surface-3);border-radius:0 3px 3px 0"><div style="height:100%;width:13.4%;background:var(--guest);border-radius:0 3px 3px 0"></div></div><div style="font-family:var(--mono);font-size:11.5px;text-align:right;color:var(--muted)">7,096</div></div>
+        <div style="display:grid;grid-template-columns:minmax(120px,220px) minmax(0,1fr) 7ch;gap:12px;align-items:center"><div style="font-family:var(--mono);font-size:11.5px">launcher — Qt front end</div><div style="height:16px;background:var(--surface-3);border-radius:0 3px 3px 0"><div style="height:100%;width:8.9%;background:var(--guest);border-radius:0 3px 3px 0"></div></div><div style="font-family:var(--mono);font-size:11.5px;text-align:right;color:var(--muted)">4,713</div></div>
       </div>
     </div>
-    <div class="fig-note"><p>Graphics — shader, host_gpu, guest_gpu and presentation together — is about 61,000 lines, roughly half the emulator. The shader recompiler alone is larger than the loader, the kernel and the platform layer combined.</p></div>
+    <div class="fig-note"><p>Graphics — shader, host_gpu, guest_gpu and presentation together — contains 68,656 lines of C++ source and headers at this snapshot (44% of the measured tree). Counts include .cpp, .h and .inc files.</p></div>
   </div>
 </section>
 
@@ -640,7 +640,7 @@ ret</pre>
   </div>
 
   <h4>One more x86-64 detail: variadic functions</h4>
-  <p>Under System V, a variadic function such as <code>printf</code> receives, in <code>al</code>, the number of vector registers used for arguments. That is why the generated import thunk in chapter 17 begins with <code>push rax</code> — preserving <code>al</code> across the resolution call, because the target might be variadic.</p>
+  <p>System V variadic calls carry the vector-register argument count in <code>al</code>. The current diagnostic import stub does not forward variadic calls; <code>guestPrintf.cpp</code> interprets the guest argument list explicitly instead of passing it to a host <code>vprintf</code>.</p>
   <p>It is also why Kyty cannot simply forward a guest <code>printf</code> to the host's <code>vprintf</code>: the argument list layout differs. <code>src/libs/guestPrintf.cpp</code> is 25 KB implementing the format-string interpreter from scratch for exactly this reason.</p>
 
   <div class="learn">
@@ -683,7 +683,7 @@ ret</pre>
   <h4>The page-size mismatch</h4>
   <p>The PS5 uses 16 KB pages; PCs use 4 KB. Kyty's guest allocator works in <code>0x4000</code>-byte units:</p>
 
-  <div class="filename">src/loader/runtimeLinker.cpp:2010</div>
+  <div class="filename">src/loader/runtimeLinker.cpp</div>
 <pre>constexpr uint64_t GUEST_PAGE_SIZE = <b>0x4000</b>;
 program-&gt;base_size_aligned = AlignUp(program-&gt;base_size, GUEST_PAGE_SIZE);</pre>
 
@@ -707,7 +707,7 @@ program-&gt;base_size_aligned = AlignUp(program-&gt;base_size, GUEST_PAGE_SIZE);
         <div id="band-detail"></div>
       </div>
     </div>
-    <div class="fig-note"><p>macOS shifts these ranges and pins them with linker flags — <code>-segaddr SYSTEM_RESERVED,0x7ffffc000 -segaddr USER_AREA,0x7000000000</code> — so the dynamic loader can never place a system library where the guest needs to allocate. <span class="src">CMakeLists.txt:385</span></p></div>
+    <div class="fig-note"><p>macOS shifts these ranges and pins them with linker flags — <code>-segaddr SYSTEM_RESERVED,0x7ffffc000 -segaddr USER_AREA,0x7000000000</code> — so the dynamic loader can never place a system library where the guest needs to allocate. <span class="src">CMakeLists.txt</span></p></div>
   </div>
 
   <div class="callout k">
@@ -737,7 +737,7 @@ program-&gt;base_size_aligned = AlignUp(program-&gt;base_size, GUEST_PAGE_SIZE);
 
   <p>A program header entry says: "take <code>p_filesz</code> bytes at file offset <code>p_offset</code>, place them at virtual address <code>p_vaddr</code>, zero-fill up to <code>p_memsz</code>, and apply these permissions." Loading is essentially a loop over those entries.</p>
 
-  <div class="filename">src/loader/elf.h:175 — the actual struct Kyty parses</div>
+  <div class="filename">src/loader/elf.h — the actual struct Kyty parses</div>
 <pre>struct Elf64_Phdr {
     Elf64_Word  p_type;    <i>PT_LOAD, PT_DYNAMIC, PT_TLS, …</i>
     Elf64_Word  p_flags;   <i>PF_R | PF_W | PF_X</i>
@@ -993,21 +993,21 @@ OpBranchConditional %cond %then %else
 
 <pre>KytyPS5/
 ├─ src/                    <b>CMake source root — not the repo root</b>
-│  ├─ main.cpp             argument parsing, 369 lines
+│  ├─ main.cpp             argument parsing, 457 lines
 │  ├─ emulator.cpp         the spine: init, mount, load, execute — 224 lines
 │  ├─ CMakeLists.txt       targets, compiler checks, test executables
-│  ├─ common/              platform abstraction (45 files, 7,265 lines)
-│  ├─ loader/              ELF/SELF loading and linking (17 files, 7,531)
-│  ├─ kernel/              memory, pthreads, files, events (16 files, 14,118)
-│  ├─ libs/                HLE system libraries (70 files, 50,747)
+│  ├─ common/              platform abstraction (47 files, 7,568 lines)
+│  ├─ loader/              ELF/SELF loading and linking (17 files, 7,207 lines)
+│  ├─ kernel/              memory, pthreads, files, events (16 files, 14,400 lines)
+│  ├─ libs/                HLE system libraries (79 files, 52,888 lines)
 │  ├─ graphics/
-│  │  ├─ guest_gpu/        PM4, registers, tiling (14 files, 10,830)
-│  │  ├─ shader/           RDNA 2 → SPIR-V (94 files, 31,497)
-│  │  ├─ host_gpu/         Vulkan backend (69 files, 18,079)
-│  │  └─ presentation/     window, swapchain, flip, overlay (14 files, 6,792)
-│  └─ launcher/            optional Qt front end (25 files, 4,432)
-├─ 3rdparty/               14 submodules
-├─ tests/                  16 standalone test executables (56,159 lines)
+│  │  ├─ guest_gpu/        PM4, registers, tiling (14 files, 10,719 lines)
+│  │  ├─ shader/           RDNA 2 → SPIR-V (94 files, 32,561 lines)
+│  │  ├─ host_gpu/         Vulkan backend (71 files, 18,280 lines)
+│  │  └─ presentation/     window, swapchain, flip, overlay (14 files, 7,096 lines)
+│  └─ launcher/            optional Qt front end (27 files, 4,713 lines)
+├─ 3rdparty/               17 submodules
+├─ tests/                  25 portable executables, plus macOS SSE4a
 └─ docs/                   screenshots</pre>
 
   <h4>Responsibilities</h4>
@@ -1022,7 +1022,7 @@ OpBranchConditional %cond %then %else
         <tr><td><code>graphics/guest_gpu/</code></td><td><span class="chip guest">guest</span></td><td>The PS5 GPU's own side: PM4 packet definitions and parsing, the hardware register file, the command-processor state machine, tiling arithmetic.</td></tr>
         <tr><td><code>graphics/shader/</code></td><td><span class="chip kyty">kyty</span></td><td>A compiler. Decoder, control-flow graph, IR, dataflow analyses, resource tracking, SPIR-V emitter.</td></tr>
         <tr><td><code>graphics/host_gpu/</code></td><td><span class="chip host">host</span></td><td>Vulkan: instance and device setup, command scheduling, pipelines, descriptors, and the five caches that map guest memory to Vulkan objects.</td></tr>
-        <tr><td><code>graphics/presentation/</code></td><td><span class="chip host">host</span></td><td>SDL2 window, Vulkan swapchain, the <code>VideoOut</code> flip model, virtual vertical blank, RenderDoc integration.</td></tr>
+        <tr><td><code>graphics/presentation/</code></td><td><span class="chip host">host</span></td><td>SDL3 window, Vulkan swapchain, the <code>VideoOut</code> flip model, virtual vertical blank, RenderDoc integration.</td></tr>
         <tr><td><code>launcher/</code></td><td><span class="chip host">host</span></td><td>Qt 6 GUI. Scans folders for <code>eboot.bin</code>, edits per-title settings, shows compatibility data and trophies, launches <code>kyty_emulator</code> with the right flags. Touches no emulation code at all.</td></tr>
       </tbody>
     </table>
@@ -1033,12 +1033,12 @@ OpBranchConditional %cond %then %else
     <table>
       <thead><tr><th class="num">Size</th><th>File</th><th>Why it is big</th></tr></thead>
       <tbody>
-        <tr><td class="num">216 KB</td><td><code>libs/agcRegisterDefaults.inc</code></td><td>A generated table of the values the graphics driver writes at context reset.</td></tr>
-        <tr><td class="num">152 KB</td><td><code>libs/agc.cpp</code></td><td>AGC command-buffer builder functions and validation.</td></tr>
-        <tr><td class="num">144 KB</td><td><code>guest_gpu/…/pm4Handlers.cpp</code></td><td>PM4 opcode and hardware-register handlers.</td></tr>
-        <tr><td class="num">140 KB</td><td><code>kernel/memory.cpp</code></td><td>Direct, flexible and pooled memory, page attributes, naming, batches and PRT apertures.</td></tr>
-        <tr><td class="num">128 KB</td><td><code>kernel/pthread.cpp</code></td><td>A pthread implementation with FreeBSD semantics.</td></tr>
-        <tr><td class="num">116 KB</td><td><code>libs/libNet.cpp</code></td><td>The large network HLE surface.</td></tr>
+        <tr><td class="num">213 KB</td><td><code>libs/agcRegisterDefaults.inc</code></td><td>A generated table of the values the graphics driver writes at context reset.</td></tr>
+        <tr><td class="num">150 KB</td><td><code>libs/agc.cpp</code></td><td>AGC command-buffer builder functions and validation.</td></tr>
+        <tr><td class="num">142 KB</td><td><code>guest_gpu/…/pm4Handlers.cpp</code></td><td>PM4 opcode and hardware-register handlers.</td></tr>
+        <tr><td class="num">143 KB</td><td><code>kernel/memory.cpp</code></td><td>Direct, flexible and pooled memory, page attributes, naming, batches and PRT apertures.</td></tr>
+        <tr><td class="num">126 KB</td><td><code>kernel/pthread.cpp</code></td><td>A pthread implementation with FreeBSD semantics.</td></tr>
+        <tr><td class="num">118 KB</td><td><code>libs/libNet.cpp</code></td><td>The large network HLE surface.</td></tr>
       </tbody>
     </table>
   </div>
@@ -1062,9 +1062,9 @@ cmake --install _Build/windows --prefix _Build/windows/install</pre>
 
 <pre><i># Linux</i>
 sudo apt-get install --no-install-recommends \
-  clang lld ninja-build cmake git glslang-tools \
+  clang lld ninja-build cmake git glslang-tools pkg-config \
   libgl1-mesa-dev libx11-dev libxcursor-dev libxext-dev libxfixes-dev \
-  libxi-dev libxrandr-dev libxss-dev libxkbcommon-dev \
+  libxi-dev libxrandr-dev libxss-dev libxtst-dev libxkbcommon-dev \
   libasound2-dev libpulse-dev libudev-dev libdbus-1-dev libwayland-dev wayland-protocols
 
 cmake -S . -B _Build/linux -G Ninja -DCMAKE_BUILD_TYPE=Release \
@@ -1075,8 +1075,18 @@ cmake -S . -B _Build/linux -G Ninja -DCMAKE_BUILD_TYPE=Release \
     <span class="lbl">Three build facts that cause most failures</span>
     <p><strong>The repository root is the CMake source root.</strong> Use <code>cmake -S .</code>; older commands using <code>-S src</code> refer to the previous build layout.</p>
     <p><strong>MSVC is rejected.</strong> The project needs <code>__attribute__((sysv_abi))</code>, so <code>clang-cl</code> is required on Windows. This is checked at configure time.</p>
-    <p><strong>The audio and input packages are not optional on Linux.</strong> Without the ALSA, PulseAudio, udev and Wayland development packages, the bundled SDL2 silently configures itself without those backends and the resulting build has no sound and no gamepad hotplug.</p>
+    <p><strong>The audio and input packages are not optional on Linux.</strong> Without the ALSA, PulseAudio, udev and Wayland development packages, the bundled SDL3 silently configures itself without those backends and the resulting build has no sound and no gamepad hotplug.</p>
   </div>
+
+<h4 id="current-build-options">Current build options</h4>
+  <p>The root <code>CMakeLists.txt</code> requires CMake 3.22.1 or newer. Use <code>clang-cl</code> on Windows and the documented Clang toolchain on Linux/macOS. <code>glslangValidator</code> must be on <code>PATH</code>. CMake automatically selects <code>sccache</code>, then <code>ccache</code>, unless a compiler launcher was already supplied.</p>
+  <p>Qt is optional: configure a separate directory with <code>-DKYTY_BUILD_LAUNCHER=OFF</code> to build <code>kyty_emulator</code> and <code>kyty_tests</code> without it. SDL3 provides window, input and audio services. FFmpeg comes from the pinned static FFmpeg-core release, including VP9/WebM; system FFmpeg packages are not required. Dependencies include both submodules and configure-time downloads, including ZArchive and zstd.</p>
+<pre>cmake -S . -B _Build/no-qt -G Ninja -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+  -DKYTY_BUILD_LAUNCHER=OFF
+cmake --build _Build/no-qt --target kyty_emulator kyty_tests --parallel
+ctest --test-dir _Build/no-qt --output-on-failure</pre>
+  <p>On NixOS, enter <code>nix develop</code> or <code>nix-shell</code> first. The shell supplies the toolchain, Qt paths and SDL3 backend dependencies; configure still needs network access. See <code>flake.nix</code> and <code>nix/devshell.nix</code>.</p>
 
   <h4>macOS is an unusual case</h4>
   <p>macOS builds target <strong>x86-64</strong> and run under Rosetta 2 on Apple Silicon. That is not a compromise — it is required. The PS5's code is x86-64, and Kyty executes it natively, so the emulator must itself be an x86-64 process for the guest code to run inside it. The guest's instructions then go through the same Rosetta translation as the emulator's own.</p>
@@ -1090,14 +1100,14 @@ cmake -S . -B _Build/linux -G Ninja -DCMAKE_BUILD_TYPE=Release \
         <tr><td><code>Vulkan-Headers</code></td><td>API declarations. Vulkan is loaded dynamically, so no SDK is needed to build.</td></tr>
         <tr><td><code>VulkanMemoryAllocator</code></td><td>Sub-allocates GPU memory. Vulkan's raw allocation is too coarse to use directly.</td></tr>
         <tr><td><code>SPIRV-Headers</code>, <code>SPIRV-Tools</code></td><td>Emission, validation (<code>spirv-val</code>) and optimisation (<code>spirv-opt</code>) of recompiled shaders.</td></tr>
-        <tr><td><code>SDL2</code></td><td>Window, keyboard, mouse, gamepad, and the Vulkan surface. Statically linked.</td></tr>
+        <tr><td><code>SDL3</code></td><td>Window, keyboard, mouse, gamepad, and the Vulkan surface. Statically linked.</td></tr>
         <tr><td><code>ffmpeg-core</code></td><td>Video decode for AVPlayer; AAC and MP3 for the AJM audio block.</td></tr>
         <tr><td><code>LibAtrac9</code></td><td>Sony's ATRAC9 audio codec, which FFmpeg does not cover.</td></tr>
         <tr><td><code>fmt</code>, <code>spdlog</code></td><td>Formatting and logging.</td></tr>
         <tr><td><code>nlohmann_json</code></td><td><code>param.json</code> and ETAHen/GoldHEN-style cheat files.</td></tr>
         <tr><td><code>magic_enum</code></td><td>Enum reflection — this is why CLI flags accept enumerator names directly.</td></tr>
         <tr><td><code>xxHash</code></td><td>Fast hashing for shader and pipeline cache keys.</td></tr>
-        <tr><td><code>tracy</code></td><td>Frame profiler, enabled with <code>--profiler-direction Network</code>.</td></tr>
+        <tr><td><code>tracy</code></td><td>Frame profiler, enabled with <code>--profile</code>.</td></tr>
         <tr><td><code>stb</code>, <code>cpuinfo</code>, <code>winpthread</code></td><td>Image decode, CPU feature detection, pthreads on Windows.</td></tr>
       </tbody>
     </table>
@@ -1113,7 +1123,7 @@ cmake -S . -B _Build/linux -G Ninja -DCMAKE_BUILD_TYPE=Release \
   <h4>The subsystem contract</h4>
   <p>A managed component exposes a lightweight <code>Lifecycle</code> type. It always names an initialize callback and may provide normal and emergency shutdown callbacks:</p>
 
-  <div class="filename">src/common/subsystems.h:18</div>
+  <div class="filename">src/common/subsystems.h</div>
 <pre>struct Lifecycle {
     static constexpr const char* name       = "Graphics";
     static constexpr auto        initialize = Graphics::Initialize;
@@ -1133,7 +1143,7 @@ void Subsystems::<b>Initialize</b>() {
   <h4>Ordering is explicit</h4>
   <p>The dependency graph and topological sort were removed. <code>Emulator::Init()</code> now spells out the valid order directly, and the lifecycle stack automatically reverses it during teardown:</p>
 
-  <div class="filename">src/emulator.cpp:130</div>
+  <div class="filename">src/emulator.cpp</div>
 <pre>subsystems.Initialize&lt;Config::Lifecycle&gt;();
 Config::Load(cfg);
 subsystems.Initialize&lt;Log::Lifecycle&gt;();
@@ -1153,25 +1163,25 @@ subsystems.Initialize&lt;Graphics::Lifecycle&gt;();</pre>
   <h4>Configuration reaches the emulator through the command line</h4>
   <p><code>ConfigOptions</code> remains the emulator's runtime configuration object. The Qt launcher now exposes global and per-game settings, persists them with <code>QSettings</code>, then converts the selected profile into emulator arguments:</p>
 
-  <div class="filename">src/common/emulatorConfig.h:45</div>
+  <div class="filename">src/common/emulatorConfig.h</div>
 <pre>struct ConfigOptions {
     uint32_t    screen_width       = 1280;
     uint32_t    screen_height      = 720;
     std::string user_name          = "Kyty";
     int32_t     user_id            = 1000;
-    PresentMode present_mode       = PresentMode::Fifo;
+    PresentMode present_mode       = PresentMode::Mailbox;
     bool        fullscreen_enabled = false;
     uint32_t    vblank_frequency   = 60;
     uint32_t    console_language   = 1;
     <i>// validation, shader logging, command-buffer and graphics dumps…</i>
-    OutputDirection printf_direction = OutputDirection::Silent;
+    LogDirection printf_direction = LogDirection::Silent;
     bool gpu_assisted_validation_enabled = false;
     bool readback_linear_images           = false;
     bool playgo_hack_enabled              = false;
     Keymap keymap;
 };</pre>
 
-  <p>Enum-valued flags are parsed with <code>magic_enum</code>, so the accepted strings are literally the enumerator names — <code>--shader-log-direction File</code> works because <code>ShaderLogDirection::File</code> exists:</p>
+  <p>Enum-valued flags are parsed with <code>magic_enum</code>, so the accepted strings are literally the enumerator names — <code>--shader-log-direction File</code> works because <code>LogDirection::File</code> exists:</p>
 
 <pre>template &lt;typename E&gt;
 static bool ParseEnum(const std::string&amp; value, E&amp; out) {
@@ -1209,7 +1219,7 @@ static bool ParseEnum(const std::string&amp; value, E&amp; out) {
   <h4>The whole thing as code</h4>
   <p><code>Emulator::Run</code> is short enough to read in full, and it <em>is</em> the boot sequence:</p>
 
-  <div class="filename">src/emulator.cpp:183</div>
+  <div class="filename">src/emulator.cpp</div>
 <pre>void Run(const RunOptions&amp; options) {
     if (options.app0_dir.empty()) EXIT("app0 directory is required\n");
     if (options.elf.empty())      EXIT("ELF is required\n");
@@ -1239,7 +1249,7 @@ static bool ParseEnum(const std::string&amp; value, E&amp; out) {
 
   <h4>Two threads leave <code>Execute</code></h4>
 
-  <div class="filename">src/emulator.cpp:171</div>
+  <div class="filename">src/emulator.cpp</div>
 <pre>static void Execute(const std::filesystem::path&amp; game_patch) {
     auto patch_path = game_patch;
     Common::Thread <b>guest_thread</b>(
@@ -1257,7 +1267,7 @@ static bool ParseEnum(const std::string&amp; value, E&amp; out) {
 
   <h4>And then the guest thread</h4>
 
-  <div class="filename">src/loader/runtimeLinker.cpp:1432</div>
+  <div class="filename">src/loader/runtimeLinker.cpp</div>
 <pre>void RuntimeLinker::Execute(const std::filesystem::path&amp; game_patch) {
     Libs::LibKernel::PthreadInitSelfForMainThread();
     auto* main_stack_top = Libs::LibKernel::PthreadCreateMainGuestStack();
@@ -1311,10 +1321,15 @@ static bool ParseEnum(const std::string&amp; value, E&amp; out) {
 
   <p class="deck">Sony's executable format is standard ELF64 wrapped in a container, with a set of custom type and tag values bolted on. Here is the complete set Kyty understands.</p>
 
+<h4 id="archive-loading">Directories and ZArchive content</h4>
+  <p><code>--game</code> accepts a directory, ELF or <code>.zar</code> ZArchive with <code>eboot.bin</code> at its root. <code>common/archive.cpp</code> exposes virtual paths such as <code>game.zar!/sce_sys/param.json</code> through <code>Common::File</code>. A retained <code>ArchiveReader</code> shares the index and block cache while a mount or launcher scan is active. This is read-only game content; saves and temporary files use writable host locations.</p>
+  <p>Windows starts through <code>wmain</code>, converts arguments to UTF-8 and preserves native <code>std::filesystem::path</code> values through file operations. Guest paths without a matching mount stay outside the host namespace. The launcher uses <code>gameContent.cpp</code> to inspect folders and archives uniformly, including icons, title metadata and game size.</p>
+  <p><code>libSaveData.cpp</code> persists SaveDataMemory2 data and allocation metadata on disk, including search/mount capacity and timestamps. Save-data dialog locking and CP932 conversion have dedicated regression tests. Treat these as observable guest behavior when debugging missing progress or stuck dialogs.</p>
+
   <h4>The SELF container</h4>
   <p><code>eboot.bin</code> starts with a small header describing compressed or encrypted segments, followed by the ELF proper:</p>
 
-  <div class="filename">src/loader/elf.h:140</div>
+  <div class="filename">src/loader/elf.h</div>
 <pre>struct SelfHeader {
     uint8_t  ident[12];
     uint16_t size1;
@@ -1384,7 +1399,7 @@ struct SelfSegment {
 
   <p>The module and library tables matter more than they look. A NID is only unique <em>within</em> a library, so resolution needs all three parts. <code>GetDynModules</code> and <code>GetDynLibs</code> unpack these into <code>DynamicInfo</code>:</p>
 
-  <div class="filename">src/loader/runtimeLinker.h:70 — abbreviated</div>
+  <div class="filename">src/loader/runtimeLinker.h — abbreviated</div>
 <pre>struct DynamicInfo {
     char*       str_table;      uint64_t str_table_size;
     Elf64_Sym*  symbol_table;   uint64_t symbol_table_total_size;
@@ -1392,7 +1407,6 @@ struct SelfSegment {
     Elf64_Rela* jmprela_table;  uint64_t jmprela_table_size;
     uint64_t    init_vaddr, fini_vaddr;
     uint64_t    init_array_vaddr, init_array_size;
-    uint64_t    pltgot_vaddr;
 
     std::vector&lt;const char*&gt; needed;
     std::vector&lt;ModuleId&gt;    <b>export_modules</b>, <b>import_modules</b>;
@@ -1401,7 +1415,7 @@ struct SelfSegment {
 
   <h4>The encoded identifiers</h4>
   <p>Module and library identifiers in a NID string are not names — they are small integers encoded in a base64-like alphabet. <code>EncodeId64</code> converts an index into the one- or two-character form, and resolution then looks that up in the file's own import tables to find the real name and version. This is why the same NID string can mean different things in two different modules.</p>
-  <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp:846</span><span class="src">src/loader/runtimeLinker.cpp:925</span></div>
+  <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp</span><span class="src">src/loader/runtimeLinker.cpp</span></div>
 </section>
 
 <!-- ============================================== CH 14 -->
@@ -1413,7 +1427,7 @@ struct SelfSegment {
   <h4>Deciding how much space to reserve</h4>
   <p>The mapped size is the highest address any loadable segment reaches, rounded up to a guest page, plus room for the generated TLS handler:</p>
 
-  <div class="filename">src/loader/runtimeLinker.cpp:1977</div>
+  <div class="filename">src/loader/runtimeLinker.cpp</div>
 <pre>static uint64_t CalcBaseSize(const Elf64_Ehdr* ehdr, const Elf64_Phdr* phdr) {
     uint64_t base_size = 0;
     for (Elf64_Half i = 0; i &lt; ehdr-&gt;e_phnum; i++) {
@@ -1442,7 +1456,7 @@ g_desired_base_addr += CODE_BASE_INCR * (1 + program-&gt;mapped_size / CODE_BASE
   <p>Note that the region is initially mapped <strong>ExecuteReadWrite</strong>. Correct protection is applied per segment afterwards — the loader needs write access to copy data in and to patch instructions, before locking things down.</p>
 
   <h4>The layout constants</h4>
-  <div class="filename">src/loader/runtimeLinker.cpp:344</div>
+  <div class="filename">src/loader/runtimeLinker.cpp</div>
 <pre>constexpr uint64_t SYSTEM_RESERVED  = 0x800000000u;
 constexpr uint64_t CODE_BASE_INCR   = 0x010000000u;   <i>// 256 MB between modules</i>
 constexpr uint64_t CODE_BASE_OFFSET = 0x100000000u;
@@ -1570,7 +1584,7 @@ static uint64_t g_desired_base_addr = SYSTEM_RESERVED + CODE_BASE_OFFSET;   <i>/
 
   <h4>Loading order across modules</h4>
   <p><code>PreloadAdjacentPrograms()</code> scans the directory beside the executable for <code>.prx</code> / <code>.sprx</code> modules and loads them before relocation begins. This ordering is mandatory: a symbol may be exported by a module that is loaded after the one importing it, so all modules must exist before any relocation is resolved.</p>
-  <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp:1829</span><span class="src">src/loader/runtimeLinker.cpp:1450</span></div>
+  <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp</span><span class="src">src/loader/runtimeLinker.cpp</span></div>
 </section>
 
 <!-- ============================================== CH 15 -->
@@ -1580,7 +1594,7 @@ static uint64_t g_desired_base_addr = SYSTEM_RESERVED + CODE_BASE_OFFSET;   <i>/
   <p class="deck">This is the join between guest and emulator. Understanding it makes the entire HLE design obvious.</p>
 
   <h4>What a relocation record contains</h4>
-  <div class="filename">src/loader/elf.h:229</div>
+  <div class="filename">src/loader/elf.h</div>
 <pre>struct Elf64_Rela {
     Elf64_Word GetSymbol() const { return r_info &gt;&gt; 32u; }        <i>// index into symtab</i>
     Elf64_Word GetType()   const { return r_info &amp; 0xffffffff; }  <i>// R_X86_64_*</i>
@@ -1595,7 +1609,7 @@ static uint64_t g_desired_base_addr = SYSTEM_RESERVED + CODE_BASE_OFFSET;   <i>/
   <h4>Resolution</h4>
   <p>For the types that reference a symbol, the loader takes the symbol's name from the string table and calls <code>Resolve</code>. The name is a NID triple:</p>
 
-  <div class="filename">src/loader/runtimeLinker.cpp:1506</div>
+  <div class="filename">src/loader/runtimeLinker.cpp</div>
 <pre>void RuntimeLinker::Resolve(const std::string&amp; name, SymbolType type, Program* program,
                             SymbolRecord* out_info, bool* bind_self) {
     Common::LockGuard lock(m_mutex);
@@ -1626,10 +1640,15 @@ static uint64_t g_desired_base_addr = SYSTEM_RESERVED + CODE_BASE_OFFSET;   <i>/
 
   <p><strong>The HLE database is searched first.</strong> That is the whole trick: if Kyty implements a function, the guest gets Kyty's address even when a real module also exports it.</p>
 
+<h4 id="dynamic-module-lifetimes">Eager relocation and dynamic-module lifetimes</h4>
+  <p><code>RelocateRecord()</code> resolves both relocation tables eagerly. <code>Program::rela_bits</code> records successful bindings, so loading another module retries unresolved imports without overwriting existing guest-modified slots. <code>RelocateProgram()</code> refreshes all loaded importers after a dynamic load. Guest PLT/GOT records still exist, but the emulator's former lazy-PLT setup and <code>DynamicInfo::pltgot_vaddr</code> field have been removed.</p>
+  <p>Explicit module loads increment <code>Program::load_count</code>; the final explicit unload releases the module. Before unmapping, <code>UnloadProgram()</code> identifies imports bound to that module's exact exported address, clears their resolved bits and relocates them again. Matching only a NID could unlink a different provider, so <code>SymbolDatabase::FindByNid()</code> also accepts an address filter.</p>
+  <p>Unresolved function imports still receive diagnostic thunks; unresolved objects point at invalid memory. A thunk is the fallback for an unresolved import, not the ordinary mechanism for deferring all symbol binding until first call.</p>
+
   <h4>How the HLE database is populated</h4>
   <p>Every implementation registers itself with two macros. <code>LIB_VERSION</code> declares the identity of the module being impersonated, and <code>LIB_FUNC</code> binds a NID to a C++ function pointer:</p>
 
-  <div class="filename">src/libs/libs.h:30</div>
+  <div class="filename">src/libs/libs.h</div>
 <pre>#define LIB_ADD(n, f, t)                                            \
     {                                                               \
         Loader::SymbolResolve sr {};                                \
@@ -1698,7 +1717,7 @@ LIB_DEFINE(InitGraphicsDriver_1) {
 
   <p>The fix replaces those exact nine bytes with a call to a generated stub, then moves the result into whatever register the original targeted:</p>
 
-  <div class="filename">src/loader/runtimeLinker.cpp:1154</div>
+  <div class="filename">src/loader/runtimeLinker.cpp</div>
 <pre>const uint8_t tls_pattern[5] = {0x64, 0x48, 0x8B, 0x00, 0x25};
 
 for (auto* ptr = start_ptr; ptr &lt;= end_ptr; ptr++) {
@@ -1726,7 +1745,7 @@ for (auto* ptr = start_ptr; ptr &lt;= end_ptr; ptr++) {
 
   <p><code>Jit::Call9</code> is exactly nine bytes, so the replacement is size-neutral and no addresses shift:</p>
 
-  <div class="filename">src/loader/jit.h:68</div>
+  <div class="filename">src/loader/jit.h</div>
 <pre>struct Call9 {
     void SetFunc(Handler func) { <i>// compute a rip-relative displacement</i> }
     static uint64_t GetSize() { return 9; }
@@ -1740,7 +1759,7 @@ for (auto* ptr = start_ptr; ptr &lt;= end_ptr; ptr++) {
   <p>The <code>mov rax,rax</code> byte is rewritten by <code>SetOutputReg</code> so the value lands in the register the original instruction wanted. For registers other than <code>rax</code> the stub jumps to a per-register variant at a fixed offset (<code>TlsRegStub::GetOffset(reg)</code>), each of which does <code>call handler; mov &lt;reg&gt;, rax</code>.</p>
 
   <h4>What the handler does</h4>
-  <div class="filename">src/loader/runtimeLinker.cpp:1141</div>
+  <div class="filename">src/loader/runtimeLinker.cpp</div>
 <pre>static KYTY_MS_ABI uint8_t* TlsMainGetAddr() {
     if (g_tls_cached_main_program == g_tls_main_program &amp;&amp; g_tls_cached_main_tcb != nullptr) {
         return g_tls_cached_main_tcb;                       <i>// fast path</i>
@@ -1761,7 +1780,7 @@ for (auto* ptr = start_ptr; ptr &lt;= end_ptr; ptr++) {
   <h4>Problem 2 — the stack canary</h4>
   <p>Compiler stack-protector code stores a guard value through <code>fs:[0x28]</code>. With <code>fs</code> wrong, that becomes a write to address <code>0x28</code> and faults immediately:</p>
 
-  <div class="filename">src/loader/runtimeLinker.cpp:1159</div>
+  <div class="filename">src/loader/runtimeLinker.cpp</div>
 <pre>const uint8_t fs_store_pattern[8] = {0x64, 0xc7, 0x04, 0x25, 0x28, 0x00, 0x00, 0x00};
 
 for (auto* ptr = start_ptr; ptr &lt;= end_ptr; ptr++) {
@@ -1782,6 +1801,10 @@ for (auto* ptr = start_ptr; ptr &lt;= end_ptr; ptr++) {
 
   <p>Removing the canary weakens a security feature that is meaningless here — the guest is already running unsandboxed in the emulator's own process — so nothing is lost.</p>
 
+<h4 id="optional-instruction-emulation">Optional AMD patches and host instruction gaps</h4>
+  <p><code>--amd-cpu</code> gates AMD CPU instruction patches. The loader can replace reciprocal-square-root instructions with traps so <code>X64InstructionEmulator::TryEmulate()</code> supplies guest-compatible behavior. <code>PatchGuestInstructions(..., protect_memory, emulate_rsqrt)</code> coordinates fault-site protection with those replacements; on Windows it must preserve the guest's System V red zone.</p>
+  <p>The x86-64 macOS path emulates immediate and register SSE4a forms, including EXTRQ, through the signal context. Native TLS now holds fiber context across host-thread migration, and fiber ownership preserves small guest stacks. These are compatibility paths around native execution, not a general CPU interpreter.</p>
+
   <h4>How to see this yourself</h4>
   <p>Run any title and grep the log for <code>Patch tls at addr</code>. Take one of those addresses into a debugger and look at the nine bytes: you will find <code>E8 …</code> where the ELF file on disk has <code>64 48 8B 04 25 00 00 00 00</code>. Seeing that once makes the whole mechanism concrete in a way no description does.</p>
 </section>
@@ -1800,58 +1823,29 @@ for (auto* ptr = start_ptr; ptr &lt;= end_ptr; ptr++) {
       <tbody>
         <tr><td>Abort at load time</td><td>Almost nothing boots. Games import far more than they call — an unused code path drags in an entire library.</td></tr>
         <tr><td>Write null into the GOT</td><td>The game crashes on the first call with no context. The log says nothing useful.</td></tr>
-        <tr><td><strong>Write a generated stub</strong></td><td>Only code paths actually taken can break; the stub can retry resolution and log exactly which NID was missing. <strong>This is what Kyty does.</strong></td></tr>
+        <tr><td><strong>Write a generated stub</strong></td><td>Only code paths actually taken can break; the stub logs which NID is missing and returns zero. <strong>This is what Kyty does.</strong></td></tr>
       </tbody>
     </table>
   </div>
 
-  <h4>The thunk, byte by byte</h4>
-  <p>Kyty assembles 162 bytes per unresolved import. Reading it teaches you the System V ABI faster than any specification:</p>
-
-  <div class="filename">src/loader/runtimeLinker.cpp:206 — annotated</div>
-<pre>emit(0x50);              <b>push rax</b>    <i>// preserve AL: variadic SysV calls put the</i>
-                                      <i>//   vector-register count there</i>
-emit(0x57);              push rdi     <i>// arg 1</i>
-emit(0x56);              push rsi     <i>// arg 2</i>
-emit(0x52);              push rdx     <i>// arg 3</i>
-emit(0x51);              push rcx     <i>// arg 4</i>
-emit(0x41); emit(0x50);  push r8      <i>// arg 5</i>
-emit(0x41); emit(0x51);  push r9      <i>// arg 6</i>
-
-emit(0x48); emit(0x81); emit(0xec); emit32(0x80);    <b>sub rsp, 0x80</b>
-for (uint8_t reg = 0; reg &lt; 8; reg++)
-    save_xmm(reg, reg * 0x10u);                      <i>// movdqu [rsp+n], xmm0..7</i>
-
-emit(0x48); emit(0xbf); emit64(record_id);           <b>mov rdi, record_id</b>
-emit(0x48); emit(0xb8); emit64(target);              mov rax, ResolveImportStubWithId
-emit(0xff); emit(0xd0);                              <b>call rax</b>
-emit(0x49); emit(0x89); emit(0xc3);                  mov r11, rax    <i>// stash the answer</i>
-
-for (uint8_t reg = 0; reg &lt; 8; reg++)
-    load_xmm(reg, reg * 0x10u);                      <i>// restore xmm0..7</i>
-emit(0x48); emit(0x81); emit(0xc4); emit32(0x80);    add rsp, 0x80
-                         pop r9 / r8 / rcx / rdx / rsi / rdi / rax
-
-emit(0x4d); emit(0x85); emit(0xdb);                  <b>test r11, r11</b>
-emit(0x74); emit(0x03);                              jz +3
-emit(0x41); emit(0xff); emit(0xe3);                  <b>jmp r11</b>   <i>// tail-call the real function</i>
-emit(0x31); emit(0xc0);                              xor eax, eax
-emit(0xc3);                                          <b>ret</b>        <i>// give up: return 0</i></pre>
-
-  <p>Four things this achieves:</p>
-  <ol>
-    <li><strong>Every argument survives.</strong> All six integer registers and all eight vector registers are preserved, so if resolution succeeds the original call proceeds as though the thunk never existed.</li>
-    <li><strong>Resolution is retried lazily.</strong> By the time the call happens, more modules may be loaded and the symbol may now exist.</li>
-    <li><strong>Success is a tail call.</strong> <code>jmp r11</code> — not <code>call</code> — so the stack frame and return address are exactly what the caller set up.</li>
-    <li><strong>Failure returns zero.</strong> A great many console functions return an error code, and zero conventionally means success, so many games simply continue. That is a pragmatic gamble, and it is why a stubbed function can produce strange behaviour rather than a clean failure.</li>
-  </ol>
+  <h4 id="the-thunk-byte-by-byte">The thunk, byte by byte</h4>
+  <p><code>AllocateUnresolvedImportThunk()</code> emits a 34-byte diagnostic stub. It calls <code>UnresolvedImportStub(record_id)</code>, which logs the missing import (subject to the shared 1,024-call log limit) and returns zero. It does not preserve arguments for a lazy retry or tail-call a newly found target.</p>
+  <div class="filename">src/loader/runtimeLinker.cpp — AllocateUnresolvedImportThunk</div>
+<pre>48 83 EC 08                sub rsp, 8        <i>// align stack for the SysV call</i>
+48 BF &lt;record_id:8 bytes&gt;  mov rdi, record_id
+48 B8 &lt;stub:8 bytes&gt;       mov rax, UnresolvedImportStub
+FF D0                      call rax          <i>// RAX receives zero</i>
+48 83 C4 08                add rsp, 8
+0F 57 C0                   xorps xmm0, xmm0  <i>// zero floating return register too</i>
+C3                         ret</pre>
+  <p>A later dynamic module load retries unresolved relocation slots eagerly through <code>RelocateAll()</code>. The thunk itself only diagnoses an unresolved call. Returning zero can let a game continue while still hiding missing behavior, so a title that boots with stubs is not evidence that those APIs are implemented.</p>
 
   <h4>Allocation and bookkeeping</h4>
 <pre>static std::vector&lt;StubbedImportRecord&gt; g_stubbed_imports;
 static std::vector&lt;uint64_t&gt;            g_unresolved_stub_thunk_pages;
 static constexpr uint64_t               UNRESOLVED_STUB_PAGE_SIZE = 4096;
 
-<i>// thunks are packed into 4 KB executable pages, 162 bytes each (25 per page)</i>
+<i>// thunks are packed into 4 KB executable pages, 34 bytes each (120 per page)</i>
 if (g_unresolved_stub_thunk_pages.empty() ||
     g_unresolved_stub_thunk_offset + thunk_size &gt; UNRESOLVED_STUB_PAGE_SIZE) {
     auto page = Memory::AllocateRuntimeMemory(0, UNRESOLVED_STUB_PAGE_SIZE,
@@ -1862,22 +1856,14 @@ if (g_unresolved_stub_thunk_pages.empty() ||
 ...
 Common::VirtualMemory::<b>FlushInstructionCache</b>(code, thunk_size);</pre>
 
-  <p>The record ID baked into each thunk indexes <code>g_stubbed_imports</code>, which holds the NID, symbol type, binding and owning program — everything needed to log a useful message and to retry.</p>
+  <p>The record ID baked into each thunk indexes <code>g_stubbed_imports</code>, which holds the NID, symbol type, binding and owning program — everything needed to log a useful message.</p>
 
   <div class="callout k">
     <span class="lbl">Practical consequence for you</span>
     <p>When a game misbehaves rather than crashing, the first thing to check is the log for stubbed imports. A function returning 0 when the game expected a real value is a very common cause of "boots but the menu is empty" bugs — and fixing it is often a twenty-line <code>LIB_FUNC</code> addition.</p>
   </div>
 
-  <h4>The custom PLT</h4>
-  <p>Alongside the thunks, Kyty builds its own PLT for cases where the guest's own table must be intercepted. <code>Jit::CallPlt</code> generates a table of 16-byte entries, each pushing its index and jumping to a shared handler:</p>
-
-  <div class="filename">src/loader/jit.h:10</div>
-<pre>struct JmpWithIndex {
-    <i>// 68 xx xx xx xx    push &lt;index&gt;</i>
-    <i>// E9 xx xx xx xx    jmp  &lt;handler&gt;</i>
-    uint8_t code[16] = {0x68,0,0,0,0, 0xE9,0,0,0,0, 0x90,0x90,0x90,0x90,0x90,0x90};
-};</pre>
+  <h4 id="the-custom-plt">Guest PLT records and eager binding</h4><p>Guest ELF files still contain PLT relocations and GOT slots. Current Kyty resolves those slots eagerly with the other relocations; the old custom PLT code generator and shared lazy handler have been removed. Read <code>ForEachRelocation()</code>, <code>RelocateRecord()</code> and <code>Program::rela_bits</code> for the current implementation.</p>
 </section>
 
 <!-- ============================================== CH 18 -->
@@ -1887,7 +1873,7 @@ Common::VirtualMemory::<b>FlushInstructionCache</b>(code, thunk_size);</pre>
   <p class="deck">Because guest code runs natively, Kyty cannot instrument it. The CPU's own fault mechanism becomes the emulator's primary hook — two of the handler's three branches are load-bearing, not diagnostic.</p>
 
   <h4>The handler</h4>
-  <div class="filename">src/loader/runtimeLinker.cpp:782</div>
+  <div class="filename">src/loader/runtimeLinker.cpp</div>
 <pre>static bool KytyExceptionHandler(const Common::HostException::ExceptionInfo&amp; exception_info) {
     const auto* info = &amp;exception_info;
 
@@ -2011,7 +1997,7 @@ Common::VirtualMemory::<b>FlushInstructionCache</b>(code, thunk_size);</pre>
   <h4>What the guest can ask about memory</h4>
   <p><code>sceKernelVirtualQuery</code> is the one to notice, because it forces Kyty to keep real bookkeeping rather than just forwarding to the host allocator:</p>
 
-  <div class="filename">src/kernel/memory.h:28</div>
+  <div class="filename">src/kernel/memory.h</div>
 <pre>struct VirtualQueryInfo {
     uintptr_t start;
     uintptr_t end;
@@ -2049,13 +2035,18 @@ bool <b>ProtectGuestHostMemory</b>(uint64_t vaddr, uint64_t size, Mode mode);</p
 
   <h4>The GPU-facing hooks</h4>
 <pre>void RegisterCallbacks(callback_func_t alloc_func, callback_func_t free_func);
-void InstallGpuResources(Graphics::GpuResourceManager* resources) noexcept;
+void InstallGpuResources(Graphics::RenderContext* resources) noexcept;
 bool <b>HandleGpuFault</b>(Graphics::PageFaultAccess access, uint64_t fault_vaddr) noexcept;
 void InvalidateMemory(uint64_t vaddr, uint64_t size);
 bool TryWriteBacking(uint64_t vaddr, const void* data, uint64_t size);
 bool TryReadBacking(uint64_t vaddr, void* data, uint64_t size);</pre>
 
   <p>The memory manager notifies the graphics layer whenever guest memory is mapped or unmapped, so caches can drop resources whose backing store has gone away — a common source of use-after-free bugs if it is missed.</p>
+
+<h4 id="extended-guest-memory">The separate extended-memory arena</h4>
+  <p>Ordinary guest mappings keep their existing low address bands. Extended allocations use a separate <strong>512 GiB virtual arena at <code>0x080000000000</code></strong>, an 8 TiB base, described by <code>kExtendedMemoryBase</code> and <code>kExtendedMemorySize</code> in <code>kernel/memory.h</code>. Reserving that address range does not allocate 512 GiB of physical RAM. Extended requests and ordinary mapping searches have separate allocation rules.</p>
+  <p>GPU tracking accepts the low 1 TiB region and that explicit extended interval; the space between them is not a valid resource range. Sparse image tracking covers 44-bit addresses. Dense buffer/BDA tables pack the low and extended intervals together through <code>BufferCache::PageIndex()</code> and <code>PageAddress()</code>, avoiding tables for the entire gap.</p>
+  <p>Automatic backing is recycled through physical-allocation ownership. Reserved mappings are published only after backing commit succeeds, and partial POSIX unmaps preserve still-live mappings. These are allocation/alias invariants tested by <code>VirtualMemoryAllocationTests.cpp</code>. Host primitives are declared directly in <code>common/virtualMemory.h</code> and implemented by <code>sysWindowsVirtual.cpp</code> / <code>sysLinuxVirtual.cpp</code>.</p>
 
   <h4>Failure injection</h4>
   <p>Compiled behind a flag, the allocator exposes deliberate failure hooks so its error paths are actually exercised by tests rather than only in the field:</p>
@@ -2067,12 +2058,14 @@ void TestFailNextFixedReserveRangeRegistration();
 bool TestPlaceholderRangeIsFree(uint64_t vaddr, uint64_t size);
 bool TestGuestAddressRangeIsOwned(uint64_t vaddr, uint64_t size);
 #endif</pre>
-  <div class="srcs"><span class="src">src/kernel/memory.h:189</span><span class="src">tests/VirtualMemoryAllocationTests.cpp</span></div>
+  <div class="srcs"><span class="src">src/kernel/memory.h</span><span class="src">tests/VirtualMemoryAllocationTests.cpp</span></div>
 </section>
 
 <!-- ============================================== CH 20 -->
 <section class="ch" id="ch20" data-ch="20" data-title="Threads and TLS">
-  <div class="ch-head"><span class="ch-num">20</span><h3 id="threads-and-thread-local-storage">Threads and thread-local storage</h3></div>
+  <div class="ch-head"><span class="ch-num">20</span><h3 id="threads-and-thread-local-storage">Threads and thread-local storage</h3>
+<h4 id="blocking-short-sleeps">Short sleeps block too</h4>
+  <p><code>KernelUsleep()</code> and <code>KernelNanosleep()</code> use signal-polling sleep helpers. Nonzero short waits no longer take the old busy-spin or one-microsecond backoff shortcut. Windows uses its high-resolution waitable timer path; POSIX uses an absolute monotonic deadline that survives signal interruptions. Zero-duration requests still have their explicit signal-dispatch behavior.</p></div>
 
   <p class="deck">Guest threads are real host threads — but with two pieces of state Kyty has to maintain itself, and a set of FreeBSD semantics that do not come free.</p>
 
@@ -2100,7 +2093,7 @@ params-&gt;argv[0] = "KytyEmu";</pre>
   <h4>Per-thread TLS blocks</h4>
   <p>Each loaded module has a TLS <em>template</em> from its <code>PT_TLS</code> segment. Every thread needs its own copy of every module's template. Kyty allocates them lazily:</p>
 
-  <div class="filename">src/loader/runtimeLinker.h:49</div>
+  <div class="filename">src/loader/runtimeLinker.h</div>
 <pre>struct ThreadLocalStorage {
     struct Block {
         uint8_t*                     ptr        = nullptr;
@@ -2181,7 +2174,7 @@ struct KernelEvent {
     </table>
   </div>
 
-  <div class="filename">src/emulator.cpp:79</div>
+  <div class="filename">src/emulator.cpp</div>
 <pre>static void MountSandboxDirs() {
     std::string title_id;
     if (!Loader::SystemContentParamSfoGetString("TITLE_ID", &amp;title_id) || title_id.empty()) {
@@ -2227,7 +2220,7 @@ struct KernelEvent {
   <h4>A complete module, start to finish</h4>
   <p>This is <code>ContentExport</code> in full — the smallest real example in the tree:</p>
 
-  <div class="filename">src/libs/libs.cpp:142</div>
+  <div class="filename">src/libs/libs.cpp</div>
 <pre>namespace LibContentExport {
 
 <b>LIB_VERSION</b>("ContentExport", 1, "ContentExport", 1, 1);
@@ -2291,7 +2284,7 @@ static int <b>KYTY_SYSV_ABI</b> ContentExportInit2(const ContentExportInitParam2
   </div>
 
   <h4>How <code>PRINT_NAME</code> works</h4>
-  <div class="filename">src/libs/libs.h:59</div>
+  <div class="filename">src/libs/libs.h</div>
 <pre>#define PRINT_NAME_ENABLED g_print_name
 
 #define LIB_NAME(l, m)                                                   \
@@ -2332,37 +2325,37 @@ static int <b>KYTY_SYSV_ABI</b> ContentExportInit2(const ContentExportInitParam2
       <tbody>
         <tr>
           <td><strong>Graphics driver (AGC)</strong></td>
-          <td><code>agc.cpp</code> 152 KB<br><code>libAgcDriver.cpp</code> 12 KB<br><code>agcRegisterDefaults.inc</code> 216 KB</td>
+          <td><code>agc.cpp</code> 150 KB<br><code>libAgcDriver.cpp</code> 10 KB<br><code>agcRegisterDefaults.inc</code> 213 KB</td>
           <td>Hundreds of command-buffer builder functions, plus a generated table of the register values the real driver writes at context reset. Games only set registers they change, so the defaults must match the hardware exactly or state leaks between draws. Covered in chapter 25.</td>
         </tr>
         <tr>
           <td><strong>Kernel surface</strong></td>
-          <td><code>libKernel.cpp</code> 110 KB</td>
+          <td><code>libKernel.cpp</code> 109 KB</td>
           <td>The parts of <code>libkernel</code> that did not earn a file in <code>src/kernel/</code>: time and clocks, process info, dynamic library queries, and a <code>Posix::</code> namespace aliasing the POSIX-named exports onto the same implementations.</td>
         </tr>
         <tr>
           <td><strong>Networking</strong></td>
-          <td><code>libNet.cpp</code> 121 KB<br><code>network.cpp</code> 99 KB</td>
+          <td><code>libNet.cpp</code> 118 KB<br><code>network.cpp</code> 106 KB</td>
           <td>Sockets on the host's native socket API (connect, accept, listen, UDP, error translation), resolvers, SSL and HTTP shims, plus the NP (PlayStation Network) surface stubbed carefully enough that games run offline rather than hanging on a login that will never succeed.</td>
         </tr>
         <tr>
           <td><strong>Audio output</strong></td>
-          <td><code>audio.cpp</code> 94 KB<br><code>libAudio.cpp</code> 37 KB<br><code>libAudio2.cpp</code> 32 KB</td>
+          <td><code>audio.cpp</code> 32 KB<br><code>libAudio.cpp</code> 37 KB<br><code>libAudio2.cpp</code> 34 KB</td>
           <td>Port management, mixing and output on a dedicated thread; 12-channel (7.1.4) AudioOut2 ports are downmixed to stereo or 8-channel for SDL. The guest submits fixed-size blocks and expects the call to block when buffers are full — that back-pressure is part of how games pace themselves.</td>
         </tr>
         <tr>
           <td><strong>Audio decode (AJM)</strong></td>
-          <td><code>ajm.cpp</code> 45 KB<br><code>ajm/decoder.h</code> 8 KB</td>
+          <td><code>ajm.cpp</code> 40 KB<br><code>ajm/decoder.h</code> 5 KB</td>
           <td>Models a fixed-function hardware block. The guest submits a <em>batch of jobs</em> describing input/output buffers and codec parameters; Kyty parses that job format and routes each, through the decoder interface in <code>ajm/decoder.h</code>, to LibAtrac9 (ATRAC9) or FFmpeg (AAC, MP3).</td>
         </tr>
         <tr>
           <td><strong>Video</strong></td>
-          <td><code>avPlayer.cpp</code> 69 KB<br><code>libVideoDec2.cpp</code> 23 KB<br><code>videoDec2Decoder.cpp</code> 13.5 KB</td>
+          <td><code>avPlayer.cpp</code> 71 KB<br><code>libVideoDec2.cpp</code> 23 KB<br><code>videoDec2Decoder.cpp</code> 13 KB</td>
           <td>Full-motion-video playback and a general video-decode API, both on FFmpeg. The README credits shadPS4 as a reference for the AVPlayer implementation.</td>
         </tr>
         <tr>
           <td><strong>Async memory (AMPR)</strong></td>
-          <td><code>libAmpr.cpp</code> 93 KB</td>
+          <td><code>libAmpr.cpp</code> 90 KB</td>
           <td>The PS5's asynchronous mapping and paging engine. Like the GPU, it consumes a stream of command records rather than function calls, so Kyty parses the record formats and replays them against the memory manager.</td>
         </tr>
         <tr>
@@ -2377,12 +2370,12 @@ static int <b>KYTY_SYSV_ABI</b> ContentExportInit2(const ContentExportInitParam2
         </tr>
         <tr>
           <td><strong>Data formats</strong></td>
-          <td><code>libJson2</code> 29 KB<br><code>libPngDec</code> 11 KB<br><code>libRtc</code> 15 KB<br><code>libCes.cpp</code> 10 KB</td>
+          <td><code>libJson2</code> 29 KB<br><code>libPngDec</code> 11 KB<br><code>libRtc</code> 15 KB<br><code>libCes.cpp</code> 12 KB</td>
           <td>JSON parsing, PNG decode via <code>stb</code>, real-time clock conversions, and CP932 / Shift-JIS ↔ UTF-8 text conversion (<code>libCes</code>, one of the newest modules alongside <code>libConvertKeycode.cpp</code> and <code>libWebBrowserDialog.cpp</code>).</td>
         </tr>
         <tr>
           <td><strong>Input</strong></td>
-          <td><code>libPad.cpp</code> 12 KB<br><code>controller.cpp</code> 22 KB</td>
+          <td><code>libPad.cpp</code> 12 KB<br><code>controller.cpp</code> 26 KB</td>
           <td>DualSense state over a HIDAPI driver — light bar and adaptive-trigger writes reach the real pad, the touchpad is emulated with the mouse — plus customizable keyboard/mouse mapping and SDL rumble forwarding.</td>
         </tr>
         <tr>
@@ -2401,7 +2394,7 @@ static int <b>KYTY_SYSV_ABI</b> ContentExportInit2(const ContentExportInitParam2
 
   <h4>Loading order</h4>
   <p>Everything is registered from one function, before any guest code exists:</p>
-  <div class="filename">src/libs/libs.cpp:100</div>
+  <div class="filename">src/libs/libs.cpp</div>
 <pre>void InitAll(Loader::SymbolDatabase* s) {
     InitAudio_1(s);
     InitConvertKeycode_1(s);
@@ -2425,24 +2418,24 @@ static int <b>KYTY_SYSV_ABI</b> ContentExportInit2(const ContentExportInitParam2
 <section class="ch" id="ch24" data-ch="24" data-title="Worked example: adding a function">
   <div class="ch-head"><span class="ch-num">24</span><h3 id="worked-example-implementing-a-missing-function">Worked example: implementing a missing function</h3></div>
 
-  <p class="deck">This is the smallest change that produces a real compatibility improvement, and it is a good first contribution. Here is the complete loop.</p>
+  <p class="deck">A small, understood HLE contract can make a good first contribution. An unresolved import is a research lead, not proof that returning success will improve compatibility. Use the <a href="developer-curriculum.html">developer curriculum</a> to turn a hypothesis into evidence.</p>
 
   <h4>Step 1 — find what is missing</h4>
   <p>Run the game with logging to a file and search for stub messages:</p>
-<pre>kyty_emulator.exe --game "D:\Games\Example" ^
-  --printf-direction File --printf-output-file _kyty.txt</pre>
+<pre>kyty_emulator.exe --game "D:\Games\Example" --redzone --printf-direction File --printf-output-file _kyty.txt</pre>
   <p>The loader logs every import it could not resolve, with the NID and the owning module. A line naming a function the game then calls is your target.</p>
 
   <h4>Step 2 — work out what it should do</h4>
-  <p>You have three sources, in decreasing order of reliability:</p>
+  <p>Combine these sources; none alone proves the complete contract:</p>
   <ol>
-    <li><strong>The call site.</strong> Break on the stub, look at the guest's registers and at the memory the pointer arguments point to. The argument layout tells you a lot.</li>
-    <li><strong>Published SDK header names.</strong> NIDs are hashes of names, and community NID databases map many of them back.</li>
-    <li><strong>Behaviour.</strong> Return a plausible value, see what the game does next, iterate. Crude but effective.</li>
+    <li><strong>Call-site evidence.</strong> Inspect registers, verified argument memory and how the caller uses results. One call does not reveal every argument, optional field or error path.</li>
+    <li><strong>Symbol and type evidence.</strong> A NID database can suggest a name, not prove a signature. Verify parameter count/types, signedness, structure size/offsets and the guest ABI from lawful reference material and code evidence.</li>
+    <li><strong>Behavioral evidence.</strong> Specify success, failure, output writes and side effects before coding. Preserve a failing regression case. A guessed value that advances one title is a hypothesis, not a verified implementation.</li>
   </ol>
 
   <h4>Step 3 — write it</h4>
   <p>Add to the appropriate module file — or create one following the template in chapter 22:</p>
+<p>The following is a <strong>fictional structural sketch</strong>, not a real API contract or copy-ready implementation. Establish size/flags validation, guest-pointer policy, ownership and output semantics for the actual function before using this pattern.</p>
 <pre>struct ExampleParam {
     uint32_t size;
     uint32_t flags;
@@ -2461,17 +2454,21 @@ static int <b>KYTY_SYSV_ABI</b> ExampleGetStatus(const ExampleParam* param, int*
     }
     LOGF("\t size = %" PRIu32 ", flags = 0x%08" PRIx32 "\n", param-&gt;size, param-&gt;flags);
 
-    *out_status = 0;          <i>// idle / ready — whatever the game expects to proceed</i>
+    *out_status = 0;          <i>// only if zero is established by this API's contract</i>
     return OK;
 }</pre>
 
-  <p>Then register it, next to the module's other entries:</p>
+  <p>Then register it next to the owning module's entries. The example NID below is a placeholder, not a discovered export:</p>
 <pre>LIB_DEFINE(InitExample_1) {
     LIB_FUNC("aBcDeFgHiJk", Example::ExampleGetStatus);   <i>// &lt;- the NID from the log</i>
 }</pre>
 
   <h4>Step 4 — verify it is actually reached</h4>
-  <p>Rebuild, re-run, and confirm two things: the stub message for that NID is gone, and your <code>LOGF</code> output appears. If the stub message is gone but your logging never appears, the game resolved the import but never calls it — which is fine.</p>
+  <p>Rebuild and check that the import binds to the intended address. A breakpoint or trace can establish whether that path was called. If it was not reached, record it as untested. Neither a resolved slot nor a function-entry log proves correct return values, output bytes or side effects.</p>
+
+  <h4>Step 5 — prove the guest-visible contract</h4>
+  <p>Keep a test that fails before the change and passes after it. Check normal input, size/flag boundaries, null handling where the contract defines it, output layout and values, error codes and side effects. Use sentinels to detect unintended writes on error; do not dereference arbitrary invalid guest addresses just to add a negative test. Check ownership and concurrency when state survives the call.</p>
+  <p>Build affected targets and run the focused regression plus adjacent tests. If you run a title, record the exact binary, configuration and route with before/after observations. A unit test, a binding check and game progression are separate evidence. <a href="t-debugging-labs.html#contract">Lab C</a> demonstrates why the return code alone is insufficient.</p>
 
   <h4>When it does not bind</h4>
   <div class="tw">
@@ -2479,9 +2476,9 @@ static int <b>KYTY_SYSV_ABI</b> ExampleGetStatus(const ExampleParam* param, int*
       <thead><tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr></thead>
       <tbody>
         <tr><td>NID still reported as stubbed</td><td>The NID string does not match exactly — one wrong character is enough — or the <code>LIB_VERSION</code> library/module name or version differs from what the game imports.</td><td>Compare against the log line, which prints the full <code>nid#library#module</code>.</td></tr>
-        <tr><td>Bound, but arguments are garbage</td><td>Missing <code>KYTY_SYSV_ABI</code>. The function is reading Microsoft-convention registers.</td><td>Add the attribute.</td></tr>
+        <tr><td>Bound, but arguments are garbage</td><td>Possible ABI mismatch or wrong signature. A correct name does not guarantee correct parameter types/count.</td><td>Verify both <code>KYTY_SYSV_ABI</code> and the complete signature against call-site/type evidence.</td></tr>
         <tr><td>Bound and called, then the game crashes inside your function</td><td>Your struct layout does not match the console's. Guest pointers point at guest-laid-out data.</td><td>Dump the raw bytes at the pointer and rebuild the struct from them. Add a <code>static_assert</code> on the size once you are confident.</td></tr>
-        <tr><td>Everything works but the game still misbehaves</td><td>The return value or output parameter is wrong for what the game expects.</td><td>Try alternative plausible values; check <code>errno.h</code> for a more specific error code.</td></tr>
+        <tr><td>Everything works but the game still misbehaves</td><td>The return value or output parameter is wrong for what the game expects.</td><td>Recheck the contract, output layout, error namespace, state changes and synchronization. Add a regression for the mismatch instead of trying arbitrary success values.</td></tr>
       </tbody>
     </table>
   </div>
@@ -2538,7 +2535,7 @@ void SubmitCompute(uint32_t queue, std::span&lt;const uint32_t&gt; commands);</p
   makes lifetime bugs visible instead of hiding them behind an emulator-only copy.</p>
 
   <h4>The queue model</h4>
-  <div class="filename">src/graphics/guest_gpu/graphicsRun.cpp:79</div>
+  <div class="filename">src/graphics/guest_gpu/graphicsRun.cpp</div>
 <pre>class GuestGpu {
 public:
     static constexpr uint32_t ComputePipeCount     = 7;
@@ -2596,7 +2593,7 @@ void SendCommandSync(Common::UniqueFunction&lt;void&gt;&amp;&amp; command);    <
   <h4>Packet format</h4>
   <p>The stream is a sequence of 32-bit dwords. Each packet begins with a header whose top two bits give the type. Everything Kyty handles is type 3:</p>
 
-  <div class="filename">src/graphics/guest_gpu/pm4.h:13</div>
+  <div class="filename">src/graphics/guest_gpu/pm4.h</div>
 <pre>#define KYTY_PM4(len, op, r)                                        \
     (0xC0000000u | (((static_cast&lt;uint16_t&gt;(len) - 2u) &amp; 0x3fffu) &lt;&lt; 16u) | \
      (((op) &amp; 0xffu) &lt;&lt; 8u) | (((r) &amp; (Pm4::R_NUM - 1u)) &lt;&lt; 2u))
@@ -2605,7 +2602,7 @@ void SendCommandSync(Common::UniqueFunction&lt;void&gt;&amp;&amp; command);    <
 #define KYTY_PM4_LEN(cmd_id) ((((cmd_id) &gt;&gt; 16u) &amp; 0x3fffu) + 2u)</pre>
 
   <p>And the extraction, from the packet dumper:</p>
-  <div class="filename">src/graphics/guest_gpu/pm4.cpp:122</div>
+  <div class="filename">src/graphics/guest_gpu/pm4.cpp</div>
 <pre>const auto packet_type = static_cast&lt;PacketType&gt;(cmd_id &gt;&gt; <b>30u</b>);
 const bool sh_gx       = (cmd_id &amp; 0x2u) == 0;
 const uint8_t op       = ((cmd_id &gt;&gt; <b>8u</b>) &amp; 0xffu);
@@ -2629,7 +2626,7 @@ len                    = ((cmd_id &gt;&gt; <b>16u</b>) &amp; 0x3fffu) + 1;   <i>
   <h4>Dispatch by jump table</h4>
   <p>With around 50 opcodes and thousands of register offsets, a switch would be unmanageable. Kyty builds four function-pointer tables and indexes them directly:</p>
 
-  <div class="filename">src/graphics/guest_gpu/command_processor/pm4Dispatch.h:25</div>
+  <div class="filename">src/graphics/guest_gpu/command_processor/pm4Dispatch.h</div>
 <pre>extern const std::array&lt;cp_op_parser_func_t, 256&gt;       <b>g_cp_op_func</b>;        <i>// by opcode</i>
 extern const std::array&lt;cp_op_parser_func_t, Pm4::R_NUM&gt; g_cp_op_custom_func; <i>// IT_NOP sub-ops</i>
 extern const std::array&lt;hw_ctx_parser_func_t, Pm4::CX_NUM&gt; <b>g_hw_ctx_func</b>;   <i>// context registers</i>
@@ -2640,7 +2637,7 @@ void GraphicsInitJmpTables();</pre>
 
   <p>A handler receives the header, a pointer to the body and the remaining size, and returns how many dwords it consumed — which is how multi-register writes advance correctly:</p>
 
-  <div class="filename">…/pm4Handlers.cpp:2084 — a complete handler</div>
+  <div class="filename">…/pm4Handlers.cpp — a complete handler</div>
 <pre>KYTY_CP_OP_PARSER(<b>CpOpDrawIndexAuto</b>) {
     KYTY_PROFILER_FUNCTION();
 
@@ -2698,7 +2695,7 @@ void GraphicsInitJmpTables();</pre>
   </div>
 
   <h4>The resumable cursor</h4>
-  <div class="filename">…/command_processor/commandProcessor.h:18</div>
+  <div class="filename">…/command_processor/commandProcessor.h</div>
 <pre>class Pm4Execution {
     struct BufferCursor {
         uint32_t* next_packet         = nullptr;
@@ -2832,7 +2829,7 @@ inline constexpr ColorComponentMapping ColorMappingBgra {0xc6u};   <i>// 2, 1, 0
   </ul>
 
   <p>The AGC layer names the well-known slots:</p>
-  <div class="filename">src/graphics/shader/shaderBindings.h:12</div>
+  <div class="filename">src/graphics/shader/shaderBindings.h</div>
 <pre>enum class AgcDirectResourceType : uint32_t {
     GdsCounterRange          = 0,
     <b>ShaderResourceTable</b>      = 1,
@@ -2850,7 +2847,7 @@ inline constexpr ColorComponentMapping ColorMappingBgra {0xc6u};   <i>// 2, 1, 0
   <h4>The three descriptor types</h4>
   <p>You decoded these interactively in chapter 7. Here are the actual accessors, which double as documentation of the bit layout:</p>
 
-  <div class="filename">src/graphics/shader/shaderBindings.h:34 — V#, buffer resource</div>
+  <div class="filename">src/graphics/shader/shaderBindings.h — V#, buffer resource</div>
 <pre>struct ShaderBufferResource {
     uint32_t fields[4] = {0};
 
@@ -2898,7 +2895,7 @@ image_sample    v[0:3], v[4:5], s[12:19], s[20:23] dmask:0xf</pre>
   <div class="stack">
     <div class="layer k"><span class="nm">1 · Typed SSA values</span><span class="chip kyty">kyty</span><span class="ds"><code>TranslateProgram</code> creates typed values; <code>RewriteToSsa</code> and simplification expose where descriptor-address inputs came from.</span></div>
     <div class="arrow">↓</div>
-    <div class="layer k"><span class="nm">2 · BuildSrtPlan</span><span class="chip kyty">kyty</span><span class="ds">Walks those values and records descriptor-table reads. Constant offsets get flattened slots; genuinely dynamic reads stay explicit.</span></div>
+    <div class="layer k"><span class="nm">2 · TrackResources</span><span class="chip kyty">kyty</span><span class="ds">Walks those values and records descriptor-table reads. Constant offsets get flattened slots; genuinely dynamic reads stay explicit.</span></div>
     <div class="arrow">↓ at draw time, every draw</div>
     <div class="layer k"><span class="nm">3 · MaterializeResources</span><span class="chip kyty">kyty</span><span class="ds">Executes the recipe against the <em>current</em> user data and guest memory, producing a concrete <code>ResourceSnapshot</code>: this exact address, this format, this size.</span></div>
   </div>
@@ -2922,7 +2919,6 @@ struct ResourcePlan {
 struct Program : ResourcePlan {
     BlockList        blocks;
     bool             dispatcher_fallback = false;
-    std::vector&lt;Value&gt; dynamic_reads;
     BindingLayout    bindings;
 };
 
@@ -2931,17 +2927,24 @@ struct DescriptorValue {
     uint32_t                dword_count = 0;
 };</pre>
 
+<p>The retained <code>ResourcePlan</code> owns immutable descriptor/SRT analysis and reusable evaluation scratch. <code>TrackResources(ir, decoded, native_cfg)</code> performs scalar-read and indirect-image planning; there is no separate SRT-plan call in the top-level pipeline. <code>ExtractResourcePlan()</code> derives stable clean-slot and specialization policy once. A shared memoized <code>SrtWalker</code> refreshes descriptors, active branches, flattened reads and specialization in place. Bounded indirect image tables, guarded Phis and GPU-selected raw buffers follow this same value graph.</p>
+  <p><code>ShaderStageRuntime</code> borrows two pointers: compiled program info and the cache entry's current <code>ResourceSnapshot</code>. The renderer consumes them under its serialization contract; keeping that snapshot as an immutable per-draw copy would describe the former implementation.</p>
+
   <h4>Why compilation and binding are separate</h4>
-  <p>The immutable plan is built once; a fresh snapshot is resolved from current user data on every draw. <code>TranslateProgram()</code> produces the plan, <code>CompileProgram()</code> emits SPIR-V for one specialisation, and the pipeline cache sits between them:</p>
+  <p>The stable plan analysis is extracted once per source entry; the cached snapshot is refreshed in place from current user data on each lookup. <code>TranslateProgram()</code> produces the plan, <code>CompileProgram()</code> emits SPIR-V for one specialisation, and the pipeline cache sits between them:</p>
 
   <div class="filename">src/graphics/host_gpu/renderer/pipeline/pipelineCache.cpp — ProgramCache::Get()</div>
-<pre>auto translated = ShaderRecompiler::TranslateProgram(params.code, options);      <i>// cache miss only</i>
-EXIT_IF(!ShaderRecompiler::IR::MaterializeResources(resource_plan, runtime, resources, ...));
-                                                                                  <i>// every draw</i>
+<pre><i>// Schematic ProgramCache::Get flow:</i>
+if (source_exists) {
+    EXIT_IF(!IR::MaterializeResources(plan, runtime, resources, specialization));
+    if (matching_permutation) return borrowed_stage_runtime;
+}
+auto translated = ShaderRecompiler::TranslateProgram(params.code, options);
+<i>// First source miss: extract plan and materialize resources here.</i>
 auto result = ShaderRecompiler::CompileProgram(std::move(translated), options,
                                                specialization, push_data_start_dword);</pre>
 
-  <p>The snapshot travels to the renderer inside <code>ShaderStageRuntime { const IR::CompiledShaderInfo* program; IR::ResourceSnapshot resources; }</code> in <code>shader.h</code>, and <code>RenderExecutor::PrepareBindings()</code> writes descriptors from it. A descriptor read that cannot be satisfied is an <code>EXIT_IF</code>.</p>
+  <p>The renderer borrows the refreshed snapshot through <code>ShaderStageRuntime { const IR::CompiledShaderInfo* program; const IR::ResourceSnapshot* resources; }</code> in <code>shader.h</code>, and binding preparation writes descriptors from it. A descriptor read that cannot be satisfied is an <code>EXIT_IF</code>.</p>
 </section>
 
 <!-- ============================================== CH 29 -->
@@ -2953,7 +2956,7 @@ auto result = ShaderRecompiler::CompileProgram(std::move(translated), options,
   <figure data-viz="tiling"></figure>
 
   <h4>The layout families</h4>
-  <div class="filename">src/graphics/guest_gpu/tile.h:28</div>
+  <div class="filename">src/graphics/guest_gpu/tile.h</div>
 <pre>enum class TileBlockFamily : uint32_t {
     Standard256B,      <i>// small textures</i>
     Standard4KB,
@@ -3040,9 +3043,11 @@ uint32_t TileGetRenderTargetPitch(uint32_t width, uint32_t bytes_per_element, ui
 
 <!-- ============================================== CH 30 -->
 <section class="ch" id="ch30" data-ch="30" data-title="The shader recompiler">
-  <div class="ch-head"><span class="ch-num">30</span><h3 id="the-shader-recompiler">The shader recompiler</h3></div>
+  <div class="ch-head"><span class="ch-num">30</span><h3 id="the-shader-recompiler">The shader recompiler</h3>
+<h4 id="typed-lds-and-instruction-coverage">Typed LDS and instruction coverage</h4>
+  <p>The recompiler adds <code>V_CMPX_NLE_F16</code> and native 64-bit LDS atomic OR. Shared-memory storage exposes compatible typed views instead of separate unrelated 32-bit and 64-bit stores; shader-info collection and SPIR-V emission carry the required capabilities. Read <code>spirvEmitterMemory.cpp</code>, <code>spirvEmitterMemoryHelpers.cpp</code> and the compute/CFG regression tests together.</p></div>
 
-  <p class="deck">At <code>main</code> commit <code>5b7d334</code> (18 September 2026), the recompiler is about 29,300 lines across 84 files under <code>recompiler/</code>. It is organised as an explicit compiler pipeline: <code>frontend/decode</code>, <code>frontend/cfg</code>, <code>frontend/translate</code>, a typed value IR and its passes, then <code>backend/spirv</code>.</p>
+  <p class="deck">At <code>main</code> commit <code>2650478</code> (29 September 2026), the recompiler is about 30,443 lines across 84 files under <code>recompiler/</code>. It is organised as an explicit compiler pipeline: <code>frontend/decode</code>, <code>frontend/cfg</code>, <code>frontend/translate</code>, a typed value IR and its passes, then <code>backend/spirv</code>.</p>
 
   <h4>Why it is hard, restated precisely</h4>
   <ul>
@@ -3056,7 +3061,7 @@ uint32_t TileGetRenderTargetPitch(uint32_t width, uint32_t bytes_per_element, ui
   <figure data-viz="shaderflow"></figure>
 
   <h4>The pipeline</h4>
-  <p>Two functions orchestrate everything. <code>TranslateProgram()</code> runs once per shader binary and produces an immutable plan; <code>CompileProgram()</code> runs once per resource specialisation and emits SPIR-V. Both log the expensive phases with the shader hash. Failures <code>EXIT</code> — nothing takes a <code>std::string* error</code>. Merged ES/GS geometry stages are compiled as <code>ShaderType::Mesh</code> Vulkan mesh shaders via <code>DecodeFusedProgram()</code>.</p>
+  <p>Two functions orchestrate everything. <code>TranslateProgram()</code> runs for each new permutation, with resource-plan extraction only on the first program miss; <code>CompileProgram()</code> runs once per resource specialisation and emits SPIR-V. Both log the expensive phases with the shader hash. Failures <code>EXIT</code> — nothing takes a <code>std::string* error</code>. Merged ES/GS geometry stages are compiled as <code>ShaderType::Mesh</code> Vulkan mesh shaders via <code>DecodeFusedProgram()</code>.</p>
 
   <div class="filename">src/graphics/shader/recompiler/ShaderRecompiler.cpp — TranslateProgram / CompileProgram</div>
 <pre>TranslateResult TranslateProgram(std::span&lt;const uint32_t&gt; code, const CompileOptions&amp;);
@@ -3074,7 +3079,7 @@ CompileResult   CompileProgram(TranslateResult, const CompileOptions&amp;,
 
   <h4>Stage 1 — the decoder</h4>
   <p>RDNA 2 instructions come in encoding families, each with its own operand layout:</p>
-  <div class="filename">…/frontend/decode/ShaderDecoder.h:13</div>
+  <div class="filename">…/frontend/decode/ShaderDecoder.h</div>
 <pre>enum class Family {
     Unknown,
     <b>SOP1, SOP2, SOPK, SOPC, SOPP</b>,     <i>// scalar: 1-src, 2-src, immediate, compare, program</i>
@@ -3161,6 +3166,11 @@ struct Terminator {
 
   <p><code>BuildGraph()</code> selects the fallback for an irreducible graph. A later <code>Structurize()</code> failure also selects it after restoring the original unstructured graph. Kyty records the failure kind, block, graph counts, and reason in the log.</p>
 
+<h4 id="native-tessellation">Native tessellation and stage metadata</h4>
+  <p><code>ShaderVertexInputInfo::logical_stage</code> selects Vertex, Mesh, Local, TessellationControl or TessellationEvaluation. <code>PrepareTessellationPrograms()</code> prepares three programs; <code>Tessellation.cpp</code> analyses LS/HS memory dataflow to derive strides and lowers cross-stage memory. <code>spirvEmitterTessellation.cpp</code> emits the Vulkan tessellation stages. Enable this path with <code>--tessellation</code>; patch draws are skipped by default.</p>
+  <p>Wave size is stage metadata, not a universal 64-lane constant: vertex and pixel stages carry their own widths and the NGG prologue respects guest wave32. Mesh stages retain their own workgroup limits. Recent opcode work includes FP64 arithmetic/conversions, DPP8, packed integer and half-float operations, partial SDWA destinations, image float-maximum atomics and buffer-cache policy bits. Host FP64 denormal limitations are logged.</p>
+  <p>Ray tracing remains unsupported. A compute binary containing BVH intersection instructions produces <code>TranslateResult::skip_dispatch</code>, which the cache retains so later dispatches are skipped with a warning instead of compiling an unsupported program. This exception does not turn other unimplemented opcodes into no-ops.</p>
+
   <h4>Stage 4 — translation into typed IR</h4>
   <p><code>frontend/translate/Translate.cpp</code> owns program setup while category files such as <code>Scalar.cpp</code>, <code>Vector.cpp</code>, and <code>Memory.cpp</code> dispatch decoded opcodes into typed value operations.</p>
 <pre>enum class Opcode {
@@ -3190,9 +3200,7 @@ struct Program : ResourcePlan {
     uint32_t         wave_size = 64, scratch_dwords = 0;
     bool             dispatcher_fallback = false;
     CFG::FailureKind cfg_failure_kind;
-    std::vector&lt;Value&gt; dynamic_reads;
     BindingLayout    bindings;
-    std::optional&lt;SpirvRequirements&gt; spirv_requirements;
 };</pre>
 
   <div class="primer">
@@ -3201,7 +3209,7 @@ struct Program : ResourcePlan {
   </div>
 
   <h4>Stages 5–8 — resources</h4>
-  <p><code>BuildSrtPlan()</code> walks typed values and records reachable shader-resource-table reads. <code>TrackResources()</code> classifies buffers, images, samplers and sampled pairs. At draw time <code>MaterializeResources()</code> reads current user data and guest memory into a <code>ResourceSnapshot</code> and a <code>ResourceSpecialization</code>; <code>CompileProgram()</code> then calls <code>ApplyResourceSpecialization()</code> to bake those facts into the IR.</p>
+  <p><code>TrackResources()</code> walks typed values and records reachable shader-resource-table reads. The same pass classifies buffers, images, samplers and sampled pairs. At draw time <code>MaterializeResources()</code> reads current user data and guest memory into a <code>ResourceSnapshot</code> and a <code>ResourceSpecialization</code>; <code>CompileProgram()</code> then calls <code>ApplyResourceSpecialization()</code> to bake those facts into the IR.</p>
 
   <h4>Stages 9–10 — layout and requirements</h4>
   <p><code>CollectShaderInfo()</code> records stage inputs and outputs. <code>AllocateBindings()</code> assigns ordinary resources plus the support bindings current emission needs:</p>
@@ -3215,13 +3223,13 @@ struct Program : ResourcePlan {
   <p><code>BdaPagetable</code> and <code>FaultBuffer</code> support buffer-device-address translation and recoverable FLAT-access faults. <code>FlattenedSrt</code> and <code>ShaderData</code> expose data the guest ABI expected in scalar registers or tables. <code>AnalyzeProgramRequirements()</code> then records subgroup, derivative, image, LDS, scratch, and pixel-mask capabilities before emission.</p>
 
   <h4>Stage 11 — SPIR-V emission</h4>
-  <p><code>backend/spirv</code> is about 404 KB across 18 files, including <code>spirvEmitterMesh.cpp</code>. Its largest current pieces are <code>spirvEmitterMemory.cpp</code> (59 KB), <code>spirvEmitterImage.cpp</code> (42 KB), <code>spirvEmitterModule.cpp</code> (39 KB), <code>spirvEmitterInternal.h</code> (37 KB), <code>spirvEmitterAlu.cpp</code> (35 KB), and <code>spirvEmitterFlow.cpp</code> (31 KB).</p>
+  <p><code>backend/spirv</code> is about 386 KB across 18 files, including <code>spirvEmitterMesh.cpp</code>. Its largest current pieces are <code>spirvEmitterMemory.cpp</code> (65 KB), <code>spirvEmitterImage.cpp</code> (43 KB), <code>spirvEmitterModule.cpp</code> (33 KB), <code>spirvEmitterInternal.h</code> (26 KB), <code>spirvEmitterAlu.cpp</code> (24 KB), and <code>spirvEmitterFlow.cpp</code> (36 KB).</p>
 
   <h4>Embedded vertex fetch</h4>
   <p>For an embedded fetch prologue, <code>DetectEmbeddedVertexFetch()</code> analyses decoded instructions <em>before</em> IR construction and creates a <code>Frontend::EmbeddedFetchPlan</code>. That plan is passed through <code>TranslateOptions::embedded_fetch</code>, so translation emits the vertex-input behaviour directly.</p>
 
   <h4>Where the test weight is</h4>
-  <p><code>ShaderRecompilerComputeTests.cpp</code> is about <strong>1.43 MB</strong> and <code>shaderCfgTests.cpp</code> about <strong>640 KB</strong>. Focused resource-tracking, resource-materialisation, scalar-tracing, and vertex-metadata tests complement them. That ratio is appropriate: a shader miscompile can draw the wrong pixels without crashing.</p>
+  <p><code>ShaderRecompilerComputeTests.cpp</code> is about <strong>1.59 MiB</strong> and <code>shaderCfgTests.cpp</code> about <strong>666 KB</strong>. Focused resource-tracking, resource-materialisation, scalar-tracing, and vertex-metadata tests complement them. That ratio is appropriate: a shader miscompile can draw the wrong pixels without crashing.</p>
 
   <div class="learn">
     <div class="lh">Learn more · shader compilation</div>
@@ -3236,7 +3244,10 @@ struct Program : ResourcePlan {
 
 <!-- ============================================== CH 31 -->
 <section class="ch" id="ch31" data-ch="31" data-title="The Vulkan renderer">
-  <div class="ch-head"><span class="ch-num">31</span><h3 id="the-vulkan-renderer">The Vulkan renderer</h3></div>
+  <div class="ch-head"><span class="ch-num">31</span><h3 id="the-vulkan-renderer">The Vulkan renderer</h3>
+<h4 id="blend-mapping-and-readback-lifetimes">Blend mapping and readback lifetimes</h4>
+  <p><code>PipelineStaticParameters</code> is now <strong>126 bytes</strong>: <code>blend_alpha_source_remap</code> distinguishes the logical-alpha export needed for some reordered render targets. <code>blendMapping.cpp</code> classifies mappings as direct, source-alpha or unsupported. Supported remapping uses a second blend source; unsupported combinations disable blending with a warning, not an unconditional promise of compatibility. Sampler LOD bias is clamped to the host's <code>maxSamplerLodBias</code>.</p>
+  <p>The 64 MiB download ring is the common readback path, not a hard transfer limit. Oversized transfers allocate a temporary download <code>Buffer</code>; the deferred completion operation owns it until GPU completion, then invalidates host caches and copies back. See <code>BufferCache::DownloadBufferMemory()</code> and <code>CommandScheduler::DeferPriorityOperation()</code>.</p></div>
 
   <p class="deck">The host side. Its central job is caching: turning "this guest address range, in this format, used this way" into "this Vulkan object" — and knowing when that answer stops being true.</p>
 
@@ -3250,7 +3261,7 @@ struct GraphicContext {
     vk::Device         device;
     VmaAllocator       allocator;
     bool     memory_budget_ext_enabled;
-    bool     rt_extensions_enabled;
+    bool     supports_block_texel_view;
     bool     <b>compute_subgroup_size_control_enabled</b>;
     bool     sample_rate_shading_enabled;
     bool     <b>mesh_shader_enabled</b>;          <i>// VK_EXT_mesh_shader, for merged geometry stages</i>
@@ -3278,7 +3289,7 @@ struct GraphicContext {
     <table>
       <thead><tr><th>Cache</th><th>Keyed by</th><th>Notes</th></tr></thead>
       <tbody>
-        <tr><td><code>TextureCache</code> 75 KB</td><td>address + format + extent + binding type</td><td>Aliasing, depth/stencil pairing, mip expansion, upload, download and LRU collection. It is owned with the buffer cache by <code>GpuResourceManager</code>.</td></tr>
+        <tr><td><code>TextureCache</code> 75 KB</td><td>address + format + extent + binding type</td><td>Aliasing, depth/stencil pairing, mip expansion, upload, download and LRU collection. It is owned with the buffer cache by <code>RenderContext</code>.</td></tr>
         <tr><td><code>BufferCache</code> 32 KB</td><td>guest address range</td><td>Page-indexed vertex, index, uniform and storage buffers, batched uploads/downloads, LRU collection and the BDA fault path.</td></tr>
         <tr><td><code>PipelineCache</code> 23 KB</td><td>shader IDs + full static state + attachment formats</td><td>Owns in-process maps and a per-game Vulkan driver cache saved to disk.</td></tr>
         <tr><td><code>DescriptorHeap</code> 3 KB</td><td>descriptor-set layout</td><td>Allocates sets in batches of 32 and retires whole pools against timeline ticks.</td></tr>
@@ -3291,42 +3302,44 @@ struct GraphicContext {
   <h4>The pipeline key</h4>
   <p>Vulkan bakes fixed-function state into the pipeline object, so every state difference needs a distinct pipeline — unless the state is declared <em>dynamic</em> and set per draw instead. Kyty packs everything that is not dynamic into one byte-comparable struct:</p>
 
-  <div class="filename">…/pipeline/pipelineCache.h:35</div>
-<pre><b>#pragma pack(push, 1)</b>
+  <div class="filename">…/pipeline/pipelineCache.h</div>
+<pre>#pragma pack(push, 1)
 struct PipelineStaticParameters {
-    bool                       negative_one_to_one, depth_clip_enable;
-    vk::PrimitiveTopology      topology;
-    bool                       primitive_restart_enable;
-    uint32_t                   samples;
-    bool                       sample_shading_enable;
-    bool                       depth_bounds_test_enable;
-    float                      depth_min_bounds, depth_max_bounds;
-    uint32_t                   color_mask[RENDER_COLOR_ATTACHMENTS_MAX];
-    bool                       cull_front, cull_back, face;
-    bool                       provoking_vtx_last;
-    vk::PolygonMode            <b>polygon_mode</b>;
-    uint8_t                    color_srcblend[…], color_comb_fcn[…], color_destblend[…];
-    uint8_t                    alpha_srcblend[…], alpha_comb_fcn[…], alpha_destblend[…];
-    bool                       separate_alpha_blend[…], blend_enable[…];
+    bool negative_one_to_one, depth_clip_enable;
+    vk::PrimitiveTopology topology;
+    bool primitive_restart_enable;
+    uint32_t samples;
+    bool sample_shading_enable, depth_bounds_test_enable;
+    float depth_min_bounds, depth_max_bounds;
+    uint32_t color_mask[8];
+    bool cull_front, cull_back, face, provoking_vtx_last;
+    vk::PolygonMode polygon_mode;
+    uint8_t color_srcblend[8], color_comb_fcn[8], color_destblend[8];
+    uint8_t alpha_srcblend[8], alpha_comb_fcn[8], alpha_destblend[8];
+    bool separate_alpha_blend[8], blend_enable[8];
+    bool blend_alpha_source_remap;
 };
-<b>#pragma pack(pop)</b>
-
-static_assert(std::is_trivially_copyable_v&lt;PipelineStaticParameters&gt;);
-static_assert(alignof(PipelineStaticParameters) == 1);
-static_assert(<b>sizeof(PipelineStaticParameters) == 125</b>);
+#pragma pack(pop)
+static_assert(sizeof(PipelineStaticParameters) == 126);
 
 struct GraphicsPipelineKey {
-    PipelineRenderingState   rendering;
-    uint64_t                 vs_shader_id, ps_shader_id;
+    PipelineRenderingState rendering;
+    std::array&lt;uint64_t, 3&gt; vertex_shader_ids;  <i>// VS/mesh, or LS/HS/TES</i>
+    uint64_t ps_shader_id;
     PipelineVertexInputState vertex_input;
     PipelineStaticParameters static_params;
 };</pre>
 
-  <p>The packing and the size assertion exist because the hash walks the struct byte by byte. Padding bytes would be uninitialised, so identical states could hash differently — producing a slow, silent pipeline explosion. The <code>static_assert</code> makes any accidental padding a build error.</p>
+  <p>The packing and the size assertion exist because the hash uses <code>XXH3_64bits</code> on the packed static state. Padding bytes would be uninitialised, so identical states could hash differently — producing a slow, silent pipeline explosion. The <code>static_assert</code> makes any accidental padding a build error.</p>
 
   <p><code>PipelineCache</code> now has two levels. Kyty's maps avoid rebuilding a program or
   pipeline during one run; a per-game <code>VkPipelineCache</code> is also loaded and saved so the
   driver can reuse its own compiled data on the next run.</p>
+
+<h4 id="renderer-ownership-and-readback">Renderer ownership and transfers</h4>
+  <p><code>RenderContext</code> directly owns <code>PageManager</code>, <code>BufferCache</code>, <code>TextureCache</code> and the mapped-range set. Its fault, invalidation, map/unmap, BDA preparation and garbage-collection methods replaced the separate GPU-resource manager. The owning renderer serializes pipeline-cache use, including saving while the GPU is running; the cache is not independently thread-safe.</p>
+  <p>Buffer readback is batched through a 64 MiB download ring. Clean guest buffers can stream directly; GPU-written aliases still require synchronization before CPU use. Image dirty-region queries honor CPU ownership and image-local readback validity. Texture alias resolution shares canonical layouts across linear/tiled, 1D/2D, mip-tail and depth/stencil views. DCC/CMASK clears must become real pixels before an expanded alias or video-out consumer can use them.</p>
+  <p>Draw preparation reuses shader bindings and reads vertex semantics directly from metadata. Release-label work is batched without redundant submissions; indirect dispatch counts are read from GPU buffers. These changes reduce per-draw work while keeping ordering and resource lifetimes explicit.</p>
 
   <h4>Command submission</h4>
   <div class="filename">…/renderer/commandScheduler.h</div>
@@ -3412,7 +3425,9 @@ Common::LeastRecentlyUsedCache&lt;ImageId, uint64_t&gt; m_lru_cache;</pre>
 
 <!-- ============================================== CH 32 -->
 <section class="ch" id="ch32" data-ch="32" data-title="Memory coherency">
-  <div class="ch-head"><span class="ch-num">32</span><h3 id="memory-coherency">Memory coherency</h3></div>
+  <div class="ch-head"><span class="ch-num">32</span><h3 id="memory-coherency">Memory coherency</h3>
+<h4 id="sparse-texture-uploads">Sparse texture uploads</h4>
+  <p><code>BufferCache::ObtainBufferForImage()</code> reads streamed mip ranges through <code>Memory::TryReadSparseBacking()</code>. The guest address-space owner validates the complete range and rejects private mappings before the backing store copies resident pieces and zero-fills holes. A hole inside an owned sparse reservation is not the same as an arbitrary invalid guest address; do not replace failed reads with unconditional zeroes.</p></div>
 
   <p class="deck">The single hardest problem in the project, and the source of the bugs that are hardest to reproduce. A console has unified memory; a PC does not.</p>
 
@@ -3455,7 +3470,7 @@ public:
   <h4>The upload path</h4>
   <p>Before a draw reads a texture, the renderer asks which sub-ranges the CPU dirtied:</p>
 
-  <div class="filename">src/graphics/host_gpu/memoryTracker.h:121</div>
+  <div class="filename">src/graphics/host_gpu/memoryTracker.h</div>
 <pre>template &lt;typename RangeFunc, typename UploadFunc&gt;
 void ForEachUploadRange(uint64_t vaddr, uint64_t size, bool is_written,
                         RangeFunc&amp;&amp; range_func, UploadFunc&amp;&amp; upload_func) {
@@ -3604,11 +3619,11 @@ public:
     <table>
       <thead><tr><th>File</th><th>Role</th></tr></thead>
       <tbody>
-        <tr><td><code>presentation/videoOut.cpp</code> 61 KB</td><td>The whole flip model, buffer sets, attributes, events, output modes, colour settings.</td></tr>
-        <tr><td><code>presentation/window/vulkanWindow.cpp</code> 43 KB</td><td>Instance and device creation, extension and feature selection, queue setup.</td></tr>
-        <tr><td><code>presentation/window/swapchain.cpp</code> 33 KB</td><td>Swapchain lifecycle, format selection, present.</td></tr>
-        <tr><td><code>presentation/window/window.cpp</code> 31 KB</td><td>SDL2 window and the main-thread event loop; keyboard, mouse and gamepad handling.</td></tr>
-        <tr><td><code>presentation/renderDoc.cpp</code> 12 KB</td><td>Loads the RenderDoc API at runtime for frame capture (<code>--rd</code>).</td></tr>
+        <tr><td><code>presentation/videoOut.cpp</code> 67 KB</td><td>The whole flip model, buffer sets, attributes, events, output modes, colour settings.</td></tr>
+        <tr><td><code>presentation/window/vulkanWindow.cpp</code> 48 KB</td><td>Instance and device creation, extension and feature selection, queue setup.</td></tr>
+        <tr><td><code>presentation/window/swapchain.cpp</code> 42 KB</td><td>Swapchain lifecycle, format selection, present.</td></tr>
+        <tr><td><code>presentation/window/window.cpp</code> 30 KB</td><td>SDL3 window and the main-thread event loop; keyboard, mouse and gamepad handling.</td></tr>
+        <tr><td><code>presentation/renderDoc.cpp</code> 5 KB</td><td>Loads the RenderDoc API at runtime for frame capture (<code>--rd</code>).</td></tr>
       </tbody>
     </table>
   </div>
@@ -3622,32 +3637,24 @@ public:
 
 <!-- ============================================== CH 34 -->
 <section class="ch" id="ch34" data-ch="34" data-title="Audio, input and video">
-  <div class="ch-head"><span class="ch-num">34</span><h3 id="audio-input-and-video">Audio, input and video</h3></div>
+  <div class="ch-head"><span class="ch-num">34</span><h3 id="audio-input-and-video">Audio, input and video</h3>
+<h4 id="apr-command-order-and-waits">APR command order and waits</h4>
+  <p><code>src/libs/libAmpr.cpp</code> stores file reads, memory operations, address writes/waits and events in one append-ordered command sequence. The worker advances a submission cursor one command at a time. A blocked address wait holds up its own priority queue while other ready priorities can proceed; completion is published only when the sequence completes or fails. APR file reads reuse worker-owned staging storage rather than allocating a new buffer for each read.</p></div>
 
-  <h4>Audio output</h4>
-  <p><code>sceAudioOut</code> is conceptually simple: the game opens a port with a format and channel count, then submits fixed-size blocks. Kyty mixes and outputs them on a dedicated thread.</p>
-  <p>The subtlety is <strong>back-pressure</strong>. On hardware, submitting when the buffers are full blocks the caller. Many games use that as their frame pacer — the audio thread blocks, and the rest of the engine paces off it. An implementation that never blocks makes those games run at unbounded speed.</p>
+  <h4 id="audio">Audio — ports, graphs and decoders</h4>
+  <p>The implementation is now split by responsibility. <code>audio.cpp</code> owns AudioOut/AudioOut2 and AudioIn; <code>acm.cpp</code> owns ACM; <code>audio3d.cpp</code> owns Audio3D; and <code>ngs2.cpp</code> owns NGS2 systems, racks, voices and sampler graphs. Follow those files rather than looking for every API in the former monolithic audio implementation.</p>
+  <p>AudioOut2 supports 12-channel (7.1.4) data with downmix, user-capability queries, even blocking-write cadence and capture of submitted PCM before shared guest buffers change. NGS2 plays PCM16 and ATRAC9 sampler blocks, preserves stream/loop positions and supports rear low-pass filtering; unsupported custom modules warn and are skipped.</p>
+  <p><code>ajm.cpp</code> parses asynchronous jobs through <code>libs/ajm/decoder.h</code>. ATRAC9 uses LibAtrac9; AAC, MP3 and the new Opus decoder use FFmpeg. <code>libs/ajm/opus_decoder.h</code> adds Opus decode/control handling, and shared reset logic handles gapless state.</p>
+  <p><code>--mic &lt;name&gt;</code> selects SDL3 microphone capture for AudioIn; omitting it produces paced silence. <code>dualSenseHaptics.cpp</code> routes vibration-audio ports to DualSense haptics and pad-speaker ports to the controller speaker when the host device is available. Audio haptics are a separate path from <code>PadSetVibration()</code> motor rumble.</p>
 
-  <h4>AJM: audio decode as a hardware block</h4>
-  <p>AJM is not an API in the usual sense. The guest submits a <em>batch of jobs</em>, each a record describing input and output buffers, codec, and per-codec parameters. Kyty parses that record format and routes each job:</p>
-  <div class="tw">
-    <table>
-      <thead><tr><th>Codec</th><th>Implementation</th></tr></thead>
-      <tbody>
-        <tr><td>ATRAC9</td><td>LibAtrac9 — Sony's own codec, which FFmpeg does not cover.</td></tr>
-        <tr><td>AAC</td><td>FFmpeg.</td></tr>
-        <tr><td>MP3</td><td>FFmpeg.</td></tr>
-      </tbody>
-    </table>
-  </div>
-  <p>Instance state is packed into flags, e.g. <code>AJM_INSTANCE_FLAG_MAX_CHANNEL_MASK = 0x7f</code>, and jobs carry a sideband result structure the game reads afterwards.</p>
+  <h4>Video playback</h4>
+  <p><code>avPlayer.cpp</code> handles cutscenes through FFmpeg and the archive-capable file layer. Startup, pause/seek validation, end-of-file events, loop timestamps, aspect ratio and padded image output now have explicit handling. <code>videoDec2Decoder.cpp</code> implements the lower-level decoder surface.</p>
 
-  <h4>Video</h4>
-  <p>Two paths. <code>avPlayer.cpp</code> (56 KB) is a complete media player — demux, decode, timing, and frame delivery to the game — used for cutscenes. <code>libVideoDec2.cpp</code> plus <code>videoDec2Decoder.cpp</code> is a lower-level decode API the game drives itself. Both sit on FFmpeg. The README credits shadPS4 as a reference for the AVPlayer work.</p>
+<p>SDL3 also supplies gyroscope and accelerometer samples for pad motion APIs. The default keyboard mapping uses Z/C for L2/R2. Windows are resizable and recreate the swapchain on resize; Space no longer acts as a pause shortcut. VideoOut supports RGB10A2 PQ buffers and layered presentation. <code>--vr</code> enables a virtual HMD2 model (<code>libHmd2.cpp</code>), including field-of-view/reprojection state, not a physical-headset backend.</p>
 
   <h4>Input</h4>
-  <p>SDL2 delivers events on the main thread; <code>libs/controller.cpp</code> maps game controllers to the DualSense model:</p>
-  <div class="filename">src/graphics/presentation/window/window.cpp:97</div>
+  <p>SDL3 delivers events on the main thread; <code>libs/controller.cpp</code> maps game controllers to the DualSense model:</p>
+  <div class="filename">src/graphics/presentation/window/window.cpp</div>
 <pre>case SDL_CONTROLLER_BUTTON_A:             return Controller::PAD_BUTTON_CROSS;
 case SDL_CONTROLLER_BUTTON_B:             return Controller::PAD_BUTTON_CIRCLE;
 case SDL_CONTROLLER_BUTTON_X:             return Controller::PAD_BUTTON_SQUARE;
@@ -3658,12 +3665,14 @@ case SDL_CONTROLLER_BUTTON_LEFTSTICK:     return Controller::PAD_BUTTON_L3;
 case SDL_CONTROLLER_BUTTON_LEFTSHOULDER:  return Controller::PAD_BUTTON_L1;
 case SDL_CONTROLLER_BUTTON_DPAD_UP:       return Controller::PAD_BUTTON_UP;
 ...</pre>
-  <p>Triggers are analogue and rescaled separately from sticks. <code>presentation/window/hostInput.cpp</code> adds default keyboard controls and repeatable <code>--keymap Control=Input</code> mappings for keys and mouse buttons; it can also drive the right stick from relative mouse movement. <code>libPad.cpp</code> reports state through <code>scePadReadState</code>. In the other direction, <code>PadSetVibration()</code> scales the guest's large/small motor bytes and forwards them to <code>SDL_GameControllerRumble()</code>.</p>
+  <p>Triggers are analogue and rescaled separately from sticks. <code>presentation/window/hostInput.cpp</code> adds default keyboard controls and repeatable <code>--keymap Control=Input</code> mappings for keys and mouse buttons; it can also drive the right stick from relative mouse movement. <code>libPad.cpp</code> reports state through <code>scePadReadState</code>. In the other direction, <code>PadSetVibration()</code> scales the guest's large/small motor bytes and forwards them to <code>SDL_RumbleGamepad()</code>.</p>
 </section>
 
 <!-- ============================================== CH 35 -->
 <section class="ch" id="ch35" data-ch="35" data-title="Debugging and tooling">
-  <div class="ch-head"><span class="ch-num">35</span><h3 id="debugging-and-tooling">Debugging and tooling</h3></div>
+  <div class="ch-head"><span class="ch-num">35</span><h3 id="debugging-and-tooling">Debugging and tooling</h3>
+<h4 id="profiling-and-fault-handlers">Profiling must preserve fault handlers</h4>
+  <p><code>--profile</code> enables Tracy. The build sets <code>TRACY_NO_CRASH_HANDLER=ON</code> so connecting a profiler does not replace the emulator's exception/signal handlers: instruction emulation and CPU/GPU coherency depend on those handlers. See <code>3rdparty/CMakeLists.txt</code>; the setting is independent of whether a recording client is attached.</p></div>
 
   <p class="deck">The emulator ships with substantial instrumentation. Learning it is the difference between guessing and knowing.</p>
 
@@ -3672,12 +3681,17 @@ case SDL_CONTROLLER_BUTTON_DPAD_UP:       return Controller::PAD_BUTTON_UP;
     <table>
       <thead><tr><th>Flag</th><th>Default</th><th>Effect</th></tr></thead>
       <tbody>
-        <tr><td><code>--game &lt;dir|elf&gt;</code></td><td>—</td><td>A game directory (uses <code>/app0/eboot.bin</code>) or a single ELF.</td></tr>
+        <tr><td><code>--game &lt;dir|elf|zar&gt;</code></td><td>—</td><td>A directory, ELF, or <code>.zar</code> archive; directories and archives load <code>/app0/eboot.bin</code>.</td></tr>
         <tr><td><code>--game-patch &lt;json&gt;</code></td><td>—</td><td>An ETAHen cheat file.</td></tr>
         <tr><td><code>--screen-width</code> / <code>--screen-height</code></td><td>1280 / 720</td><td>Window size.</td></tr>
         <tr><td><code>--user-name</code> / <code>--user-id</code></td><td>Kyty / 1000</td><td>Local console user identity.</td></tr>
-        <tr><td><code>--present-mode</code></td><td>Fifo</td><td><code>Fifo</code>, <code>Mailbox</code>, or <code>Immediate</code>.</td></tr>
+        <tr><td><code>--present-mode</code></td><td>Mailbox</td><td><code>Fifo</code>, <code>Mailbox</code>, or <code>Immediate</code>.</td></tr>
         <tr><td><code>--gpu &lt;index&gt;</code></td><td>-1</td><td>Vulkan physical device by enumeration index. <code>-1</code> picks automatically.</td></tr>
+        <tr><td><code>--mic</code></td><td>unset</td><td>Capture from the named microphone. Omit it for paced silent AudioIn.</td></tr>
+        <tr><td><code>--vr</code></td><td>off</td><td>Enable the virtual HMD2 headset model; this is not physical VR-headset support.</td></tr>
+        <tr><td><code>--amd-cpu</code></td><td>off</td><td>Enable AMD CPU instruction patches, including reciprocal-square-root emulation.</td></tr>
+        <tr><td><code>--tessellation</code></td><td>off</td><td>Enable native LS / hull / evaluation-stage draws. Tessellation patches are skipped by default.</td></tr>
+
         <tr><td><code>--fullscreen</code></td><td>false</td><td>Borderless desktop fullscreen.</td></tr>
         <tr><td><code>--vblank-frequency &lt;n&gt;</code></td><td>60</td><td>Virtual vertical-blank rate. Changing it changes game speed for engines that pace off vblank.</td></tr>
         <tr><td><code>--console-language &lt;0-29&gt;</code></td><td>1</td><td>Console language; 1 is English (US).</td></tr>
@@ -3692,7 +3706,7 @@ case SDL_CONTROLLER_BUTTON_DPAD_UP:       return Controller::PAD_BUTTON_UP;
         <tr><td><code>--graphics-debug-dump</code></td><td>false</td><td>Additional graphics dumps, including textures into <code>_Textures</code>.</td></tr>
         <tr><td><code>--printf-direction</code></td><td>Silent</td><td><code>Silent</code>, <code>Console</code> or <code>File</code> for the emulator logger; it also gates guest printf and several debug dumps.</td></tr>
         <tr><td><code>--printf-output-file</code></td><td><code>_kyty.txt</code></td><td>Logger/guest-printf target when the direction is <code>File</code>.</td></tr>
-        <tr><td><code>--profiler-direction</code></td><td>None</td><td><code>None</code> or <code>Network</code> — streams to a Tracy client.</td></tr>
+        <tr><td><code>--profile</code></td><td>off</td><td>Enable the Tracy profiler; scopes use native <code>tracy::ScopedZone</code>.</td></tr>
         <tr><td><code>--spirv-debug-printf</code></td><td>false</td><td>Enables <code>printf</code> from inside shaders.</td></tr>
         <tr><td><code>--readback-linear-images</code></td><td>false</td><td>Read back writable linear images on submit — a coherency workaround.</td></tr>
         <tr><td><code>--playgo-hack</code></td><td>false</td><td>Use the supplied PlayGo stub fallback.</td></tr>
@@ -3726,7 +3740,7 @@ kyty_emulator.exe --game "D:\Games\Example" ^
         <tr><td>Wrong colours, garbage pixels</td><td><code>--shader-log-direction File</code></td><td>The pixel shader's IR. Also check for <code>dispatcher fallback</code>.</td></tr>
         <tr><td>Textures flicker or go stale</td><td><code>--readback-linear-images true</code></td><td>A coherency bug. Start at <code>MemoryTracker</code>, not the texture cache.</td></tr>
         <tr><td>Device lost / validation errors</td><td><code>--vulkan-validation true --shader-validation true</code></td><td>Validation output first; malformed SPIR-V second.</td></tr>
-        <tr><td>Very slow</td><td><code>--profiler-direction Network</code></td><td>Tracy. Distinguish shader compilation (cold cache) from per-draw cost.</td></tr>
+        <tr><td>Very slow</td><td><code>--profile</code></td><td>Tracy. Distinguish shader compilation (cold cache) from per-draw cost.</td></tr>
         <tr><td>Hangs with no CPU use</td><td>debugger, all threads</td><td>A <code>WAIT_REG_MEM</code> whose condition never becomes true, or a thread waiting on an event queue nothing signals.</td></tr>
       </tbody>
     </table>
@@ -3737,7 +3751,7 @@ kyty_emulator.exe --game "D:\Games\Example" ^
     <table>
       <thead><tr><th>You will see</th><th>It means</th></tr></thead>
       <tbody>
-        <tr><td><code>EXIT_NOT_IMPLEMENTED(cond)</code><br><strong>~950 sites</strong></td><td>"If this is true, I did not handle this case." A marker of the frontier, not an impossibility claim. Grepping these maps what the emulator cannot yet do.</td></tr>
+        <tr><td><code>EXIT_NOT_IMPLEMENTED(cond)</code><br><strong>~980 sites</strong></td><td>"If this is true, I did not handle this case." A marker of the frontier, not an impossibility claim. Grepping these maps what the emulator cannot yet do.</td></tr>
         <tr><td><code>EXIT("…")</code><br><strong>~500 sites</strong></td><td>An unrecoverable invariant violation — a bug, not a gap.</td></tr>
         <tr><td><code>KYTY_SYSV_ABI</code></td><td>Guest code calls this directly. Never call it from emulator code without thinking about the convention.</td></tr>
         <tr><td><code>PRINT_NAME()</code></td><td>Free per-call tracing, already wired up, off by default per thread.</td></tr>
@@ -3764,7 +3778,7 @@ kyty_emulator.exe --game "D:\Games\Example" ^
     <div class="lh">Learn more · the tools</div>
     <ul>
       <li><span class="kind">Docs</span><div><a href="https://renderdoc.org/docs/getting_started/quick_start.html">RenderDoc — Quick Start</a><span class="d">Capture a frame with <code>--rd</code>, then use the Event Browser to step through it. For a wrong-geometry bug this shows you the vertex buffer contents, the bound pipeline and the viewport in one place. Full <a href="https://renderdoc.org/docs/index.html">documentation</a>.</span></div></li>
-      <li><span class="kind code">Code</span><div><a href="https://github.com/wolfpld/tracy">Tracy Profiler</a><span class="d">What <code>--profiler-direction Network</code> streams to. The <code>KYTY_PROFILER_FUNCTION()</code> macros scattered through the PM4 handlers and the recompiler feed its frame view.</span></div></li>
+      <li><span class="kind code">Code</span><div><a href="https://github.com/wolfpld/tracy">Tracy Profiler</a><span class="d">What <code>--profile</code> streams to. The <code>KYTY_PROFILER_FUNCTION()</code> macros scattered through the PM4 handlers and the recompiler feed its frame view.</span></div></li>
       <li><span class="kind code">Code</span><div><a href="https://github.com/KhronosGroup/SPIRV-Tools">spirv-dis and spirv-val</a><span class="d"><code>spirv-dis</code> turns a dumped module into readable assembly; <code>spirv-val</code> is what <code>--shader-validation true</code> runs internally. Both are worth having on your PATH separately from the build.</span></div></li>
       <li><span class="kind code">Code</span><div><a href="https://github.com/KytyPS5/KytyPS5">KytyPS5 — issues and pull requests</a><span class="d">Read recent issues before reporting one. The Game Emulation Bug Report template asks for the complete log file, which after this chapter you know how to produce.</span></div></li>
     </ul>
@@ -3775,36 +3789,72 @@ kyty_emulator.exe --game "D:\Games\Example" ^
 <section class="ch" id="ch36" data-ch="36" data-title="Tests">
   <div class="ch-head"><span class="ch-num">36</span><h3 id="tests">Tests</h3></div>
 
-  <p class="deck">About 56,000 lines across sixteen standalone executables, concentrated in exactly the two places where failure is silent.</p>
+  <p class="deck">The aggregate suite covers shader compilation, resource binding, memory, archive I/O, audio, save data and dialogs. CMake defines 25 portable test executables plus an x86-64 macOS SSE4a executable.</p>
 
   <h4>The targets</h4>
 <pre>cmake --build _Build/windows --target memory_tracker_tests
 .\_Build\windows\memory_tracker_tests.exe
 
-<i># all are EXCLUDE_FROM_ALL, so a normal build skips them; `kyty_tests` builds them all</i>
-shader_recompiler_compute_tests  shader_cfg_tests               virtual_memory_allocation_tests
-resource_tracking_tests          resource_materialization_tests scalar_provenance_tests
-memory_tracker_tests             page_manager_tests             image_page_table_tests
-event_queue_lifetime_tests       kernel_file_system_tests       sync_on_address_tests
-audio_out2_port_tests            ime_dialog_tests               bit_array_tests
-shader_vertex_metadata_tests</pre>
+<i># Build the aggregate, then run the CTest registrations.</i>
+cmake --build _Build/windows --target kyty_tests
+ctest --test-dir _Build/windows --output-on-failure
+
+<i># 25 portable targets; macOS also adds macos_sse4a_tests:</i>
+ime_dialog_tests
+shader_cfg_tests
+scalar_provenance_tests
+image_page_table_tests
+memory_tracker_tests
+page_manager_tests
+archive_file_tests
+avplayer_file_tests
+bit_array_tests
+lru_cache_tests
+shader_vertex_metadata_tests
+resource_materialization_tests
+resource_tracking_tests
+event_queue_lifetime_tests
+kernel_file_system_tests
+sync_on_address_tests
+shader_recompiler_compute_tests
+virtual_memory_allocation_tests
+audio_out2_port_tests
+ngs2_sampler_tests
+pad_haptics_tests
+save_data_memory_tests
+ces_tests
+save_data_dialog_tests
+http_uri_parse_tests</pre>
 
   <div class="tw">
-    <table>
-      <thead><tr><th class="num">Size</th><th>Test file</th><th>Covers</th></tr></thead>
-      <tbody>
-        <tr><td class="num">1.43 MB</td><td><code>ShaderRecompilerComputeTests.cpp</code></td><td>End-to-end compute-shader recompilation. The largest test file.</td></tr>
-        <tr><td class="num">640 KB</td><td><code>shaderCfgTests.cpp</code></td><td>CFG construction and structurisation, including irreducible cases.</td></tr>
-        <tr><td class="num">126 KB</td><td><code>VirtualMemoryAllocationTests.cpp</code></td><td>The guest allocator, including deliberately injected failures.</td></tr>
-        <tr><td class="num">65 KB</td><td><code>ResourceTrackingTests.cpp</code></td><td>SRT planning, materialization, resource classification, shader info, and bindings.</td></tr>
-        <tr><td class="num">34 KB</td><td><code>MemoryTrackerTests.cpp</code></td><td>Dirty tracking, upload/download ranges, and invariants.</td></tr>
-        <tr><td class="num">25 KB</td><td><code>PageManagerTests.cpp</code></td><td>Watch and page-protection semantics in isolation.</td></tr>
-        <tr><td class="num">21 KB</td><td><code>ScalarProvenanceTests.cpp</code></td><td>SRT planning and typed-IR value tracing; the filename is retained from the older architecture.</td></tr>
-        <tr><td class="num">19 KB</td><td><code>EventQueueLifetimeTests.cpp</code></td><td>Destroying a queue while threads block on it or events are being delivered.</td></tr>
-        <tr><td class="num">11.5 KB</td><td><code>ImeDialogTests.cpp</code></td><td>IME dialog lifecycle and result handling.</td></tr>
-        <tr><td class="num">9.3 KB</td><td><code>SyncOnAddressTests.cpp</code></td><td>Address-based synchronization behavior.</td></tr>
-      </tbody>
-    </table>
+    <table><thead><tr><th>File</th><th>Coverage</th></tr></thead><tbody>
+        <tr><td><code>ShaderRecompilerComputeTests.cpp</code></td><td>Executable shader semantics, rasterization, caches, transfers and scheduler subsets.</td></tr>
+        <tr><td><code>shaderCfgTests.cpp</code></td><td>Control-flow recovery, structurization and dispatcher fallback.</td></tr>
+        <tr><td><code>VirtualMemoryAllocationTests.cpp</code></td><td>Guest mappings, physical ownership, extended allocations, loader and instruction patches.</td></tr>
+        <tr><td><code>ResourceTrackingTests.cpp</code></td><td>Typed resource analysis, scalar reads, indirect buffers/images and bindings.</td></tr>
+        <tr><td><code>ResourceMaterializationTests.cpp</code></td><td>In-place snapshot refresh, specialization and uniform-fill classification.</td></tr>
+        <tr><td><code>ScalarProvenanceTests.cpp</code></td><td>Typed value/SRT evaluation; historical filename retained.</td></tr>
+        <tr><td><code>MemoryTrackerTests.cpp</code></td><td>CPU/GPU ownership, dirty regions and tracking ranges.</td></tr>
+        <tr><td><code>PageManagerTests.cpp</code></td><td>Page protection, fault handling and watch lifetimes.</td></tr>
+        <tr><td><code>ImagePageTableTests.cpp</code></td><td>Sparse image-page ownership, including extended guest addresses.</td></tr>
+        <tr><td><code>EventQueueLifetimeTests.cpp</code></td><td>Event callbacks, deletion and queue lifetime.</td></tr>
+        <tr><td><code>KernelFileSystemTests.cpp</code></td><td>Mounted paths, directory iteration, Unicode and unmapped-path isolation.</td></tr>
+        <tr><td><code>SyncOnAddressTests.cpp</code></td><td>Address waits/wakes, timed deadlines and interruptions.</td></tr>
+        <tr><td><code>AudioOut2PortTests.cpp</code></td><td>Audio port layouts, submission timing, capabilities and shared-buffer capture.</td></tr>
+        <tr><td><code>Ngs2SamplerTests.cpp</code></td><td>PCM/ATRAC9 sampling, looping and graph playback.</td></tr>
+        <tr><td><code>PadHapticsTests.cpp</code></td><td>Vibration-audio and controller-speaker routing.</td></tr>
+        <tr><td><code>ImeDialogTests.cpp</code></td><td>Dialog state, focus and lifecycle.</td></tr>
+        <tr><td><code>SaveDataMemoryTests.cpp</code></td><td>Persistent save memory, allocation metadata and capacity.</td></tr>
+        <tr><td><code>SaveDataDialogTests.cpp</code></td><td>Save dialog state and lock behavior.</td></tr>
+        <tr><td><code>CesTests.cpp</code></td><td>CP932/Shift-JIS and UTF-8 conversions.</td></tr>
+        <tr><td><code>HttpUriParseTests.cpp</code></td><td>HTTP URI parsing, including empty query strings.</td></tr>
+        <tr><td><code>ArchiveFileTests.cpp</code></td><td>ZArchive paths, reads, seeks and directory access.</td></tr>
+        <tr><td><code>AvPlayerFileTests.cpp</code></td><td>AVPlayer file access, including archive-backed data.</td></tr>
+        <tr><td><code>LruCacheTests.cpp</code></td><td>Least-recently-used cache behavior.</td></tr>
+        <tr><td><code>BitArrayTests.cpp</code></td><td>Bit-range operations.</td></tr>
+        <tr><td><code>ShaderVertexMetadataTests.cpp</code></td><td>Vertex metadata and semantic extraction.</td></tr>
+        <tr><td><code>macosSse4aTests.cpp</code></td><td>x86-64 macOS only: SSE4a signal-context restoration.</td></tr>
+      </tbody></table>
   </div>
 
   <h4>Failure injection</h4>
@@ -3819,6 +3869,8 @@ bool TestGuestAddressRangeIsOwned(uint64_t vaddr, uint64_t size);
 uint64_t TestGuestBackingSize();
 #endif</pre>
   <p>The same pattern appears in the loader (<code>TestMainEntryUsesGuestStack</code>, <code>TestModuleRelocationUsesWritableHostMapping</code>) and in pthreads (<code>TestGuestStackOwnerLifecycle</code>).</p>
+
+<p>CI now runs the recompiler suite as well as focused regressions. GPU-dependent cases can report a skip when required rasterization or subgroup capabilities are absent; inspect the test output to distinguish a skipped feature from a passing execution. CTest registrations include focused subsets of the heavy shader executable, so the number of CTest cases is larger than the number of executables. <code>ShaderRayTracingTests.inc</code> covers BVH handling, not implemented ray tracing.</p>
 
   <h4>Why the ratio is right</h4>
   <p>Notice what is <em>not</em> heavily tested: the HLE libraries. That is a correct allocation of effort. When an HLE function is wrong, the game misbehaves visibly and the log points at it. When the shader compiler or the memory tracker is wrong, nothing crashes and nothing logs — you get subtly wrong pixels, or corruption several frames after the cause. Tests are the only instrument that works there.</p>
@@ -3854,7 +3906,7 @@ cmake … -DKYTY_ENABLE_CLANG_TIDY=ON            <i># clang-tidy during builds</
   <h4>Habits worth adopting early</h4>
   <ul>
     <li><strong>Run with logging on and read it.</strong> Kyty logs deliberately and enormously: every module load, every segment, every unresolved NID, every shader compile phase with timings. Most questions are answered faster by the log than by the source.</li>
-    <li><strong>Treat <code>EXIT_NOT_IMPLEMENTED</code> as a map.</strong> Grep for it. Each of the ~950 sites marks a case the author knew about and chose not to handle.</li>
+    <li><strong>Treat <code>EXIT_NOT_IMPLEMENTED</code> as a map.</strong> Grep for it. Each of the ~980 sites marks a case the author knew about and chose not to handle.</li>
     <li><strong>Read the tests as specification.</strong> For the shader compiler and the memory tracker they are more precise than any comment.</li>
     <li><strong>Keep the boundary in mind.</strong> Guest pointer or host pointer? Guest thread, GPU thread, or main thread?</li>
   </ul>
@@ -4030,7 +4082,7 @@ cmake … -DKYTY_ENABLE_CLANG_TIDY=ON            <i># clang-tidy during builds</
     <div class="lh">Chapters 35–37</div>
     <ul>
       <li><span class="kind">Docs</span><div><a href="https://renderdoc.org/docs/getting_started/quick_start.html">RenderDoc — Quick Start</a><span class="d">What <code>--rd</code> captures into. <a href="https://renderdoc.org/docs/index.html">Full docs</a>.</span></div></li>
-      <li><span class="kind code">Code</span><div><a href="https://github.com/wolfpld/tracy">Tracy Profiler</a><span class="d">What <code>--profiler-direction Network</code> streams to.</span></div></li>
+      <li><span class="kind code">Code</span><div><a href="https://github.com/wolfpld/tracy">Tracy Profiler</a><span class="d">What <code>--profile</code> streams to.</span></div></li>
       <li><span class="kind code">Code</span><div><a href="https://github.com/KhronosGroup/SPIRV-Tools">SPIRV-Tools</a><span class="d"><code>spirv-dis</code> and <code>spirv-val</code>, both worth having on your PATH.</span></div></li>
       <li><span class="kind code">Code</span><div><a href="https://github.com/KytyPS5/KytyPS5">KytyPS5</a> · <a href="https://github.com/InoriRus/Kyty">InoriRus/Kyty</a> · <a href="https://github.com/shadps4-emu/shadPS4">shadPS4</a><span class="d">This project, the project it forked from, and the independent PS4 emulator credited as a reference.</span></div></li>
     </ul>
@@ -4043,7 +4095,7 @@ cmake … -DKYTY_ENABLE_CLANG_TIDY=ON            <i># clang-tidy during builds</
 </section>
 
 <div class="foot">
-  <p>Written from a reading of the KytyPS5 source tree at <code>main</code> commit <code>5b7d334</code> (18 September 2026). Line and file references point at that revision and will drift as the code moves. The project is licensed GPL-2.0-only, is based on a heavily modified version of <a href="https://github.com/InoriRus/Kyty">InoriRus/Kyty</a> (MIT), and credits <a href="https://github.com/shadps4-emu/shadPS4">shadPS4</a> as a reference for the memory model and the AVPlayer implementation. It is not affiliated with Sony Interactive Entertainment, and distributes no games or system software.</p>
+  <p>Written from a reading of the KytyPS5 source tree at <code>main</code> commit <code>2650478</code> (29 September 2026). Source paths and symbols refer to that revision. The project is licensed GPL-2.0-only, is based on a heavily modified version of <a href="https://github.com/InoriRus/Kyty">InoriRus/Kyty</a> (MIT), and credits <a href="https://github.com/shadps4-emu/shadPS4">shadPS4</a> as a reference for the memory model and the AVPlayer implementation. It is not affiliated with Sony Interactive Entertainment, and distributes no games or system software.</p>
 </div>
 
 
@@ -4313,19 +4365,17 @@ if($("#sharpwrap")){
 }
 
 /* ---------------- memory map ---------------- */
-var BANDS=[
- {c:"h",a:"0x0000040000 – 0x07FFFFBFFF",n:"System managed",sz:"~32 GB",
-  d:"<p>Left entirely to the host operating system. The emulator's own image, the C++ runtime, Qt, SDL, the Vulkan loader and the graphics driver live here. Guest allocations never enter this band.</p><p>On Windows this is enforced by passing an explicit <code>LowestStartingAddress</code> / <code>HighestEndingAddress</code> pair to <code>VirtualAlloc2</code>, so the allocator physically cannot return an address outside the band it was asked for.</p>",
-  s:"src/common/platform/sysWindowsVirtual.cpp:102"},
- {c:"k",a:"0x07FFFFC000 – 0x0FFFFFFFFF",n:"System reserved",sz:"~32 GB",
-  d:"<p>Reserved by Kyty for structures the guest can see. Two things live here:</p><ul><li><strong>Loaded modules.</strong> The first lands at <code>0x900000000</code> — the band base <code>0x800000000</code> plus a <code>0x100000000</code> code offset — and each subsequent module is placed <code>0x10000000</code> (256 MB) further on.</li><li><strong>Custom PLT tables</strong>, the generated trampolines for guest imports.</li></ul><p>Because every module lands in a known, contiguous band, the crash handler can walk a guest stack by simply testing whether each return address falls inside it.</p>",
-  s:"src/loader/runtimeLinker.cpp:344"},
- {c:"g",a:"0x1000000000 – 0xFBFFFFFFFF",n:"User area",sz:"~1 TB",
-  d:"<p>Every guest allocation: direct memory mappings, flexible memory, memory pools, thread stacks, GPU-visible buffers. Kyty keeps its own free list and page-attribute tables across this range, because it has to answer <code>sceKernelVirtualQuery</code> with per-range protection, memory type, flags — and the <em>name</em> the game assigned to the range.</p><p>Page granularity here is the guest's 16 KB, not the host's 4 KB. One guest page covers four host pages, so every protection change applies in groups of four. This matters enormously in the memory tracker.</p>",
-  s:"src/kernel/memoryAddressSpace.inc:9"},
- {c:"h",a:"0xFC00000000 and above",n:"Host high memory",sz:"—",
-  d:"<p>Outside the guest's world entirely. The emulator binary is deliberately linked high — <code>--image-base=0x100000000000</code> on Linux, <code>-image_base 0x700000000000</code> on macOS — so its own code sits far above anything the guest can allocate.</p><p>This matters more than it sounds. It guarantees that a guest pointer and a host pointer can never be confused by value alone, which turns a whole class of bug into something you can spot by looking at a hex dump.</p>",
-  s:"CMakeLists.txt:126"}
+var BANDS = [
+ {c:"h",a:"0x0000040000 – 0x07FFFFBFFF",n:"System managed",ttl:"System managed",sz:"~32 GiB",
+  d:"<p>The ordinary Windows/Linux low-band layout leaves this range to the host. Host libraries and drivers are not confined to this band; macOS also uses different low-range boundaries.</p>",s:"src/common/platform/sysWindowsVirtual.cpp"},
+ {c:"k",a:"0x07FFFFC000 – 0x0FFFFFFFFF",n:"System reserved",ttl:"System reserved",sz:"~32 GiB",
+  d:"<p>Guest-visible runtime structures and loaded modules occupy this ordinary reserved band. Module placement is tracked by the runtime linker. Diagnostic import stubs and TLS bridges remain; the custom lazy-PLT generator has been removed.</p>",s:"src/loader/runtimeLinker.cpp"},
+ {c:"g",a:"0x1000000000 – 0xFBFFFFFFFF",n:"User area",ttl:"Ordinary user area",sz:"~944 GiB",
+  d:"<p>Ordinary direct, flexible and pooled allocations, stacks and GPU-visible buffers use the low guest range. The kernel tracks per-range permissions, flags and names. Guest allocation granularity is 16 KiB; host page size is platform-dependent.</p>",s:"src/kernel/memoryAddressSpace.inc"},
+ {c:"g",a:"0x080000000000 – 0x087FFFFFFFFF",n:"Extended guest",ttl:"Extended guest arena",sz:"512 GiB",
+  d:"<p>Extended allocations use a separate arena beginning at 8 TiB. Reserving it does not consume 512 GiB of physical RAM. Sparse GPU trackers accept 44-bit addresses, while dense buffer/BDA tables compact the low and extended intervals without indexing the gap.</p>",s:"src/kernel/memory.h"},
+ {c:"h",a:"outside reserved guest ranges",n:"Host high memory",ttl:"Host high memory",sz:"schematic",
+  d:"<p>High addresses are not automatically host-only: exclude the extended guest arena first. Host image placement varies by platform. Use actual mapping records to identify an address; a prefix alone does not prove ownership.</p>",s:"CMakeLists.txt"}
 ];
 var bh=$("#bands"), bd=$("#band-detail");
 if(bh){
@@ -4368,47 +4418,47 @@ var BOOT=[
  {t:"Host bootstrap", h:"VirtualMemory::Init + InitializeThreads",
   b:"<p>Before arguments are parsed, <code>main()</code> installs host virtual-memory support and records the process's initial thread. These are direct bootstrap calls, not lifecycle-stack entries.</p>",
   w:"Later memory, exception and window-thread code assumes this process-wide host state already exists.",
-  s:"src/main.cpp:327"},
+  s:"src/main.cpp"},
  {t:"Parse arguments", h:"ParseArgs → RunOptions",
   b:"<p>Every flag maps onto a field of <code>Config::ConfigOptions</code>. Enum-valued flags are parsed with <code>magic_enum</code>, so the accepted strings are literally the enumerator names. <code>--game</code> accepts either a directory — in which case <code>/app0/eboot.bin</code> is used — or a single ELF file.</p>",
   w:"The emulator still has one argument-driven runtime configuration object, while the Qt launcher persists global and per-title profiles and converts the selected profile into this command line.",
-  s:"src/main.cpp:141"},
+  s:"src/main.cpp"},
  {t:"Config &amp; log", h:"Config, then Log, then param.json",
   b:"<p>Configuration initialises first, then logging (which depends on it), and only then is <code>sce_sys/param.json</code> read. If it declares a flexible-memory budget, <code>SetFlexibleMemorySize()</code> is called <em>before</em> the memory lifecycle is initialised.</p>",
   w:"The memory manager sizes its pools during Init. A budget applied afterwards would be ignored, so this ordering is load-bearing rather than stylistic.",
-  s:"src/emulator.cpp:130"},
+  s:"src/emulator.cpp"},
  {t:"Lifecycle stack", h:"Explicit Initialize&lt;Lifecycle&gt; order",
   b:"<p><code>Emulator::Init()</code> spells out timer, pthread, profiler, network, memory, file-system, controller, audio and graphics startup in the required order. Every successful lifecycle contributes normal and emergency shutdown callbacks to a stack.</p>",
   w:"Teardown walks active callbacks in reverse, so ownership follows the visible initialization sequence without a separate dependency graph.",
-  s:"src/emulator.cpp:142"},
+  s:"src/emulator.cpp"},
  {t:"Mount points", h:"/app0, /hostapp, /download0, /temp0",
   b:"<p>The game directory is mounted twice, at <code>/app0</code> and <code>/hostapp</code>. Then per-title sandbox directories are created under <code>_DownloadData/</code> and <code>_TempData/</code>, keyed by the <code>TITLE_ID</code> from <code>param.json</code>.</p>",
   w:"Titles must not see each other's temporary or downloaded data — the same isolation the console provides. A missing TITLE_ID falls back to <code>UNKNOWN</code>.",
-  s:"src/emulator.cpp:79"},
+  s:"src/emulator.cpp"},
  {t:"Register HLE", h:"Libs::InitAll(rt-&gt;Symbols())",
   b:"<p>Every <code>LIB_DEFINE</code> block runs, inserting thousands of NID → native-function-pointer records into the shared symbol database. Nothing from the game has been loaded yet.</p>",
   w:"The table must be complete before the first relocation is processed, because relocation is what binds a guest import to a Kyty implementation.",
-  s:"src/libs/libs.cpp:100"},
+  s:"src/libs/libs.cpp"},
  {t:"Load the ELF", h:"RuntimeLinker::LoadProgram",
   b:"<p>Parse the SELF container, parse the ELF, compute the total mapped size, reserve guest memory at the next module base, copy each <code>PT_LOAD</code> segment in, patch executable segments, apply page protection, flush the instruction cache, and record the TLS image and process-parameter block.</p>",
   w:"Nothing is executed yet — not even module initialisers. Loading and running are deliberately separate so that every module can be present before any relocation is resolved.",
-  s:"src/loader/runtimeLinker.cpp:1991"},
+  s:"src/loader/runtimeLinker.cpp"},
  {t:"Guest thread", h:"Spawn the guest, keep main for the window",
   b:"<p><code>Execute()</code> starts a thread running <code>RuntimeLinker::Execute()</code>, then the original main thread enters <code>WindowRun()</code> and never returns from it.</p>",
   w:"Window creation and event pumping must own the process's first thread on macOS and Windows. Giving the game its own thread also means a hung game does not freeze the window.",
-  s:"src/emulator.cpp:171"},
+  s:"src/emulator.cpp"},
  {t:"Stack &amp; TLS", h:"Guest stack, then 768 KB of host stack",
   b:"<p>On the guest thread: initialise pthread state for this thread, allocate a guest stack inside the guest address bands, and on Windows walk the host stack's guard page down by 768 KB to force it committed.</p>",
   w:"PS5 code has no Windows stack probes and can write past a guard page; module initialisers also run on the host stack before the guest stack is in use.",
-  s:"src/loader/runtimeLinker.cpp:1432"},
+  s:"src/loader/runtimeLinker.cpp"},
  {t:"Relocate", h:"PreloadAdjacentPrograms → RelocateAll",
-  b:"<p>Any <code>.prx</code> modules beside the executable are loaded, then every relocation in every module is processed: absolute, GOT, PLT, relative and TLS-module. Imports resolve against the HLE database first, then other modules; anything left gets a lazy thunk.</p>",
+  b:"<p>Any <code>.prx</code> modules beside the executable are loaded, then every relocation in every module is processed: absolute, GOT, PLT, relative and TLS-module. Imports resolve against the HLE database first, then other modules; anything left gets a diagnostic thunk.</p>",
   w:"All modules must exist before relocation, because a symbol may be exported by a module loaded after the one that imports it.",
-  s:"src/loader/runtimeLinker.cpp:1829"},
+  s:"src/loader/runtimeLinker.cpp"},
  {t:"Run", h:"StartAllModules → RunEntry",
   b:"<p>After relocation, an optional ETAHen/GoldHEN-style cheat JSON is validated against title ID, version and process, then applied (with later module writes kept pending). Module initialisers run next, and <code>RunEntry()</code> switches to the guest stack.</p>",
   w:"From this instruction on, the CPU executes the game's own code natively. Everything the emulator does afterwards is reactive: it responds to calls, to page faults, and to command buffers.",
-  s:"src/loader/runtimeLinker.cpp:1472"}
+  s:"src/loader/runtimeLinker.cpp"}
 ];
 
 stepper({
@@ -4444,17 +4494,17 @@ var PIPE=[
   b:"<p>Make register and control-flow value dependencies explicit, fold constants, eliminate identities and discard dead instructions.</p>",
   w:"SRT analysis follows this value graph directly.",
   s:"…/ir/passes/SsaRewrite.cpp"},
- {t:"SRT plan", h:"BuildSrtPlan — a recipe for reading descriptor tables",
-  b:"<p>Walk typed values and turn reachable shader-resource-table reads into a plan. Constant offsets get flattened slots; dynamic reads remain explicit.</p>",
-  w:"Separating the plan from its execution is what lets one compiled shader be reused across draws that bind completely different resources.",
-  s:"…/ir/passes/SrtWalker.cpp"},
- {t:"Track resources", h:"TrackResources — classify descriptor uses",
+ {t:"Tessellation", h:"LowerTessellationMemory — stage memory becomes typed I/O",
+  b:"<p>For Local, TessellationControl and TessellationEvaluation programs, lower the guest's stage-memory convention using the strides recovered by tessellation analysis. Ordinary vertex, mesh, pixel and compute programs continue to resource tracking.</p>",
+  w:"Guest LS/HS memory transfers must become valid cross-stage Vulkan interfaces before bindings and SPIR-V are emitted.",
+  s:"…/recompiler/Tessellation.cpp"},
+ {t:"Track resources", h:"TrackResources — scalar/SRT planning and descriptor classification",
   b:"<p>Classify buffers, images, samplers and sampled pairs, including access modes, dimensions, formats, aliases and descriptor sources.</p>",
   w:"This produces the list the Vulkan descriptor set layout is generated from. Wrong classification means either a pipeline that fails validation or, worse, one that silently reads the wrong memory.",
   s:"…/ir/passes/ResourceTracking.cpp"},
  {t:"Materialize", h:"MaterializeResources — at draw time, in the pipeline cache",
   b:"<p>The renderer, not the recompiler, runs the plan against current user data and guest memory. That produces a <code>ResourceSnapshot</code> and a <code>ResourceSpecialization</code>. A failed read is an <code>EXIT_IF</code>.</p>",
-  w:"The immutable plan is cached per shader binary; only the snapshot changes between draws. Specialisation is why two draws with differently-shaped resources must not share SPIR-V.",
+  w:"The resource plan is cached per program key and its snapshot is refreshed in place; a new permutation rebuilds IR. Specialisation is why two draws with differently-shaped resources must not share SPIR-V.",
   s:"…/ir/passes/ResourceMaterialization.cpp"},
  {t:"Layout", h:"ApplyResourceSpecialization → CollectShaderInfo → AllocateBindings",
   b:"<p><code>CompileProgram()</code> bakes the draw-time specialisation into the IR, then gathers stage I/O and allocates descriptor bindings — including <code>ShaderData</code>, <code>FlattenedSrt</code>, the BDA page table and the fault buffer.</p>",
@@ -4463,9 +4513,9 @@ var PIPE=[
  {t:"Requirements", h:"AnalyzeProgramRequirements",
   b:"<p>Record every subgroup, derivative, image, LDS, scratch and pixel-mask capability the final module needs.</p>",
   w:"Emission starts with an explicit capability contract.",
-  s:"…/backend/spirv/spirvEmitterAnalysis.cpp"},
+  s:"…/backend/spirv/SpirvEmitter.cpp"},
  {t:"Emit SPIR-V", h:"Spirv::EmitProgram",
-  b:"<p>The backend — about 404 KB across 18 files, including <code>spirvEmitterMesh.cpp</code> — declares capabilities, types, interfaces and descriptors, then lowers typed IR through flow, ALU, memory, image and mesh emitters.</p>",
+  b:"<p>The backend — about 386 KB across 18 files, including <code>spirvEmitterMesh.cpp</code> — declares capabilities, types, interfaces and descriptors, then lowers typed IR through flow, ALU, memory, image and mesh emitters.</p>",
   w:"SPIR-V is stricter than machine code in every respect — types declared, control flow structured, capabilities requested. This stage is where all that bookkeeping happens.",
   s:"…/backend/spirv/SpirvEmitter.cpp"}
 ];
@@ -4481,7 +4531,7 @@ stepper({
 });
 })();
 </script>
-<script src="assets/highlight.js?v=26" defer></script>
+<script src="assets/highlight.js?v=20260929" defer></script>
 </body>
 </html>
 

@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pointers, references & memory — KytyPS5</title>
 <meta name="description" content="How KytyPS5 uses pointers, references and memory: why a guest pointer is a host pointer, when the tree reaches for T* vs T& vs unique_ptr, borrowed spans, reading raw bytes, placement new, and who owns what.">
-<link rel="stylesheet" href="assets/viz.css?v=26">
-<link rel="stylesheet" href="assets/atlas.css?v=26">
-<link rel="stylesheet" href="assets/lab.css?v=26">
-<link rel="stylesheet" href="assets/tutor.css?v=26">
-<link rel="stylesheet" href="assets/app.css?v=26">
-<link rel="stylesheet" href="assets/highlight.css?v=26">
+<link rel="stylesheet" href="assets/viz.css?v=20260929">
+<link rel="stylesheet" href="assets/atlas.css?v=20260929">
+<link rel="stylesheet" href="assets/lab.css?v=20260929">
+<link rel="stylesheet" href="assets/tutor.css?v=20260929">
+<link rel="stylesheet" href="assets/app.css?v=20260929">
+<link rel="stylesheet" href="assets/highlight.css?v=20260929">
 </head>
 <body>
 
@@ -73,7 +73,7 @@
   <div class="filename">src/graphics/shader/shaderCompiler.h</div>
 <pre>std::span&lt;const uint32_t&gt; code;        <i>// the RDNA 2 binary — borrowed, not copied</i>
 std::span&lt;const uint32_t&gt; back_code;</pre>
-  <p>The extent can be fixed at compile time — the eight colour targets are a <code>std::span&lt;const T, 8&gt;</code>, which is a span that also asserts its length. The catch is the <b>lifetime contract</b>: a span is only valid while the memory it points into stays alive. That is the whole story behind the &ldquo;borrowed&rdquo; fields on a GPU submission — the spans point at the guest's command buffer, and the guest must not touch it until the GPU is done, which the timeline semaphore tracks. A span is a promise about someone else's bytes, so you keep those bytes alive.</p>
+  <p>The extent can be fixed at compile time — the eight colour targets are a <code>std::span&lt;const T, 8&gt;</code>, which encodes the required extent in its type (the caller must still supply a valid range). The catch is the <b>lifetime contract</b>: a span is only valid while the memory it points into stays alive. That is the whole story behind the &ldquo;borrowed&rdquo; fields on a GPU submission — the spans point at the guest's command buffer, and the guest must not touch it until the GPU is done, which the timeline semaphore tracks. A span is a promise about someone else's bytes, so you keep those bytes alive.</p>
 
   <h4 id="reading-raw-bytes">Reading structured bytes — <code>reinterpret_cast</code> at the boundary</h4>
   <p>PM4 is a stream of 32-bit dwords; a register write might carry a float. The command processor reads the typed value straight out of the raw buffer:</p>
@@ -82,8 +82,10 @@ std::span&lt;const uint32_t&gt; back_code;</pre>
 const auto fvalue = *<b>reinterpret_cast&lt;const float*&gt;</b>(&amp;value);   <i>// same bits, read as float</i></pre>
   <p><code>reinterpret_cast</code> is the &ldquo;I know these bytes are really a <code>T</code>&rdquo; cast. It generates <em>no code</em> — it only changes how the compiler types an address — which is why it is everywhere at the guest boundary (parsing PM4, ELF, param.json, save data) and almost nowhere in ordinary logic. The same move writes a guest address into a machine-code buffer for a JIT stub:</p>
   <div class="filename">src/loader/jit.h</div>
-<pre>void SetPltGot(uint64_t vaddr) { *reinterpret_cast&lt;uint64_t*&gt;(&amp;code[2]) = vaddr; }</pre>
-  <p>Because the tree reads memory as bytes, layout has to be exact — which is why the pipeline key is <code>#pragma pack(1)</code> and compared with <code>memcmp</code>: it <em>is</em> its bytes. That packing habit is C1's territory; here just note <em>why</em> it exists — so that reading raw memory back as a struct is safe.</p>
+<pre><i>// JmpRax: patch the immediate in mov rax, imm64; jmp rax</i>
+template &lt;class Handler&gt;
+void SetFunc(Handler func) { *reinterpret_cast&lt;Handler*&gt;(&amp;code[2]) = func; }</pre>
+  <p>Because the tree reads memory as bytes, layout has to be exact — which is why the pipeline key is <code>#pragma pack(1)</code> and compared with <code>memcmp</code>: it <em>is</em> its bytes. That packing habit is C1's territory; here just note <em>why</em> it exists — to match the required layout. Packing alone does not establish object lifetime, alignment or type-aliasing safety. For copying a bit pattern between ordinary C++ values, prefer <code>std::bit_cast</code> or <code>memcpy</code>.</p>
 
   <h4 id="placement-new">Building into memory you already have — placement <code>new</code></h4>
   <p>Ordinary <code>new</code> allocates and constructs. <strong>Placement <code>new</code></strong> only constructs — at an address you give it. The TLS patch builds its 9-byte <code>Call9</code> object directly on top of the guest instruction it is replacing:</p>
@@ -95,7 +97,7 @@ const auto fvalue = *<b>reinterpret_cast&lt;const float*&gt;</b>(&amp;value);   
   <p>At run time almost every byte belongs to one of four things, and knowing which answers &ldquo;can I free this?&rdquo;:</p>
   <ol>
     <li><strong>The guest heap</strong> — direct and flexible memory the game reserved through <code>sceKernel…</code>. Backed by the host reservation from <code>VirtualMemory::Alloc</code>; the game owns it and frees it.</li>
-    <li><strong>The GPU allocations</strong> — images and buffers, owned by <b>VMA</b> (VulkanMemoryAllocator), wrapped inside <code>vma.cpp</code>. Freed when the emulator drops the resource — but not while a submission still references it.</li>
+    <li><strong>The GPU allocations</strong> — images and buffers, owned by <b>VMA</b> (VulkanMemoryAllocator), wrapped by renderer buffer/image objects. Freed when the emulator drops the resource — but not while a submission still references it.</li>
     <li><strong>The caches</strong> — compiled programs and pipelines, held by value or <code>unique_ptr</code> inside the <code>ProgramCache</code> maps. The cache owns them for the run.</li>
     <li><strong>The borrows</strong> — every <code>span</code>, <code>T*</code> and <code>T&amp;</code> that <em>points into</em> the first three without owning anything.</li>
   </ol>
@@ -108,7 +110,11 @@ const auto fvalue = *<b>reinterpret_cast&lt;const float*&gt;</b>(&amp;value);   
   <p>Because ownership and mutation are both in the types, you can read a function's contract from its signature without opening it. <code>const T&amp;</code> / <code>const T*</code> = &ldquo;input, I only read this.&rdquo; A non-const pointer or reference = &ldquo;output or in-out, I may write it.&rdquo; A <code>unique_ptr</code> by value = &ldquo;I take this.&rdquo; A <code>span</code> = &ldquo;I look at your buffer while you keep it alive.&rdquo; Getting fluent at that scan is most of what makes this tree quick to read.</p>
 
   <h4 id="from-a-gc-language">Coming from a garbage-collected language</h4>
-  <p>The habit to unlearn is &ldquo;references keep things alive.&rdquo; Here nothing keeps anything alive except an owner going out of scope. A raw pointer never means &ldquo;the runtime will clean this up&rdquo; — it means &ldquo;someone else owns this; use it, don't free it, and don't outlive it.&rdquo; A dangling span or a pointer into a freed allocation is a real crash, not a caught exception — which is why the ownership types above are not style, they are the safety system.</p>
+  <p>The habit to unlearn is &ldquo;references keep things alive.&rdquo; Here the owner keeps an allocation alive; destruction of the final owner ends that lifetime. A raw pointer never means &ldquo;the runtime will clean this up&rdquo; — it means &ldquo;someone else owns this; use it, don't free it, and don't outlive it.&rdquo; A dangling span or a pointer into a freed allocation is undefined behavior, not a caught exception — which is why the ownership types above are not style, they are the safety system.</p>
+<h4 id="current-resource-borrows">Current resource borrows and deferred owners</h4>
+  <p><code>RenderContext</code> directly owns the page manager and buffer/texture caches. <code>ShaderStageRuntime</code> borrows compiled-info and resource-snapshot pointers from a program-cache entry; the snapshot is refreshed in place, so it is not an immutable per-draw copy. The renderer serializes preparation and consumption.</p>
+  <p>For a concrete move-only lifetime, read <code>BufferCache::DownloadBufferMemory()</code>: an oversized readback's temporary <code>unique_ptr&lt;Buffer&gt;</code> moves into a deferred callback. A raw mapped pointer remains usable because that callback retains the actual owner through GPU completion. Extended guest addresses also occupy a separate 512 GiB arena at <code>0x080000000000</code>; a numerically high pointer is not automatically a host-only allocation.</p>
+
     </div>
   </section>
 
@@ -157,15 +163,15 @@ const auto fvalue = *<b>reinterpret_cast&lt;const float*&gt;</b>(&amp;value);   
 
 </main>
 
-<script src="assets/topics.js?v=26" defer></script>
-<script src="assets/search-index.js?v=26" defer></script>
-<script src="assets/app.js?v=26" defer></script>
-<script src="assets/viz.js?v=26" defer></script>
-<script src="assets/atlas.js?v=26" defer></script>
-<script src="assets/lab.js?v=26" defer></script>
-<script src="assets/figs.js?v=26" defer></script>
-<script src="assets/figures.js?v=26" defer></script>
-<script src="assets/highlight.js?v=26" defer></script>
-<script src="assets/tutor.js?v=26" defer></script>
+<script src="assets/topics.js?v=20260929" defer></script>
+<script src="assets/search-index.js?v=20260929" defer></script>
+<script src="assets/app.js?v=20260929" defer></script>
+<script src="assets/viz.js?v=20260929" defer></script>
+<script src="assets/atlas.js?v=20260929" defer></script>
+<script src="assets/lab.js?v=20260929" defer></script>
+<script src="assets/figs.js?v=20260929" defer></script>
+<script src="assets/figures.js?v=20260929" defer></script>
+<script src="assets/highlight.js?v=20260929" defer></script>
+<script src="assets/tutor.js?v=20260929" defer></script>
 </body>
 </html>

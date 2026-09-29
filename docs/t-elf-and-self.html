@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ELF, SELF and Sony's format — KytyPS5</title>
 <meta name="description" content="A PS5 module is an ELF that no standard loader will accept. Here is what is different and why.">
-<link rel="stylesheet" href="assets/viz.css?v=26">
-<link rel="stylesheet" href="assets/atlas.css?v=26">
-<link rel="stylesheet" href="assets/lab.css?v=26">
-<link rel="stylesheet" href="assets/tutor.css?v=26">
-<link rel="stylesheet" href="assets/app.css?v=26">
-<link rel="stylesheet" href="assets/highlight.css?v=26">
+<link rel="stylesheet" href="assets/viz.css?v=20260929">
+<link rel="stylesheet" href="assets/atlas.css?v=20260929">
+<link rel="stylesheet" href="assets/lab.css?v=20260929">
+<link rel="stylesheet" href="assets/tutor.css?v=20260929">
+<link rel="stylesheet" href="assets/app.css?v=20260929">
+<link rel="stylesheet" href="assets/highlight.css?v=20260929">
 </head>
 <body>
 
@@ -42,7 +42,7 @@
 
   <p>A program header entry says: "take <code>p_filesz</code> bytes at file offset <code>p_offset</code>, place them at virtual address <code>p_vaddr</code>, zero-fill up to <code>p_memsz</code>, and apply these permissions." Loading is essentially a loop over those entries.</p>
 
-  <div class="filename">src/loader/elf.h:174 — the actual struct Kyty parses</div>
+  <div class="filename">src/loader/elf.h — the actual struct Kyty parses</div>
 <pre>struct Elf64_Phdr {
     Elf64_Word  p_type;    <i>PT_LOAD, PT_DYNAMIC, PT_TLS, …</i>
     Elf64_Word  p_flags;   <i>PF_R | PF_W | PF_X</i>
@@ -101,10 +101,15 @@
 
 <p class="deck">Sony's executable format is standard ELF64 wrapped in a container, with a set of custom type and tag values bolted on. Here is the complete set Kyty understands.</p>
 
+<h4 id="archive-loading">Directories and ZArchive content</h4>
+  <p><code>--game</code> accepts a directory, ELF or <code>.zar</code> ZArchive with <code>eboot.bin</code> at its root. <code>common/archive.cpp</code> exposes virtual paths such as <code>game.zar!/sce_sys/param.json</code> through <code>Common::File</code>. A retained <code>ArchiveReader</code> shares the index and block cache while a mount or launcher scan is active. This is read-only game content; saves and temporary files use writable host locations.</p>
+  <p>Windows starts through <code>wmain</code>, converts arguments to UTF-8 and preserves native <code>std::filesystem::path</code> values through file operations. Guest paths without a matching mount stay outside the host namespace. The launcher uses <code>gameContent.cpp</code> to inspect folders and archives uniformly, including icons, title metadata and game size.</p>
+  <p><code>libSaveData.cpp</code> persists SaveDataMemory2 data and allocation metadata on disk, including search/mount capacity and timestamps. Save-data dialog locking and CP932 conversion have dedicated regression tests. Treat these as observable guest behavior when debugging missing progress or stuck dialogs.</p>
+
   <h4 id="the-self-container">The SELF container</h4>
   <p><code>eboot.bin</code> starts with a small header describing compressed or encrypted segments, followed by the ELF proper:</p>
 
-  <div class="filename">src/loader/elf.h:139</div>
+  <div class="filename">src/loader/elf.h</div>
 <pre>struct SelfHeader {
     uint8_t  ident[12];
     uint16_t size1;
@@ -174,7 +179,7 @@ struct SelfSegment {
 
   <p>The module and library tables matter more than they look. A NID is only unique <em>within</em> a library, so resolution needs all three parts. <code>GetDynModules</code> and <code>GetDynLibs</code> unpack these into <code>DynamicInfo</code>:</p>
 
-  <div class="filename">src/loader/runtimeLinker.h:70 — abbreviated</div>
+  <div class="filename">src/loader/runtimeLinker.h — abbreviated</div>
 <pre>struct DynamicInfo {
     char*       str_table;      uint64_t str_table_size;
     Elf64_Sym*  symbol_table;   uint64_t symbol_table_total_size;
@@ -182,7 +187,6 @@ struct SelfSegment {
     Elf64_Rela* jmprela_table;  uint64_t jmprela_table_size;
     uint64_t    init_vaddr, fini_vaddr;
     uint64_t    init_array_vaddr, init_array_size;
-    uint64_t    pltgot_vaddr;
 
     std::vector&lt;const char*&gt; needed;
     std::vector&lt;ModuleId&gt;    <b>export_modules</b>, <b>import_modules</b>;
@@ -191,7 +195,7 @@ struct SelfSegment {
 
   <h4 id="the-encoded-identifiers">The encoded identifiers</h4>
   <p>Module and library identifiers in a NID string are not names — they are small integers encoded in a base64-like alphabet. <code>EncodeId64</code> converts an index into the one- or two-character form, and resolution then looks that up in the file's own import tables to find the real name and version. This is why the same NID string can mean different things in two different modules.</p>
-  <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp:846</span><span class="src">src/loader/runtimeLinker.cpp:925</span></div>
+  <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp</span><span class="src">src/loader/runtimeLinker.cpp</span></div>
     </div>
   </section>
 
@@ -249,16 +253,16 @@ struct SelfSegment {
 
 </main>
 
-<script src="assets/topics.js?v=26" defer></script>
-<script src="assets/search-index.js?v=26" defer></script>
-<script src="assets/app.js?v=26" defer></script>
-<script src="assets/viz.js?v=26" defer></script>
-<script src="assets/atlas.js?v=26" defer></script>
-<script src="assets/lab.js?v=26" defer></script>
-<script src="assets/figs.js?v=26" defer></script>
-<script src="assets/figures.js?v=26" defer></script>
-<script src="assets/highlight.js?v=26" defer></script>
-<script src="assets/tutor.js?v=26" defer></script>
+<script src="assets/topics.js?v=20260929" defer></script>
+<script src="assets/search-index.js?v=20260929" defer></script>
+<script src="assets/app.js?v=20260929" defer></script>
+<script src="assets/viz.js?v=20260929" defer></script>
+<script src="assets/atlas.js?v=20260929" defer></script>
+<script src="assets/lab.js?v=20260929" defer></script>
+<script src="assets/figs.js?v=20260929" defer></script>
+<script src="assets/figures.js?v=20260929" defer></script>
+<script src="assets/highlight.js?v=20260929" defer></script>
+<script src="assets/tutor.js?v=20260929" defer></script>
 </body>
 </html>
 

@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Virtual memory, briefly — KytyPS5</title>
 <meta name="description" content="Pages, protection and faults — the mechanism the emulator leans on hardest.">
-<link rel="stylesheet" href="assets/viz.css?v=26">
-<link rel="stylesheet" href="assets/atlas.css?v=26">
-<link rel="stylesheet" href="assets/lab.css?v=26">
-<link rel="stylesheet" href="assets/tutor.css?v=26">
-<link rel="stylesheet" href="assets/app.css?v=26">
-<link rel="stylesheet" href="assets/highlight.css?v=26">
+<link rel="stylesheet" href="assets/viz.css?v=20260929">
+<link rel="stylesheet" href="assets/atlas.css?v=20260929">
+<link rel="stylesheet" href="assets/lab.css?v=20260929">
+<link rel="stylesheet" href="assets/tutor.css?v=20260929">
+<link rel="stylesheet" href="assets/app.css?v=20260929">
+<link rel="stylesheet" href="assets/highlight.css?v=20260929">
 </head>
 <body>
 
@@ -51,7 +51,7 @@
   <h4 id="the-page-size-mismatch">The page-size mismatch</h4>
   <p>The PS5 uses 16 KB pages; PCs use 4 KB. Kyty's guest allocator works in <code>0x4000</code>-byte units:</p>
 
-  <div class="filename">src/loader/runtimeLinker.cpp:2010</div>
+  <div class="filename">src/loader/runtimeLinker.cpp</div>
 <pre>constexpr uint64_t GUEST_PAGE_SIZE = <b>0x4000</b>;
 program-&gt;base_size_aligned = AlignUp(program-&gt;base_size, GUEST_PAGE_SIZE);</pre>
 
@@ -75,7 +75,7 @@ program-&gt;base_size_aligned = AlignUp(program-&gt;base_size, GUEST_PAGE_SIZE);
         <div id="band-detail"></div>
       </div>
     </div>
-    <div class="fig-note"><p>macOS shifts these ranges and pins them with linker flags — <code>-segaddr SYSTEM_RESERVED,0x7ffffc000 -segaddr USER_AREA,0x7000000000</code> — so the dynamic loader can never place a system library where the guest needs to allocate. <span class="src">CMakeLists.txt:385</span></p></div>
+    <div class="fig-note"><p>macOS shifts these ranges and pins them with linker flags — <code>-segaddr SYSTEM_RESERVED,0x7ffffc000 -segaddr USER_AREA,0x7000000000</code> — so the dynamic loader can never place a system library where the guest needs to allocate. <span class="src">CMakeLists.txt</span></p></div>
   </div>
 
   <div class="callout k">
@@ -130,16 +130,16 @@ program-&gt;base_size_aligned = AlignUp(program-&gt;base_size, GUEST_PAGE_SIZE);
 
 </main>
 
-<script src="assets/topics.js?v=26" defer></script>
-<script src="assets/search-index.js?v=26" defer></script>
-<script src="assets/app.js?v=26" defer></script>
-<script src="assets/viz.js?v=26" defer></script>
-<script src="assets/atlas.js?v=26" defer></script>
-<script src="assets/lab.js?v=26" defer></script>
-<script src="assets/figs.js?v=26" defer></script>
-<script src="assets/figures.js?v=26" defer></script>
-<script src="assets/highlight.js?v=26" defer></script>
-<script src="assets/tutor.js?v=26" defer></script>
+<script src="assets/topics.js?v=20260929" defer></script>
+<script src="assets/search-index.js?v=20260929" defer></script>
+<script src="assets/app.js?v=20260929" defer></script>
+<script src="assets/viz.js?v=20260929" defer></script>
+<script src="assets/atlas.js?v=20260929" defer></script>
+<script src="assets/lab.js?v=20260929" defer></script>
+<script src="assets/figs.js?v=20260929" defer></script>
+<script src="assets/figures.js?v=20260929" defer></script>
+<script src="assets/highlight.js?v=20260929" defer></script>
+<script src="assets/tutor.js?v=20260929" defer></script>
 </body>
 </html>
 

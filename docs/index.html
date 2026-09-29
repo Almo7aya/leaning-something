@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>KytyPS5 — Learning Platform</title>
 <meta name="description" content="Learn how a PlayStation 5 emulator works, from the runtime linker to the shader recompiler — read it, watch it, drive it, then change it.">
-<link rel="stylesheet" href="assets/tutor.css?v=26">
-<link rel="stylesheet" href="assets/app.css?v=26">
-<link rel="stylesheet" href="assets/highlight.css?v=26">
+<link rel="stylesheet" href="assets/tutor.css?v=20260929">
+<link rel="stylesheet" href="assets/app.css?v=20260929">
+<link rel="stylesheet" href="assets/highlight.css?v=20260929">
 </head>
 <body>
 
@@ -23,11 +23,19 @@
   <div class="callout g" style="margin-top:24px">
     <span class="lbl">Current-source checkpoint</span>
     <p>Source-specific paths and explanations were checked against KytyPS5
-      <code>main</code> at commit <code>5b7d334</code> (18 September 2026). This includes the
-      two-stage shader recompiler (translate once, compile per resource snapshot), mesh-shader
-      geometry stages, the slimmer pipeline key, the cross-vendor TLS patch, the DualSense
-      HIDAPI input path and the sixteen-executable regression suite.</p>
+      <code>main</code> at commit <code>2650478</code> (29 September 2026). This includes the
+      retained shader resource analysis with temporary IR rebuilt on permutation misses,
+      mesh stages and opt-in tessellation, the 126-byte static pipeline state, sparse backing,
+      SDL3 input, and 25 portable test executables plus macOS SSE4a coverage.</p>
   </div>
+
+  <section class="home-sec">
+    <h2 id="developer-curriculum">Ready to work on the emulator?</h2>
+    <p class="home-body">The <a href="developer-curriculum.html">developer curriculum</a> adds
+      end-to-end boot and draw traces, three runnable C++ debugging labs, and evidence-based
+      contribution gates. Its <a href="developer-curriculum.html#coverage">coverage map</a>
+      distinguishes detailed lessons from introductory and still-missing material.</p>
+  </section>
 
   <!-- filled in by app.js: resume where you left off, or start at the beginning -->
   <div id="resume-slot"></div>
@@ -124,11 +132,11 @@
 
 </main>
 
-<script src="assets/topics.js?v=26" defer></script>
-<script src="assets/search-index.js?v=26" defer></script>
-<script src="assets/highlight.js?v=26" defer></script>
-<script src="assets/app.js?v=26" defer></script>
-<script src="assets/tutor.js?v=26" defer></script>
+<script src="assets/topics.js?v=20260929" defer></script>
+<script src="assets/search-index.js?v=20260929" defer></script>
+<script src="assets/highlight.js?v=20260929" defer></script>
+<script src="assets/app.js?v=20260929" defer></script>
+<script src="assets/tutor.js?v=20260929" defer></script>
 </body>
 </html>
 

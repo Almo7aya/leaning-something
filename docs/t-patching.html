@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Patching guest instructions — KytyPS5</title>
 <meta name="description" content="Some guest instructions cannot run as written on the host. The loader rewrites them before execution.">
-<link rel="stylesheet" href="assets/viz.css?v=26">
-<link rel="stylesheet" href="assets/atlas.css?v=26">
-<link rel="stylesheet" href="assets/lab.css?v=26">
-<link rel="stylesheet" href="assets/tutor.css?v=26">
-<link rel="stylesheet" href="assets/app.css?v=26">
-<link rel="stylesheet" href="assets/highlight.css?v=26">
+<link rel="stylesheet" href="assets/viz.css?v=20260929">
+<link rel="stylesheet" href="assets/atlas.css?v=20260929">
+<link rel="stylesheet" href="assets/lab.css?v=20260929">
+<link rel="stylesheet" href="assets/tutor.css?v=20260929">
+<link rel="stylesheet" href="assets/app.css?v=20260929">
+<link rel="stylesheet" href="assets/highlight.css?v=20260929">
 </head>
 <body>
 
@@ -126,6 +126,10 @@ for (auto* ptr = start_ptr; ptr &lt;= end_ptr; ptr++) {
 
   <p>Removing the canary weakens a security feature that is meaningless here — the guest is already running unsandboxed in the emulator's own process — so nothing is lost.</p>
 
+<h4 id="optional-instruction-emulation">Optional AMD patches and host instruction gaps</h4>
+  <p><code>--amd-cpu</code> gates AMD CPU instruction patches. The loader can replace reciprocal-square-root instructions with traps so <code>X64InstructionEmulator::TryEmulate()</code> supplies guest-compatible behavior. <code>PatchGuestInstructions(..., protect_memory, emulate_rsqrt)</code> coordinates fault-site protection with those replacements; on Windows it must preserve the guest's System V red zone.</p>
+  <p>The x86-64 macOS path emulates immediate and register SSE4a forms, including EXTRQ, through the signal context. Native TLS now holds fiber context across host-thread migration, and fiber ownership preserves small guest stacks. These are compatibility paths around native execution, not a general CPU interpreter.</p>
+
   <h4 id="how-to-see-this-yourself">How to see this yourself</h4>
   <p>Run any title and grep the log for <code>Patch tls at addr</code>. Take one of those addresses into a debugger and look at the nine bytes: you will find <code>48 E8 …</code> where the ELF file on disk has <code>64 48 8B 04 25 00 00 00 00</code>. Seeing that once makes the whole mechanism concrete in a way no description does.</p>
     </div>
@@ -177,16 +181,16 @@ for (auto* ptr = start_ptr; ptr &lt;= end_ptr; ptr++) {
 
 </main>
 
-<script src="assets/topics.js?v=26" defer></script>
-<script src="assets/search-index.js?v=26" defer></script>
-<script src="assets/app.js?v=26" defer></script>
-<script src="assets/viz.js?v=26" defer></script>
-<script src="assets/atlas.js?v=26" defer></script>
-<script src="assets/lab.js?v=26" defer></script>
-<script src="assets/figs.js?v=26" defer></script>
-<script src="assets/figures.js?v=26" defer></script>
-<script src="assets/highlight.js?v=26" defer></script>
-<script src="assets/tutor.js?v=26" defer></script>
+<script src="assets/topics.js?v=20260929" defer></script>
+<script src="assets/search-index.js?v=20260929" defer></script>
+<script src="assets/app.js?v=20260929" defer></script>
+<script src="assets/viz.js?v=20260929" defer></script>
+<script src="assets/atlas.js?v=20260929" defer></script>
+<script src="assets/lab.js?v=20260929" defer></script>
+<script src="assets/figs.js?v=20260929" defer></script>
+<script src="assets/figures.js?v=20260929" defer></script>
+<script src="assets/highlight.js?v=20260929" defer></script>
+<script src="assets/tutor.js?v=20260929" defer></script>
 </body>
 </html>
 

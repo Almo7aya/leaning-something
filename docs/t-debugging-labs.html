@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en" class="notranslate" translate="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reproducible debugging labs — KytyPS5</title>
+<meta name="description" content="Three native C++ exercises with deliberate failures, reference fixes, boundary tests and explicit limits.">
+<link rel="stylesheet" href="assets/viz.css?v=20260929">
+<link rel="stylesheet" href="assets/atlas.css?v=20260929">
+<link rel="stylesheet" href="assets/lab.css?v=20260929">
+<link rel="stylesheet" href="assets/tutor.css?v=20260929">
+<link rel="stylesheet" href="assets/app.css?v=20260929">
+<link rel="stylesheet" href="assets/highlight.css?v=20260929">
+</head>
+<body>
+<main class="topic" data-app-content>
+<p class="topic-eyebrow">Developer curriculum · D4</p>
+<h1 id="overview">Reproducible debugging labs</h1>
+<p class="topic-deck">Three native C++ exercises with deliberate failures, reference fixes, boundary tests and explicit limits.</p>
+<section class="band band-read">
+<div class="band-h"><span class="band-t">Read, trace, prove</span></div>
+<div class="prose">
+
+<div class="callout k"><span class="lbl">What these labs do and do not test</span>
+<p>Three deterministic C++ exercises introduce mistakes in <em>fixture callers</em>, not in the emulator checkout. Alignment and lifetime use the real <code>src/common/alignment.h</code> and <code>src/common/lruCache.h</code>. The output-contract API is explicitly fictional. No game, Vulkan device, Qt, console firmware or third-party emulator build is needed. Passing them is not proof of game compatibility.</p></div>
+<p>Read the <a href="developer-curriculum.html#gates">developer gates</a> first. The fixture source is <a href="labs/developer_labs.cpp">developer_labs.cpp</a>; build definitions are in <a href="labs/CMakeLists.txt">CMakeLists.txt</a>. The <a href="labs/README.md">lab README</a> provides a compact offline reference.</p>
+
+<h2 id="setup">Build the isolated harness</h2>
+<p>From the <strong>learning repository root</strong>, use CMake 3.20+, Ninja and a C++20 compiler. On Windows the following was checked with Clang 22.1.3 and installed MSVC/Windows SDK libraries; if discovery fails, use an x64 Visual Studio developer shell. On Linux/macOS select your installed C++20 compiler. This is not the full emulator's toolchain recipe.</p>
+<pre>cmake -S docs/labs -B _Build/curriculum -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=clang++
+cmake --build _Build/curriculum
+ctest --test-dir _Build/curriculum --output-on-failure</pre>
+<p>The default emulator source location is <code>KytyPS5/</code> beside <code>docs/</code>. For another checkout, add <code>-DKYTY_SOURCE_DIR="D:/path/to/KytyPS5"</code> to configuration. Start with an unused build directory if changing compilers; do not reuse an incompatible CMake cache. The lab build does not configure, edit or build the whole emulator.</p>
+<p>Expected verification result: <strong>7/7 CTest cases pass</strong>. Three run reference solutions, three confirm the exact intentional failures, and one compiles/runs the existing <code>tests/LruCacheTests.cpp</code>. The failure checker requires exit code 1 and the exact expected diagnostic; a crash, missing executable or unrelated assertion is not counted as success.</p>
+<p>The commands below use the Windows Ninja executable path. On Linux/macOS omit <code>.exe</code>. Each <code>buggy</code> invocation is expected to print <code>FAIL</code> and exit 1; each <code>fixed</code> invocation prints <code>PASS</code> and exits 0. Invalid CLI arguments exit 2.</p>
+
+<h2 id="alignment">Lab A: the range crosses a page even when the size does not</h2>
+<p><strong>Contract:</strong> for a nonempty byte range <code>[address,address+size)</code>, return the smallest enclosing 16 KiB page interval. Empty input returns the original empty interval; any overflow in the endpoint or rounded endpoint is rejected. This is a fixture contract, not the behavior of every emulator allocation API.</p>
+<pre>_Build/curriculum/developer_labs.exe alignment buggy
+FAIL [alignment] cross-page: expected [0,32768), got [0,16384)
+
+_Build/curriculum/developer_labs.exe alignment fixed
+PASS [alignment] 7 cases</pre>
+<div class="tw"><table>
+<thead><tr><th>Input / operation</th><th>Hex</th><th>Decimal</th></tr></thead><tbody>
+<tr><td>Page size</td><td><code>0x4000</code></td><td>16,384</td></tr>
+<tr><td>Address / size</td><td><code>0x3FFC</code> / <code>0x8</code></td><td>16,380 / 8</td></tr>
+<tr><td>Exclusive byte endpoint</td><td><code>0x4004</code></td><td>16,388</td></tr>
+<tr><td>Correct page interval</td><td><code>[0x0000,0x8000)</code></td><td>[0, 32,768)</td></tr>
+<tr><td>Buggy interval</td><td><code>[0x0000,0x4000)</code></td><td>[0, 16,384)</td></tr>
+</tbody></table></div>
+<p>Open <code>Cover</code>, stop at <code>EXERCISE A</code> and inspect address, size, begin and end. Predict the result for size 4 before running it: an exclusive endpoint exactly on a boundary should not add another page. Explain why this helper cannot safely rely on unsigned wraparound.</p>
+<details><summary>Reference fix and why it works</summary>
+<p>Round the absolute exclusive endpoint, not the byte count: <code>Range{begin, Common::AlignUp(end, PageSize)}</code>. The wrapper first checks addition and rounding overflow. <code>Common::AlignUp</code> itself is an arithmetic helper; it does not promise overflow rejection. Tests cover crossing, exact end, aligned input, one byte, empty input, addition overflow and alignment overflow.</p></details>
+<p><strong>Transfer task:</strong> trace one real range consumer in the memory subsystem. Write its actual alignment and ownership preconditions before proposing a change. A page-cover result alone does not validate that a guest mapping exists or is readable.</p>
+
+<h2 id="lifetime">Lab B: last-use tick is not completed tick</h2>
+<p><strong>Contract:</strong> enumerate retirement candidates whose last recorded use is no later than observed completion. Insert A at tick 2 and B at tick 3; A is reused in submission 6 while completion is still 4. The helper's cutoff is inclusive: equal ticks are eligible. The example supplies chronologically ordered insertions/touches; it does not prove arbitrary out-of-order tick insertion is safe.</p>
+<pre>_Build/curriculum/developer_labs.exe lifetime buggy
+FAIL [lifetime] cutoff-4: expected B, got B,A
+
+_Build/curriculum/developer_labs.exe lifetime fixed
+PASS [lifetime] 5 observations</pre>
+<p>At <code>EXERCISE B</code>, compare <code>completed_tick</code> with <code>last_use_tick</code>. Draw the list order after the touch. The cache knows only the tick you give it: it cannot detect that the caller recorded the wrong one.</p>
+<details><summary>Reference fix and why it works</summary>
+<p>Call <code>cache.Touch(a, last_use_tick)</code>, using 6 rather than 4. Cutoff 4 returns only B. An older touch at 5 and an equal touch at 6 must not move A's last-use point backwards; cutoff 5 still returns B, and cutoff 6 returns B,A. An empty cutoff and explicit removal are also checked.</p>
+<p><code>ForEachItemBelow</code> enumerates; it does not automatically free. The harness explicitly calls <code>Free</code> only after testing completion eligibility. The real upstream LRU tests additionally exercise early-exit callbacks and ID reuse.</p></details>
+<p><strong>Transfer task:</strong> compare this invariant with <code>CommandScheduler::DeferOperation</code> and <code>PopPendingOperations</code>. Explain why the generic cache exercise says nothing by itself about queue ownership, barriers, image layouts, later submissions or priority callbacks. Use <a href="t-trace-draw.html#completion">D3's completion trace</a>.</p>
+
+<h2 id="contract">Lab C: returning an error can still corrupt the caller</h2>
+<p><strong>Fictional contract:</strong> <code>QueryStatus</code> receives trusted local C++ objects. Request size must be 8, flags must be zero, and neither pointer may be null. Success returns 0 and writes state 3/capacity 16. Invalid input returns −1 and leaves any supplied output unchanged. These numbers, names and layouts are not a Sony API, a real NID or an implementation suggestion.</p>
+<pre>_Build/curriculum/developer_labs.exe contract buggy
+FAIL [contract] invalid-size: output changed on error
+
+_Build/curriculum/developer_labs.exe contract fixed
+PASS [contract] 5 cases</pre>
+<p>The buggy path clears output before validating the size/flags. Its error code is correct, its trace would show that it ran, and the success case passes—yet the caller's sentinel values are destroyed on error. At <code>EXERCISE C</code>, inspect output before and after an invalid request.</p>
+<details><summary>Reference fix and why it works</summary>
+<p>Remove the pre-validation <code>*output = {}</code>; write the final status only after all request checks pass. The tests cover success, invalid size, unsupported flags, null request and null output. They check both return values and output bytes represented by the two fields.</p>
+<p>Do not generalize “output unchanged on error” to every real API. Establish that API's actual contract first. This harness intentionally excludes arbitrary invalid non-null pointers, guest memory probing, overlap, concurrency and guest-to-host ABI behavior.</p></details>
+<p><strong>Transfer task:</strong> choose an existing small HLE function and write an input/output/error table from evidence. Identify size, offset, signedness and ownership rules. If the contract is unknown, mark the uncertainty; changing constants until a title gets further is not a conformance test.</p>
+
+<h2 id="solve">Your red → green workflow</h2>
+<ol>
+<li>Run the untouched buggy mode. Save its diagnostic and exit code (<code>$LASTEXITCODE</code> in PowerShell).</li>
+<li>Write a prediction and inspect the marked caller with a debugger or source-level reasoning. Do not edit the upstream headers to accommodate a broken caller.</li>
+<li>Make your local fix in the buggy branch, rebuild, and run the <em>same buggy command</em> again. It should now pass the existing assertions. Keep tests intact.</li>
+<li>Compare with fixed mode only after explaining your own correction. Add an additional boundary or negative case and explain what alternative wrong fix it would catch.</li>
+<li>Record whether your evidence is from fixture tests, actual upstream tests or a live emulator run.</li>
+</ol>
+<p>The checked-in CTest suite verifies the <em>teaching baseline</em>, including its intentionally broken variants. After you solve a buggy branch, its <code>*_expected_failure</code> case will correctly complain that the expected failure disappeared. While experimenting, run the now-fixed branch directly and <code>ctest --test-dir _Build/curriculum -R "fixed|upstream_lru" --output-on-failure</code>. If keeping your solved version, replace that expected-failure test with a normal success test. Do not restore the bug merely to make a baseline meta-test green.</p>
+
+<h2 id="upstream">Extend into actual emulator regression tests</h2>
+<p>The isolated build already runs upstream <code>LruCacheTests.cpp</code>. The following are <strong>advanced source-backed follow-ups</strong>, not additional game-free fixture tests and not claimed as executed by this lesson. They use the full emulator test build and its dependencies. First inspect the target definitions in the checked-out <code>CMakeLists.txt</code>.</p>
+<div class="tw"><table>
+<thead><tr><th>Area</th><th>Existing entry point</th><th>Assignment</th></tr></thead><tbody>
+<tr><td>Sparse backing</td><td><code>tests/VirtualMemoryAllocationTests.cpp</code>: <code>TestSparseBackingReadPreservesResidency</code>, <code>TestSparseReadDuringDirectCommit</code>.</td><td>Explain owned holes versus unowned/private mappings; identify which assertions establish byte contents and which establish unchanged residency. Design one additional boundary case without changing intended sparse semantics.</td></tr>
+<tr><td>APR/files</td><td><code>tests/KernelFileSystemTests.cpp</code>: <code>CheckAprPaths</code>.</td><td>Trace the registered API to the command queue. Identify the append-order and address-wait behavior actually checked, then document a missing case instead of assuming the test covers every priority interaction.</td></tr>
+</tbody></table></div>
+<p>From the <strong>emulator root</strong>, with an already configured compatible build directory and <code>BUILD_TESTING=ON</code>, these are the target/CTest names at the pinned revision. Replace the example build directory with yours:</p>
+<pre>cmake --build _Build/windows --target virtual_memory_allocation_tests kernel_file_system_tests
+ctest --test-dir _Build/windows -R "^(virtual_memory_allocation|kernel_file_system)$" --output-on-failure</pre>
+<p>These executables are not GoogleTest binaries; do not invent <code>--gtest_filter</code> support to select the named internal functions. The CTest expression selects complete registered tests. Check build and test exit codes separately and report missing prerequisites, not a fabricated passing run.</p>
+
+<h2 id="checkpoint">Pass the debugging gate</h2>
+<div class="check"><p class="check-h">Checkpoint</p><ul class="check-list">
+<li class="check-item"><input type="checkbox"><label>I reproduced all three failures and explained why each original result violates its stated contract.</label></li>
+<li class="check-item"><input type="checkbox"><label>My corrected callers pass the unchanged tests, including negative and boundary cases.</label></li>
+<li class="check-item"><input type="checkbox"><label>I added a meaningful extra case and can distinguish the teaching baseline's expected failures from regressions.</label></li>
+<li class="check-item"><input type="checkbox"><label>I can state what these tests do not prove about real guest pointers, synchronization, games and other platforms.</label></li>
+</ul></div>
+<p>Finish with the <a href="developer-curriculum.html#capstone">capstone evidence record</a>, not just a screenshot of green checkmarks.</p>
+
+</div></section>
+</main>
+<script src="assets/topics.js?v=20260929" defer></script>
+<script src="assets/search-index.js?v=20260929" defer></script>
+<script src="assets/app.js?v=20260929" defer></script>
+<script src="assets/highlight.js?v=20260929" defer></script>
+<script src="assets/tutor.js?v=20260929" defer></script>
+</body>
+</html>

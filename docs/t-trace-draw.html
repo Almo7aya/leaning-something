@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en" class="notranslate" translate="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>One draw: PM4 to GPU completion — KytyPS5</title>
+<meta name="description" content="Trace a selected non-indexed draw through state, shader programs, resource bindings, Vulkan recording and completion.">
+<link rel="stylesheet" href="assets/viz.css?v=20260929">
+<link rel="stylesheet" href="assets/atlas.css?v=20260929">
+<link rel="stylesheet" href="assets/lab.css?v=20260929">
+<link rel="stylesheet" href="assets/tutor.css?v=20260929">
+<link rel="stylesheet" href="assets/app.css?v=20260929">
+<link rel="stylesheet" href="assets/highlight.css?v=20260929">
+</head>
+<body>
+<main class="topic" data-app-content>
+<p class="topic-eyebrow">Developer curriculum · D3</p>
+<h1 id="overview">One draw: PM4 to GPU completion</h1>
+<p class="topic-deck">Trace a selected non-indexed draw through state, shader programs, resource bindings, Vulkan recording and completion.</p>
+<section class="band band-read">
+<div class="band-h"><span class="band-t">Read, trace, prove</span></div>
+<div class="prose">
+
+<p>Prerequisites: <a href="t-pm4.html">PM4</a>, <a href="t-registers.html">register state</a>, <a href="t-shaders.html">shader translation</a> and <a href="t-coherency.html">coherency</a>. This source trace at <code>2650478</code> follows an ordinary, non-indexed triangle-list draw with a vertex shader, an active pixel shader and a color target. It is not a standalone three-word program or a captured frame.</p>
+<div class="callout k"><span class="lbl">Four different milestones</span>
+<p>Accepting a guest submission, recording a Vulkan draw, completing that submission on the GPU, and displaying an image are different events. A “DrawComplete” CPU log records progress through the host draw function; it is not a GPU fence and does not prove that any pixels were displayed.</p></div>
+
+<h2 id="packet">1. Identify the packet and the state it consumes</h2>
+<p>At <code>CpOpDrawIndexAuto</code> in <code>src/graphics/guest_gpu/command_processor/pm4Handlers.cpp</code>, the current parser accepts header <code>0xC0012D00</code>, consumes two payload dwords and rejects flag bits outside <code>0x22</code>. The first payload dword becomes the vertex count, despite the parser's local variable name <code>index_count</code>.</p>
+<pre>Illustrative packet, not a complete render workload:
+header       count       flags
+0xC0012D00   0x00000003  0x00000002
+
+Header = 1 dword; payload = 2 dwords; total = 3 dwords = 12 bytes.
+Count = 3 vertices; flag 0x02 is inside the accepted mask 0x22.</pre>
+<p>At this handler, <code>buffer</code> points to the payload, not the header. Its return value <code>2</code> is the number of payload dwords consumed. Confusing these coordinate systems shifts every subsequent packet.</p>
+<p>The packet does <em>not</em> contain a full draw state. Earlier commands establish shader addresses, user-data registers/descriptors, targets, topology, offsets and instance count. Locate those writes in the same submission and preceding preserved state. Three vertices with no usable shader or targets need not reach a Vulkan draw.</p>
+
+<h2 id="handoffs">2. Follow the guest-to-renderer handoffs</h2>
+<pre>Guest-side command generation and state writes
+  -> AgcDriverSubmitCommandBuffer (graphics queue)
+  -> submit_dcb -> GuestGpu::Submit -> queued Submission
+  -> GuestGpu::ThreadRun -> GuestGpu::Process
+  -> CommandProcessor::Process -> CpOpDrawIndexAuto
+  -> CommandProcessor::DrawIndexAuto
+  -> RenderExecutor::DrawAuto
+  -> PrepareDrawRenderState -> ExecutePreparedDraw
+  -> recorded Vulkan draw
+  -> BufferFlush / CommandScheduler::Submit
+  -> timeline signal observed -> eligible deferred work
+  -> presentation is a separate downstream path</pre>
+<p>The AGC submission route above is one route, not the only entry point. <code>AgcDriverSubmitCommandBuffer</code> chooses graphics versus compute based on its queue context; this trace assumes graphics. <code>submit_dcb</code> passes a span of guest commands. <code>GuestGpu::Submit</code> queues that span; a span is a borrowed view, not an owning copy. Follow the guest's submission/lifetime protocol before assuming it may overwrite the command storage.</p>
+<p>The GPU worker processes submissions, retaining suspended execution state when a command stream blocks. <code>GuestGpu::Process</code> associates the command processor with a guest submit ID, initializes its buffer, drives constant/draw streams and flushes after progress. A guest submit ID is a debug/guest-processing identity; it is <strong>not</strong> the Vulkan scheduler's completion tick.</p>
+
+<h2 id="prepare">3. Prepare the draw before committing commands</h2>
+<div class="tw"><table>
+<thead><tr><th>Source boundary</th><th>What becomes concrete</th><th>What to check</th></tr></thead>
+<tbody>
+<tr><td><code>CommandProcessor::DrawIndexAuto</code></td><td>Uses current instance state when the incoming count is unspecified, then forwards to <code>DrawAuto</code>.</td><td>Vertex count, final instance count, submit ID and current register state.</td></tr>
+<tr><td><code>RenderExecutor::DrawAuto</code></td><td>Drains eligible pending operations, locks render context, checks counts and special cases.</td><td>Zero counts, metadata/color/depth operations, invalid shaders and unsupported topology can return before ordinary rendering. Record the branch, not just the function entry.</td></tr>
+<tr><td><code>PrepareDrawRenderState</code> / <code>RefreshShaders</code></td><td>Determines pixel-shader activity, gets programs, resolves written color attachments and depth target.</td><td>Shader output mask intersected with enabled color outputs; actual attachment identities and subresources, not just addresses.</td></tr>
+<tr><td><code>PipelineCache::GetGraphicsPrograms</code></td><td>Chooses stage programs and specialization according to current resources/state.</td><td>Shader identity, logical/native stage, resource snapshot and selected permutation. See <a href="t-program-cache.html">C9</a>.</td></tr>
+<tr><td><code>PrepareBindings</code> / <code>PrepareGraphicsBindings</code></td><td>Discovers buffers, prepares BDA when needed, rebinds images/targets, then buffers.</td><td>Descriptor bytes, ownership, offsets/ranges, aliasing, final image identities and required synchronization.</td></tr>
+<tr><td><code>AcquireVertexBuffers</code> / <code>GetGraphicsPipeline</code></td><td>Prepared vertex bindings and a compatible host pipeline.</td><td>Guest descriptor bounds survive cache allocation merging. Pipeline key must include the relevant static state and shader identities.</td></tr>
+<tr><td><code>AcquireRenderTargets</code></td><td>Rendering attachments, transitions and feedback aspects.</td><td>Correct mip/layer, formats, layouts, extents and attachment interactions.</td></tr>
+</tbody></table></div>
+<p>These are not independent immutable snapshots. <code>RenderContext</code> owns the caches, and resource preparation can read guest memory, read back metadata, submit work, wait and restart the scheduler. <code>PrepareGraphicsBindings</code> deliberately finalizes image identities before reserving draw buffers.</p>
+<div class="callout k"><span class="lbl">The critical command-buffer boundary</span>
+<p><code>ExecutePreparedDraw</code> fetches the current <code>buffer.Handle()</code> <em>after</em> resource preparation. From that point onward, the commit path must not introduce guest-memory accesses that can finish/restart the scheduler. Holding an earlier Vulkan handle across preparation can target an obsolete command buffer even when the C++ wrapper reference remains valid.</p></div>
+
+<h2 id="caches">4. Distinguish three different cache questions</h2>
+<ul>
+<li><strong>Program/resource analysis:</strong> the program cache retains analysis and resource-plan data, plus mutable scratch/snapshot storage borrowed by runtime stage data. Do not assume borrowed pointers own independent immutable results.</li>
+<li><strong>Shader permutation:</strong> a new permutation rebuilds temporary translated IR before compilation; a matching compiled permutation can be reused. “Same shader code” does not necessarily mean the same specialization.</li>
+<li><strong>Host graphics pipeline:</strong> the key combines stage identities with packed static state. At this snapshot <code>PipelineStaticParameters</code> is 126 bytes, includes logical-alpha source remapping, and excludes dynamic stencil state. A driver disk-cache hit does not by itself bypass the emulator's RDNA translation.</li>
+</ul>
+<p>Record which layer hit or missed. Do not use a generic “cache hit” log as proof that resources were refreshed correctly or that the pipeline matches today's draw.</p>
+
+<h2 id="record">5. Commit bindings and record the draw</h2>
+<p>On the selected ordinary path, <code>ExecutePreparedDraw</code> commits vertex bindings and stage descriptors, applies dynamic graphics state, starts rendering, binds the graphics pipeline and calls <code>EmitDrawPrimitives</code>. For a non-indexed triangle list, that function records <code>vk_buffer.draw(count, instance_count, first_vertex, first_instance)</code>. A local variable named <code>index_count</code> in the common draw description still supplies the vertex count here.</p>
+<p>If shaders write buffers, the function ends rendering and records a shader-write barrier. Reaching its final log means these CPU-side recording steps ran; it does not mean the GPU has executed them. Indexed, mesh, tessellation, indirect and rectangle conversion paths add different preparation or emission steps. They are outside this selected trace.</p>
+
+<h2 id="completion">6. Cross the submission and completion boundary</h2>
+<p><code>CommandScheduler::Submit</code> ends the current command buffer. Under the graphics queue mutex, it obtains the next timeline tick, adds the master semaphore signal and submits the buffer and semaphore values to the Vulkan queue. It then invalidates the recorded Vulkan buffer handle. <code>Flush</code> submits and begins the next buffer; it is not a wait. <code>FlushAndWait</code> also waits for the returned tick before beginning the next buffer.</p>
+<p><code>MasterSemaphore::Refresh</code> obtains observed GPU progress; <code>IsFree(tick)</code> means <code>KnownGpuTick() &gt;= tick</code>. <code>PopPendingOperations</code> checks completion and priority-operation ordering before running eligible deferred callbacks. Keeping a resource alive until the CPU call returns is insufficient if a submitted command still references it.</p>
+<pre>Illustrative timeline (not measured frame data)
+CPU records draw using resource A for tick 6
+CPU submits tick 6                 observed GPU tick remains 4
+CPU moves to later work            A must remain alive
+GPU completion reaches tick 6      A's tick-6 use is complete
+Eligible deferred callback runs    retirement still follows owner/dependency rules</pre>
+<p>Completion of this submission alone does not prove presentation, guest CPU visibility of every GPU write, or absence of future uses of A. A readback also needs the correct copy, visibility and CPU-side completion path. Oversized downloads in this snapshot retain temporary backing until deferred completion; the ordinary ring's lifetime rules are not permission to free that backing early.</p>
+<p>Work through <a href="t-debugging-labs.html#lifetime">Lab B</a> to reproduce a wrong-retirement-tick bug without a GPU. It tests caller bookkeeping, not Vulkan synchronization itself.</p>
+
+<h2 id="ledger">7. Make a trace ledger for one real draw</h2>
+<p>For optional live work, use a known scene from your own lawful content, a matching symbol build and bounded diagnostics. Existing command dumps, shader logs and a graphics capture can help; preserve exact source/configuration and compare the same draw. Do not add broad logging to a timing-sensitive path or disable validation to hide a failure.</p>
+<pre>Source / binary / scene / diagnostic settings:
+Guest queue / submit ID / DCB address / packet dword offset:
+Header / payload / effective instance count:
+Topology / shader addresses and identities:
+User data -> descriptor -> guest address/range:
+Program permutation hit/miss / pipeline hit/miss:
+Target format / mip / layer / layout:
+Host bindings and command buffer AFTER preparation:
+Recorded command / early-return branch, if any:
+Host submission tick / observed completed tick:
+Deferred operation / last-use ownership:
+Image result / presentation evidence (separate):</pre>
+<p>If the image is wrong, find the first boundary where observed state differs from the contract. Correct packet parsing does not prove a correct descriptor; correct bindings do not prove correct shader semantics; completed GPU work can still render the wrong image.</p>
+
+<h2 id="checkpoint">Pass the draw gate</h2>
+<div class="check"><p class="check-h">Checkpoint</p><ul class="check-list">
+<li class="check-item"><input type="checkbox"><label>I can explain the 12-byte packet and identify the missing state that prevents it being a standalone workload.</label></li>
+<li class="check-item"><input type="checkbox"><label>I followed one selected draw through preparation, cache lookup, binding and actual emission, including early returns.</label></li>
+<li class="check-item"><input type="checkbox"><label>I can explain why the Vulkan handle is fetched after preparation and why a guest submit ID is not a completion tick.</label></li>
+<li class="check-item"><input type="checkbox"><label>I distinguish recording, GPU completion, readback visibility and presentation in my evidence.</label></li>
+</ul></div>
+<details><summary>Self-check: DrawComplete was logged, but completed tick is 4 and the draw used tick 6. May A be destroyed?</summary>
+<p>No. The log is CPU-side recording evidence. Tick 6 has not been observed complete. Even after it completes, check later uses and the owner's deferred-release rules; the log alone never grants permission.</p></details>
+<h2 id="sources">Source anchors</h2>
+<ul>
+<li><code>src/libs/agc.cpp</code>: <code>AgcDriverSubmitCommandBuffer</code>, <code>submit_dcb</code>.</li>
+<li><code>src/graphics/guest_gpu/graphicsRun.cpp</code>: <code>GuestGpu::Submit</code>, <code>ThreadRun</code>, <code>Process</code>, <code>CommandProcessor::DrawIndexAuto</code>, <code>BufferFlush</code>.</li>
+<li><code>src/graphics/guest_gpu/command_processor/pm4Handlers.cpp</code>: <code>CpOpDrawIndexAuto</code>.</li>
+<li><code>src/graphics/host_gpu/renderer/renderDraw.cpp</code>: <code>DrawAuto</code>, <code>PrepareDrawRenderState</code>, <code>ExecutePreparedDraw</code>, <code>EmitDrawPrimitives</code>.</li>
+<li><code>src/graphics/host_gpu/renderer/pipeline/pipelineCache.cpp</code> and <code>src/graphics/host_gpu/renderer/pipeline/descriptors.cpp</code>: programs, pipelines and bindings.</li>
+<li><code>src/graphics/host_gpu/renderer/commandScheduler.cpp</code>, <code>src/graphics/host_gpu/renderer/masterSemaphore.h</code> and <code>src/graphics/host_gpu/renderer/masterSemaphore.cpp</code>: ticks, waiting and deferred work.</li>
+</ul>
+<p>Next: <a href="t-debugging-labs.html">reproduce and fix the native labs</a>. The <a href="developer-curriculum.html#coverage">coverage map</a> lists the branches this lesson does not teach in depth.</p>
+
+</div></section>
+</main>
+<script src="assets/topics.js?v=20260929" defer></script>
+<script src="assets/search-index.js?v=20260929" defer></script>
+<script src="assets/app.js?v=20260929" defer></script>
+<script src="assets/highlight.js?v=20260929" defer></script>
+<script src="assets/tutor.js?v=20260929" defer></script>
+</body>
+</html>

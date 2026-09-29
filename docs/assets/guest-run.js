@@ -9,7 +9,7 @@
     threads: { x: 332, y: 360, w: 250, h: 310, t: "Guest threads", s: "the game's own threads + sync" },
     hle: { x: 620, y: 52, w: 292, h: 284, t: "OS calls · the sce* API", s: "the only exit from the game's code" },
     cmd: { x: 620, y: 360, w: 292, h: 310, t: "Command buffer · AGC → PM4", s: "the game writes GPU packets" },
-    gpu: { x: 950, y: 52, w: 268, h: 284, t: "Submit to the GPU", s: "sceGnmSubmitCommandBuffers" },
+    gpu: { x: 950, y: 52, w: 268, h: 284, t: "Submit to the GPU", s: "sceAgcDriverSubmitCommandBuffer" },
     out: { x: 950, y: 360, w: 268, h: 310, t: "Audio & present", s: "AudioOut · VideoOut flip" }
   };
   var WIRES = {
@@ -48,8 +48,8 @@
       k.push(H.note(x, n.y + 200, "each guest thread is a real", "sm"));
       k.push(H.note(x, n.y + 214, "host pthread — no scheduler", "sm"));
     } else if (id === "hle") {
-      var calls = [["sceKernelAllocateDirectMemory", "memory"], ["sceKernelCreateThread", "threads"],
-        ["scePthreadMutexLock", "sync"], ["sceGnmSubmitCommandBuffers", "gpu"], ["sceAudioOutOutput", "audio"], ["sceVideoOutSubmitFlip", "flip"]];
+      var calls = [["sceKernelAllocateDirectMemory", "memory"], ["scePthreadCreate", "threads"],
+        ["scePthreadMutexLock", "sync"], ["sceAgcDriverSubmitCommandBuffer", "gpu"], ["sceAudioOutOutput", "audio"], ["sceVideoOutSubmitFlip", "flip"]];
       calls.forEach(function (c, i) {
         var hot = (st.call || "").indexOf(c[1]) >= 0;
         k.push(H.row(x, n.y + 58 + i * 34, w, c[0], "GOT", hot ? "hot" : "res"));
@@ -65,7 +65,7 @@
       k.push(H.note(x, n.y + 58 + pkts.length * 34 + 4, "written into the ring in guest memory", "sm"));
     } else if (id === "gpu") {
       if (st.stage < 7) return [H.note(x, n.y + 70, "— waiting for a submit —", "sm")];
-      k.push(H.note(x, n.y + 62, "sceGnmSubmitCommandBuffers", "op"));
+      k.push(H.note(x, n.y + 62, "sceAgcDriverSubmitCommandBuffer", "op"));
       k.push(H.note(x, n.y + 88, "hands the ring's address + size", "sm"));
       k.push(H.note(x, n.y + 106, "to the command processor", "sm"));
       k.push(H.row(x, n.y + 124, w, "on real HW", "kick the CP", "cy"));
@@ -94,15 +94,15 @@
     { t: "Use its heap", on: ["game", "mem"], w: ["g_mem"], stage: 2,
       cap: "It reads and writes the heap it reserved at startup with <code>sceKernelAllocateDirectMemory</code> and flexible memory. The game addresses memory exactly as it would on a console — and it assumes pages are <b>16 KB</b>." },
     { t: "Its own threads", on: ["game", "threads", "hle"], w: ["g_thr", "g_hle"], stage: 3, call: "sync",
-      cap: "The game spawned worker threads with <code>sceKernelCreateThread</code>; they coordinate with mutexes and condition variables that become <code>umtx</code> wait/wake. Each guest thread is a real host <code>pthread</code> — there is no scheduler to emulate." },
+      cap: "The game spawned worker threads with <code>scePthreadCreate</code>; they coordinate with mutexes and condition variables that become <code>umtx</code> wait/wake. Each guest thread is a real host <code>pthread</code> — there is no scheduler to emulate." },
     { t: "Call the OS", on: ["game", "hle"], w: ["g_hle"], stage: 4, call: "memory",
-      cap: "When the game needs the operating system it calls a <code>sce*</code> function through the GOT — <code>sceKernel…</code>, <code>scePthread…</code>. That <code>call [GOT+n]</code> is the <b>only</b> moment control leaves the game's code and enters the emulator's native C++." },
+      cap: "When the game needs the operating system it calls a <code>sce*</code> function through the GOT — <code>sceKernel…</code>, <code>scePthread…</code>. That <code>call [GOT+n]</code> is the normal explicit API crossing into native C++; faults and patched TLS/instruction paths are other crossings." },
     { t: "Build a command buffer", on: ["game", "cmd"], w: ["g_cmd"], stage: 5, pk: 5,
       cap: "To draw, the game uses AGC to fill a command buffer: it sets GPU registers and writes <b>PM4 packets</b> — set-context-reg, set-shader-address, draw-index, event-write — into a ring buffer that lives in its <b>own</b> memory." },
     { t: "Reference its shaders", on: ["game", "cmd", "mem"], w: ["g_cmd"], stage: 6,
       cap: "The draw packets reference the game's own compiled <b>RDNA 2 shader binaries</b> by GPU address. The game never compiles a shader at run time — it ships the binaries and just points the GPU at them." },
     { t: "Submit to the GPU", on: ["cmd", "gpu"], w: ["g_cmd", "c_gpu"], stage: 7,
-      cap: "The game calls <code>sceGnmSubmitCommandBuffers</code>, handing the ring's address and size to the GPU. On real hardware this simply kicks the command processor; in the emulator it wakes the GPU submit thread, which will decode those same PM4 packets." },
+      cap: "The game calls <code>sceAgcDriverSubmitCommandBuffer</code>, handing the ring's address and size to the GPU. On real hardware this simply kicks the command processor; in the emulator it wakes the GPU submit thread, which will decode those same PM4 packets." },
     { t: "Fill the audio buffer", on: ["game", "out"], w: ["h_out"], stage: 8, call: "audio",
       cap: "In parallel the game fills a small audio buffer — a few hundred samples per frame — and calls <code>sceAudioOutOutput</code>. The mixer thread on the emulator side will pick it up." },
     { t: "Request a flip", on: ["game", "out"], w: ["h_out"], stage: 9, call: "flip",

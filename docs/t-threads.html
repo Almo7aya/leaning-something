@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Threads and TLS — KytyPS5</title>
 <meta name="description" content="Guest threads are real host threads. Standing one up means crossing the ABI wall in the opposite direction.">
-<link rel="stylesheet" href="assets/viz.css?v=26">
-<link rel="stylesheet" href="assets/atlas.css?v=26">
-<link rel="stylesheet" href="assets/lab.css?v=26">
-<link rel="stylesheet" href="assets/tutor.css?v=26">
-<link rel="stylesheet" href="assets/app.css?v=26">
-<link rel="stylesheet" href="assets/highlight.css?v=26">
+<link rel="stylesheet" href="assets/viz.css?v=20260929">
+<link rel="stylesheet" href="assets/atlas.css?v=20260929">
+<link rel="stylesheet" href="assets/lab.css?v=20260929">
+<link rel="stylesheet" href="assets/tutor.css?v=20260929">
+<link rel="stylesheet" href="assets/app.css?v=20260929">
+<link rel="stylesheet" href="assets/highlight.css?v=20260929">
 </head>
 <body>
 
@@ -51,7 +51,7 @@ params-&gt;argv[0] = "KytyEmu";</pre>
   <h4 id="per-thread-tls-blocks">Per-thread TLS blocks</h4>
   <p>Each loaded module has a TLS <em>template</em> from its <code>PT_TLS</code> segment. Every thread needs its own copy of every module's template. Kyty allocates them lazily:</p>
 
-  <div class="filename">src/loader/runtimeLinker.h:49</div>
+  <div class="filename">src/loader/runtimeLinker.h</div>
 <pre>struct ThreadLocalStorage {
     struct Block {
         uint8_t*                     ptr        = nullptr;
@@ -83,6 +83,11 @@ void* ApplicationHeapMemalign(uint64_t alignment, uint64_t size);</pre>
   <p>An array of ten function pointers, of which Kyty uses malloc, free and posix_memalign. This matters because memory Kyty allocates on the game's behalf may be freed by the game, and vice versa.</p>
     </div>
   </section>
+
+  <section class="band band-read"><div class="band-h"><span class="band-t">Current wait and fiber behavior</span></div><div class="prose"><p>Timed <code>_umtx_op</code> waits now use shared <code>SyncOnAddress</code> deadlines and pending-signal dispatch. Pthread key values are indexed per thread, per-thread wakeups are corrected, and the old global condition-waiter registry has been removed. Fiber context uses native TLS when execution migrates between threads; small guest stacks are preserved.</p>
+<h4 id="blocking-short-sleeps">Short sleeps block too</h4>
+  <p><code>KernelUsleep()</code> and <code>KernelNanosleep()</code> use signal-polling sleep helpers. Nonzero short waits no longer take the old busy-spin or one-microsecond backoff shortcut. Windows uses its high-resolution waitable timer path; POSIX uses an absolute monotonic deadline that survives signal interruptions. Zero-duration requests still have their explicit signal-dispatch behavior.</p>
+</div></section>
 
   <section class="band band-watch">
     <div class="band-h"><span class="band-t">Watch</span></div>
@@ -133,16 +138,16 @@ void* ApplicationHeapMemalign(uint64_t alignment, uint64_t size);</pre>
 
 </main>
 
-<script src="assets/topics.js?v=26" defer></script>
-<script src="assets/search-index.js?v=26" defer></script>
-<script src="assets/app.js?v=26" defer></script>
-<script src="assets/viz.js?v=26" defer></script>
-<script src="assets/atlas.js?v=26" defer></script>
-<script src="assets/lab.js?v=26" defer></script>
-<script src="assets/figs.js?v=26" defer></script>
-<script src="assets/figures.js?v=26" defer></script>
-<script src="assets/highlight.js?v=26" defer></script>
-<script src="assets/tutor.js?v=26" defer></script>
+<script src="assets/topics.js?v=20260929" defer></script>
+<script src="assets/search-index.js?v=20260929" defer></script>
+<script src="assets/app.js?v=20260929" defer></script>
+<script src="assets/viz.js?v=20260929" defer></script>
+<script src="assets/atlas.js?v=20260929" defer></script>
+<script src="assets/lab.js?v=20260929" defer></script>
+<script src="assets/figs.js?v=20260929" defer></script>
+<script src="assets/figures.js?v=20260929" defer></script>
+<script src="assets/highlight.js?v=20260929" defer></script>
+<script src="assets/tutor.js?v=20260929" defer></script>
 </body>
 </html>
 

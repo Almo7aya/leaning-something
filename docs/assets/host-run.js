@@ -28,10 +28,10 @@
   function body(id, st, H) {
     var n = NODES[id], x = n.x + 10, w = n.w - 20, k = [];
     if (id === "hle") {
-      var d = [["sceKernelAllocate…", "Memory::Alloc", "mem"], ["sceKernelCreateThread", "Pthread::Create", "thr"],
-        ["sceGnmSubmit…", "GraphicsRun::Submit", "gpu"], ["sceVideoOutSubmitFlip", "VideoOut::Flip", "flip"]];
+      var d = [["sceKernelAllocate…", "Memory::Alloc", "mem"], ["scePthreadCreate", "Pthread::Create", "thr"],
+        ["AgcDriverSubmit…", "GraphicsRun::Submit", "gpu"], ["sceVideoOutSubmitFlip", "VideoOut::Flip", "flip"]];
       d.forEach(function (r, i) { k.push(H.row(x, n.y + 56 + i * 30, w, r[0], r[1], (st.act === r[2]) ? "hot" : "res")); });
-      k.push(H.note(x, n.y + 176, "resolved once at load; called via GOT", "sm"));
+      k.push(H.note(x, n.y + 176, "eager bindings; calls through GOT", "sm"));
     } else if (id === "kmem") {
       k.push(H.row(x, n.y + 54, w, "direct-memory pool", "physical", st.act === "mem" ? "hot" : "seg"));
       k.push(H.row(x, n.y + 82, w, "flexible-memory pool", "on demand", st.act === "mem" ? "hot" : "seg"));
@@ -89,15 +89,15 @@
     { t: "Serve memory & threads", on: ["hle", "kmem"], w: ["in_hle", "h_mem"], act: "mem",
       cap: "A memory request goes to the kernel memory manager, which carves it from the direct- or flexible-memory pool and updates the <b>page table</b>. The guest believes pages are 16 KB; the host MMU works in 4 KB — the manager keeps the two views consistent." },
     { t: "Coherency, by page fault", on: ["kmem", "fault"], w: ["m_flt"], act: "coh",
-      cap: "CPU and GPU share memory each believes it owns. When the CPU writes a page the GPU is reading, the host raises a <b>page fault</b>; the handler catches it, uploads the now-dirty page to the GPU, and resumes the guest — coherency without the guest ever knowing." },
+      cap: "CPU and GPU share memory each believes it owns. When the CPU writes a page the GPU is reading, the host raises a <b>page fault</b>; the handler catches it, records CPU ownership/dirty state and restores permitted CPU access. Upload occurs when a later GPU consumer needs those bytes — coherency without the guest ever knowing." },
     { t: "The GPU thread wakes", on: ["hle", "cp"], w: ["h_cp"], act: "cp",
-      cap: "A <code>sceGnmSubmitCommandBuffers</code> from the guest wakes the emulator's <b>GPU submit thread</b> (a host thread). It picks up the PM4 ring the game wrote and starts decoding it — the guest has moved on to its next frame." },
+      cap: "A <code>sceAgcDriverSubmitCommandBuffer</code> from the guest wakes the emulator's <b>GPU submit thread</b> (a host thread). It picks up the PM4 ring the game wrote and starts decoding it — the guest has moved on to its next frame." },
     { t: "Decode PM4 → register state", on: ["cp"], w: [], act: "cp", cpDone: 1,
       cap: "The command processor walks the ring packet by packet. Each <code>IT_SET_*_REG</code> write lands in a big <b>hardware-context struct</b>; a <code>IT_DRAW_INDEX</code> means &ldquo;draw with whatever registers are set right now.&rdquo; That accumulated register state is the pipeline's identity." },
     { t: "A draw needs a pipeline", on: ["cp", "recomp"], w: ["cp_rc"], act: "rc", cpDone: 1, rc: 1, rcStage: 2,
-      cap: "The draw's register state + shader addresses hash to a pipeline key. On a cache <b>hit</b> the program is reused; on a <b>miss</b> the shader recompiler translates the guest's RDNA 2 binary — <code>TranslateProgram</code> → typed IR → <code>CompileProgram</code> → SPIR-V — caching it in the in-memory L1 and the on-disk L2." },
+      cap: "The draw's register state + shader addresses hash to a pipeline key. On a cache <b>hit</b> the program is reused; on a <b>miss</b> the shader recompiler translates the guest's RDNA 2 binary — <code>TranslateProgram</code> → typed IR → <code>CompileProgram</code> → SPIR-V — retaining program/permutation entries in memory. A disk VkPipelineCache stores driver data for pipeline creation, not the recompiler's reusable IR or resource plan." },
     { t: "Build the Vulkan pipeline", on: ["recomp", "vulkan"], w: ["rc_vk", "cp_vk"], act: "vk", cpDone: 1, rcDone: 1,
-      cap: "The Vulkan backend builds a <code>VkPipeline</code> from the register state and the SPIR-V, then records <code>vkCmdBindPipeline</code> and <code>vkCmdDraw</code> into a host command buffer. The 125-byte <code>PipelineStaticParameters</code> is the cache key; VMA owns the GPU allocations." },
+      cap: "The Vulkan backend builds a <code>VkPipeline</code> from the register state and the SPIR-V, then records <code>vkCmdBindPipeline</code> and <code>vkCmdDraw</code> into a host command buffer. The 126-byte <code>PipelineStaticParameters</code> is one part of the key, alongside rendering formats, shader IDs and vertex input; VMA manages GPU allocations." },
     { t: "Submit to the host GPU", on: ["vulkan"], w: [], act: "submit", cpDone: 1, rcDone: 1,
       cap: "<code>vkQueueSubmit</code> hands the command buffer to your real GPU. A monotonic <b>timeline semaphore</b> tracks completion; when a submission finishes, the guest resources it retained can be released and reused." },
     { t: "Present the frame", on: ["vulkan", "present"], w: ["vk_pr"], act: "present", cpDone: 1, rcDone: 1, presentDone: 1, vb: 1,

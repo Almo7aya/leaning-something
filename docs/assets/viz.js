@@ -231,7 +231,7 @@
     var guest = box(s, 14, 88, 150, 56, "g", "Guest code", "call ...@plt");
     var plt = box(s, 214, 88, 130, 56, "g", "PLT stub", "jmp [GOT+n]");
     var got = box(s, 394, 88, 140, 56, "k", "GOT slot", "one pointer");
-    var stub = box(s, 588, 26, 158, 52, "k", "Lazy thunk", "returns 0 if unresolved");
+    var stub = box(s, 588, 26, 158, 52, "k", "Diagnostic thunk", "returns 0 if unresolved");
     var impl = box(s, 588, 152, 158, 52, "h", "Kyty C++", "KYTY_SYSV_ABI");
 
     var w1 = mk("path", { d: "M164 116 L210 116", "class": "wire", "marker-end": "url(#vz-ah)" });
@@ -248,9 +248,9 @@
     var CAPS = [
       "<b>Before anything is loaded</b>, <code>Libs::InitAll()</code> registers thousands of NID → C++ function-pointer records. Each <code>LIB_FUNC(\"nid\", func)</code> adds one. Nothing from the game exists yet.",
       "<b>The game imports a function by NID</b> — an 11-character hash, qualified by library and module: <code>nid#Pad#Pad</code>. Its relocation table says: write the resolved address into this GOT slot.",
-      "<b>Resolution searches the HLE database first.</b> If Kyty implements that NID, the address of its own C++ function is written into the GOT slot. If not, the slot gets a generated 162-byte lazy thunk instead.",
+      "<b>Resolution searches the HLE database first.</b> If Kyty implements that NID, the address of its own C++ function is written into the GOT slot. If not, the slot gets a generated 34-byte diagnostic thunk instead.",
       "<b>The call now flows through.</b> Guest code jumps to its PLT stub, the stub jumps through the GOT slot, and execution lands in Kyty's C++ — with arguments already in System&nbsp;V registers, which is exactly what <code>KYTY_SYSV_ABI</code> prepared that function for.",
-      "<b>If the NID was never implemented</b>, the thunk runs instead: it preserves all six argument registers and all eight vector registers, retries resolution now that more modules are loaded, and on failure returns zero and hopes the game copes. That is why a stubbed import produces odd behaviour rather than a clean crash."
+      "<b>If the NID was never implemented</b>, the thunk runs instead: it passes a record ID to the diagnostic handler, then returns zero in RAX and XMM0. Later module loads refresh unresolved relocation slots; this stub does not retry resolution. That is why a stubbed import produces odd behaviour rather than a clean crash."
     ];
 
     var drv = driver(body, CAPS, function (i) {
@@ -632,7 +632,7 @@
       "<b>Decode.</b> Each word is matched to an encoding family (SOP, VOP, SMEM, MUBUF, MIMG, FLAT, DS, EXP) and unpacked into a typed instruction with its operands and its considerable pile of modifier bits.",
       "<b>Build the control-flow graph</b>, then try to <em>structurise</em> it: compute the merge and continue blocks SPIR-V requires. This is the stage most likely to fail, and failure is a supported outcome — the dispatcher fallback emits one loop around a switch on a program counter.",
       "<b>Translate to one typed IR.</b> Explicit opcode-category dispatchers build values, then SSA rewriting, propagation, identity removal and dead-code elimination prepare them for resource analysis and emission.",
-      "<b>Emit SPIR-V.</b> The current backend is about 404 KB across 18 files. It declares types and capabilities, then lowers flow, ALU, memory, image and mesh instructions — including safety work the hardware got for free."
+      "<b>Emit SPIR-V.</b> The current backend is about 386 KB across 18 files. It declares types and capabilities, then lowers flow, ALU, memory, image and mesh instructions — including safety work the hardware got for free."
     ];
 
     body.insertBefore(s, body.firstChild);

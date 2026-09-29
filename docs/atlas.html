@@ -6,10 +6,10 @@
 <title>KytyPS5 — The Visual Atlas</title>
 <meta name="description" content="Nineteen animated explainers covering how a PlayStation 5 emulator runs guest code, maps memory, starts a game, schedules threads, and drives a GPU.">
 <meta name="color-scheme" content="light dark">
-<link rel="stylesheet" href="assets/viz.css?v=26">
-<link rel="stylesheet" href="assets/atlas.css?v=26">
-<script src="assets/viz.js?v=26" defer></script>
-<script src="assets/atlas.js?v=26" defer></script>
+<link rel="stylesheet" href="assets/viz.css?v=20260929">
+<link rel="stylesheet" href="assets/atlas.css?v=20260929">
+<script src="assets/viz.js?v=20260929" defer></script>
+<script src="assets/atlas.js?v=20260929" defer></script>
 <style>
 :root{
   --ground:#EFF1F2; --surface:#FCFCFB; --surface-2:#F4F6F7; --surface-3:#E9EDEF;
@@ -110,7 +110,7 @@ h3::before{content:"▸ ";color:var(--faint)}
 .xlinks a:hover{color:var(--ink);text-decoration:underline}
 .xlinks a.here{color:var(--ink);font-weight:600}
 </style>
-<link rel="stylesheet" href="assets/highlight.css?v=26">
+<link rel="stylesheet" href="assets/highlight.css?v=20260929">
 </head>
 <body>
 
@@ -198,8 +198,8 @@ h3::before{content:"▸ ";color:var(--faint)}
   <div class="sh"><span class="sn">01·2</span><h2 id="the-instructions-match-the-conventions-do-not">The instructions match; the conventions do not</h2></div>
   <p class="deck">Machine code has no concept of a "function argument". Which register carries which parameter is a convention — and the PS5 and Windows disagree about almost all of it.</p>
   <figure data-viz="abiflow"></figure>
-  <p>There is a second gap in the same family. Under System&nbsp;V a variadic function receives the count of vector registers used in <code>al</code>, which is why the generated import thunk begins with <code>push rax</code>, and why the guest's <code>printf</code> cannot simply be forwarded to the host's — <code>guestPrintf.cpp</code> is 25&nbsp;KB reimplementing the format-string interpreter for exactly this reason.</p>
-  <div class="srcs"><span class="src">src/common/abi.h</span><span class="src">src/loader/jit.h:119</span><span class="src">src/libs/guestPrintf.cpp</span></div>
+  <p>System V variadic calls carry the vector-register count in <code>al</code>. <code>guestPrintf.cpp</code> interprets guest format strings and arguments explicitly; passing that argument list to the host's <code>vprintf</code> would violate the calling convention.</p>
+  <div class="srcs"><span class="src">src/common/abi.h</span><span class="src">src/loader/jit.h</span><span class="src">src/libs/guestPrintf.cpp</span></div>
 </section>
 
 <section id="cpu-patch">
@@ -207,14 +207,14 @@ h3::before{content:"▸ ";color:var(--faint)}
   <p class="deck">Two instruction patterns in PS5 code cannot execute on Windows. With no recompiler in the pipeline, the loader rewrites the bytes in place — before the code is ever run.</p>
   <figure data-viz="patchbytes"></figure>
   <p>You can watch this happen for real. Run any title, grep the log for <code>Patch tls at addr</code>, then look at those nine bytes in a debugger: the file on disk has <code>64 48 8B 04 25 00 00 00 00</code> and memory has <code>48 E8 … 48 89 C0</code>. Seeing it once makes the whole mechanism concrete.</p>
-  <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp:1154</span><span class="src">src/loader/jit.h</span></div>
+  <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp</span><span class="src">src/loader/jit.h</span></div>
 </section>
 
 <section id="cpu-fault">
   <div class="sh"><span class="sn">01·4</span><h2 id="faults-are-a-control-flow-mechanism">Faults are a control-flow mechanism</h2></div>
   <p class="deck">Because there is no code generation step, the emulator cannot instrument guest code. The CPU's own fault mechanism becomes the hook — and two of the handler's three branches are deliberate design.</p>
   <figure data-viz="faultpath"></figure>
-  <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp:782</span><span class="src">src/loader/x64InstructionEmulator.cpp</span></div>
+  <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp</span><span class="src">src/loader/x64InstructionEmulator.cpp</span></div>
 </section>
 
 <!-- ============================== 02 MEMORY -->
@@ -223,14 +223,14 @@ h3::before{content:"▸ ";color:var(--faint)}
   <p class="deck">Console software hard-codes addresses and assumes allocations land in particular ranges. It also hands pointers to the GPU. So Kyty claims whole bands of the host address space up front and allocates inside them itself.</p>
   <figure data-viz="addrmap"></figure>
   <p>Three ways a game asks for memory, and Kyty models each separately: <strong>direct</strong> memory is a physical reservation that gets mapped as a second step; <strong>flexible</strong> memory comes from a fixed per-title budget; <strong>pooled</strong> memory is reserve-then-commit with a batch interface. On top sit <code>sceKernelVirtualQuery</code> — which forces real bookkeeping, since the guest can ask what protection, type, and <em>name</em> a range has — plus PRT apertures for sparse textures.</p>
-  <div class="srcs"><span class="src">src/kernel/memoryAddressSpace.inc</span><span class="src">src/kernel/memory.cpp</span><span class="src">src/kernel/memory.h:22</span></div>
+  <div class="srcs"><span class="src">src/kernel/memoryAddressSpace.inc</span><span class="src">src/kernel/memory.cpp</span><span class="src">src/kernel/memory.h</span></div>
 </section>
 
 <section id="mem-grain">
   <div class="sh"><span class="sn">02·2</span><h2 id="16-kb-guest-pages-on-4-kb-host-pages">16 KB guest pages on 4 KB host pages</h2></div>
   <p class="deck">A mismatch that sounds like a footnote and turns out to shape the whole coherency design.</p>
   <figure data-viz="pagegrain"></figure>
-  <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp:2010</span><span class="src">src/graphics/host_gpu/regionManager.h</span></div>
+  <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp</span><span class="src">src/graphics/host_gpu/regionManager.h</span></div>
 </section>
 
 <section id="mem-coherency">
@@ -246,14 +246,14 @@ h3::before{content:"▸ ";color:var(--faint)}
   <div class="sh"><span class="sn">03</span><h2 id="startup-a-file-becoming-a-running-program">Startup — a file becoming a running program</h2></div>
   <p class="deck">A PS5 executable is a SELF: a signed container wrapping standard ELF64, with Sony's own segment types and dynamic tags bolted on.</p>
   <figure data-viz="elfmap"></figure>
-  <div class="srcs"><span class="src">src/loader/elf.h</span><span class="src">src/loader/runtimeLinker.cpp:1991</span></div>
+  <div class="srcs"><span class="src">src/loader/elf.h</span><span class="src">src/loader/runtimeLinker.cpp</span></div>
 </section>
 
 <section id="start-reloc">
   <div class="sh"><span class="sn">03·2</span><h2 id="wiring-up-the-imports">Wiring up the imports</h2></div>
   <p class="deck">PS5 modules do not export readable names — they export hashes. Resolution is where the emulator inserts itself into the game.</p>
   <figure data-viz="relocgot"></figure>
-  <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp:1506</span><span class="src">src/libs/libs.h:47</span></div>
+  <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp</span><span class="src">src/libs/libs.h</span></div>
 </section>
 
 <section id="start-call">
@@ -269,14 +269,14 @@ h3::before{content:"▸ ";color:var(--faint)}
   <p class="deck">Three actors, three completely different jobs, and a separation that is required rather than stylistic.</p>
   <figure data-viz="threads"></figure>
   <p>Guest threads are real host threads, but with two pieces of state Kyty maintains itself: a <strong>guest stack</strong> allocated inside the guest bands, because guest code computes addresses relative to it and may hand them to the GPU; and a per-thread copy of every loaded module's <strong>TLS image</strong>, allocated lazily and freed through the game's own allocator if it installed one.</p>
-  <div class="srcs"><span class="src">src/kernel/pthread.cpp</span><span class="src">src/emulator.cpp:171</span><span class="src">src/loader/runtimeLinker.cpp:1923</span></div>
+  <div class="srcs"><span class="src">src/kernel/pthread.cpp</span><span class="src">src/emulator.cpp</span><span class="src">src/loader/runtimeLinker.cpp</span></div>
 </section>
 
 <section id="thr-queues">
   <div class="sh"><span class="sn">04·2</span><h2 id="fifty-seven-gpu-queues">Fifty-seven GPU queues</h2></div>
   <p class="deck">One graphics queue plus seven compute pipes of eight, mirroring the hardware — because games rely on that topology for asynchronous compute.</p>
   <figure data-viz="queuebank"></figure>
-  <div class="srcs"><span class="src">src/graphics/guest_gpu/graphicsRun.cpp:79</span><span class="src">…/command_processor/commandProcessor.h</span></div>
+  <div class="srcs"><span class="src">src/graphics/guest_gpu/graphicsRun.cpp</span><span class="src">…/command_processor/commandProcessor.h</span></div>
 </section>
 
 <!-- ============================== 05 GPU -->
@@ -285,7 +285,7 @@ h3::before{content:"▸ ";color:var(--faint)}
   <p class="deck">The game never calls a draw function. It builds raw command packets — the same binary format a real AMD command processor reads — and submits the buffer. So Kyty implements a command processor in software.</p>
   <figure data-viz="pm4stream"></figure>
   <p>Beyond register writes and draws, a real command processor has mechanisms Kyty has to model too: two engines (drawing and constant) synchronised by counters, a 48&nbsp;KB constant-RAM scratch area, end-of-pipe fences, indirect buffers that work like calls, predication that makes packets conditional, and blocking waits that suspend a submission rather than spinning.</p>
-  <div class="srcs"><span class="src">src/graphics/guest_gpu/pm4.cpp:122</span><span class="src">…/pm4Handlers.cpp</span><span class="src">…/hardwareContext.h</span></div>
+  <div class="srcs"><span class="src">src/graphics/guest_gpu/pm4.cpp</span><span class="src">…/pm4Handlers.cpp</span><span class="src">…/hardwareContext.h</span></div>
 </section>
 
 <section id="gpu-wave">
@@ -300,14 +300,14 @@ h3::before{content:"▸ ";color:var(--faint)}
   <p class="deck">About 28,700 lines of compiler: explicit decode/CFG/translation frontends, one typed SSA-capable IR and its passes, then the SPIR-V backend.</p>
   <figure data-viz="shaderflow"></figure>
   <p>Structurisation failure is a <em>supported outcome</em>. An irreducible graph, or a graph for which merge and continue blocks cannot be recovered, selects the <strong>dispatcher</strong>: one loop around a switch on a program-counter value, each basic block a case. Slower, but explicit and diagnosable.</p>
-  <div class="srcs"><span class="src">…/ShaderRecompiler.cpp:485</span><span class="src">…/frontend/cfg/ShaderCFG.cpp</span><span class="src">…/backend/spirv/spirvEmitterFlow.cpp</span></div>
+  <div class="srcs"><span class="src">…/ShaderRecompiler.cpp</span><span class="src">…/frontend/cfg/ShaderCFG.cpp</span><span class="src">…/backend/spirv/spirvEmitterFlow.cpp</span></div>
 </section>
 
 <section id="gpu-srt">
   <div class="sh"><span class="sn">05·4</span><h2 id="finding-the-texture-a-shader-wants">Finding the texture a shader wants</h2></div>
   <p class="deck">On RDNA 2 there are no texture slots. A shader holds its resource descriptors in registers, or loads them from memory itself — so the emulator has to evaluate the shader's own address arithmetic before the shader ever runs.</p>
   <figure data-viz="srtwalk"></figure>
-  <div class="srcs"><span class="src">…/ir/passes/SsaRewrite.cpp</span><span class="src">…/ir/passes/SrtWalker.cpp</span><span class="src">src/graphics/shader/shader.h:55</span></div>
+  <div class="srcs"><span class="src">…/ir/passes/SsaRewrite.cpp</span><span class="src">…/ir/passes/SrtWalker.cpp</span><span class="src">src/graphics/shader/shader.h</span></div>
 </section>
 
 <section id="gpu-tiling">
@@ -361,7 +361,7 @@ h3::before{content:"▸ ";color:var(--faint)}
   </div>
 
   <div class="foot">
-    <p>Written by reading the <a href="https://github.com/KytyPS5/KytyPS5">KytyPS5</a> source tree at <code>main</code> commit <code>5b7d334</code> (18 September 2026); file and line references point at that revision and will drift. These are unofficial — a reading of the source, not maintainer-authored documentation. Where a document and the code disagree, the code is right.</p>
+    <p>Written by reading the <a href="https://github.com/KytyPS5/KytyPS5">KytyPS5</a> source tree at <code>main</code> commit <code>2650478</code> (29 September 2026); source references use paths and symbols at that revision. These are unofficial — a reading of the source, not maintainer-authored documentation. Where a document and the code disagree, the code is right.</p>
     <p>Some animations are deliberately simplified and say so in their own notes — the tiling one in particular shows 2×2 Morton ordering to make the idea visible, where the real families vary block size by bytes-per-element, XOR block coordinates across memory channels, and pack small mips into a tail.</p>
     <p>KytyPS5 is GPL-2.0-only and based on <a href="https://github.com/InoriRus/Kyty">InoriRus/Kyty</a> (MIT), and credits <a href="https://github.com/shadps4-emu/shadPS4">shadPS4</a> as a reference for the memory model and AVPlayer. Not affiliated with Sony Interactive Entertainment.</p>
   </div>
@@ -395,7 +395,7 @@ h3::before{content:"▸ ";color:var(--faint)}
   spy();
 })();
 </script>
-<script src="assets/highlight.js?v=26" defer></script>
+<script src="assets/highlight.js?v=20260929" defer></script>
 </body>
 </html>
 

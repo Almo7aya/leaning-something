@@ -347,15 +347,17 @@
     var body = frame(host,
       "Translate a guest address",
       "type any address · updates as you type",
-      "The band boundaries and the module layout constants are the real ones from <code>memoryAddressSpace.inc</code> and <code>runtimeLinker.cpp</code>. This is why a guest pointer is recognisable on sight: <code>0x9…</code> is module code, <code>0x1…</code> is guest heap, and anything above <code>0x7000_0000_0000</code> is the emulator's own image.");
+      "The band boundaries and the module layout constants are the real ones from <code>memoryAddressSpace.inc</code> and <code>runtimeLinker.cpp</code>. This is why a guest pointer is recognisable on sight: <code>0x9…</code> is module code, <code>0x1…</code> is guest heap, and the extended arena begins at <code>0x0800_0000_0000</code>. Module examples are illustrative; the ordinary low-band diagram uses the Windows/Linux layout, while macOS raises the user-area start.");
 
     var SYSTEM_RESERVED = 0x800000000, CODE_BASE_OFFSET = 0x100000000, CODE_BASE_INCR = 0x10000000;
     var MODULE_BASE = SYSTEM_RESERVED + CODE_BASE_OFFSET;           // 0x900000000
     var GUEST_PAGE = 0x4000, HOST_PAGE = 0x1000;
     var BANDS = [
       { lo: 0x0000040000, hi: 0x07FFFFBFFF, n: "system managed", who: "host OS, emulator image, Qt, SDL, Vulkan driver", k: "host" },
-      { lo: 0x07FFFFC000, hi: 0x0FFFFFFFFF, n: "system reserved", who: "loaded guest modules and generated PLT tables", k: "kyty" },
-      { lo: 0x1000000000, hi: 0xFBFFFFFFFF, n: "user area", who: "every guest allocation: direct, flexible, pooled, stacks", k: "guest" },
+      { lo: 0x07FFFFC000, hi: 0x0FFFFFFFFF, n: "system reserved", who: "loaded guest modules and diagnostic import stubs", k: "kyty" },
+      { lo: 0x1000000000, hi: 0xFBFFFFFFFF, n: "user area", who: "ordinary guest allocations: direct, flexible, pooled, stacks", k: "guest" },
+      { lo: 0x080000000000, hi: 0x087FFFFFFFFF, n: "extended guest arena", who: "512 GiB virtual range, separate allocation policy", k: "guest" },
+
       { lo: 0xFC00000000, hi: 0xFFFFFFFFFFFF, n: "host high", who: "the emulator binary, linked deliberately high", k: "host" }
     ];
     var MODULES = [
@@ -369,7 +371,7 @@
     var addrIn = input(row, null, "0x900012F40", "w-wide");
     label(row, "presets");
     [["module code", "0x900012F40"], ["second module", "0x910000080"],
-     ["guest heap", "0x1000A34000"], ["emulator", "0x700000001234"]].forEach(function (p) {
+     ["guest heap", "0x1000A34000"], ["extended guest", "0x080000004000"], ["emulator", "0x700000001234"]].forEach(function (p) {
       var b = button(row, p[0]);
       b.addEventListener("click", function () { addrIn.value = p[1]; update(); });
     });
@@ -460,7 +462,7 @@
         run: function () { setInput(addrIn, "0x910004000"); }, ms: 3400 },
       { say: "Jump to the <b>user area</b>. This is where every guest allocation lives: direct, flexible, pooled, and thread stacks.",
         run: function () { setInput(addrIn, "0x1000A34000"); }, ms: 3200 },
-      { say: "And here is the emulator's own image, linked far above anything the guest can reach — which is why a guest pointer and a host pointer can never be confused by value alone.",
+      { say: "Here is an illustrative host-image address. The extended guest arena is also high, so use the mapping records instead of assuming every high pointer belongs to the host.",
         run: function () { setInput(addrIn, "0x700000001234"); }, ms: 4000 }
     ]);
   });
@@ -1709,14 +1711,15 @@
   reg("pipekey", function (host) {
     var body = frame(host,
       "The pipeline cache key",
-      "toggle any state and watch the key change",
-      "Vulkan bakes fixed-function state into the immutable <code>VkPipeline</code>, so every distinct combination needs its own object. Kyty packs the state that is <em>not</em> Vulkan dynamic state into one <code>#pragma pack(1)</code> struct (<code>sizeof == 125</code>) and hashes it byte by byte — which is also why there is a <code>static_assert</code> on its exact size: a padding byte would be uninitialised, so identical states could hash differently and quietly multiply the cache. Viewport, scissor, depth test/write/compare/bias, the whole stencil state and blend constants are set dynamically per draw, so they are not in the key.");
+      "compare static-key changes with dynamic stencil state",
+      "Vulkan bakes fixed-function state into the immutable <code>VkPipeline</code>, so every distinct combination needs its own object. Kyty packs the state that is <em>not</em> Vulkan dynamic state into one <code>#pragma pack(1)</code> struct (<code>sizeof == 126</code>) and hashes the packed static bytes with <code>XXH3_64bits</code> — which is also why there is a <code>static_assert</code> on its exact size: a padding byte would be uninitialised, so identical states could hash differently and quietly multiply the cache. Viewport, scissor, depth test/write/compare, stencil test/operations/masks/reference and blend constants are set dynamically per draw, so they are not in the key.");
 
     var FIELDS = [
       { k: "topology", label: "topology", vals: ["triangle list", "triangle strip", "rect list"], v: 0 },
       { k: "blend", label: "blend enable", bool: true, v: 0 },
       { k: "srcblend", label: "src blend factor", vals: ["one", "src alpha", "zero"], v: 0, dep: "blend" },
       { k: "depthbounds", label: "depth bounds test", bool: true, v: 0 },
+      { k: "stencil", label: "stencil test (dynamic)", bool: true, v: 0, dynamic: true },
       { k: "polymode", label: "polygon mode", vals: ["fill", "line", "point"], v: 0 },
       { k: "cullback", label: "cull back faces", bool: true, v: 1 },
       { k: "samples", label: "sample count", vals: ["1", "2", "4", "8"], v: 0 },
@@ -1728,7 +1731,7 @@
     var cache = [];    // {hash, n}
     var lastBytes = null;
 
-    var tg = h("div", "lab-toggles"); body.appendChild(h("div", "lab-h", "static pipeline state"));
+    var tg = h("div", "lab-toggles"); body.appendChild(h("div", "lab-h", "pipeline state — stencil is dynamic"));
     body.appendChild(tg);
 
     var row = ctlRow(body);
@@ -1739,7 +1742,7 @@
 
     var split = h("div", "lab-2");
     var kL = h("div"), kR = h("div");
-    kL.appendChild(h("div", "lab-h", "packed key bytes (changed ones highlighted)"));
+    kL.appendChild(h("div", "lab-h", "schematic key bytes (not the full C++ layout)"));
     var bytesEl = h("div", "lab-bytes32"); kL.appendChild(bytesEl);
     var hashEl = h("div", "lab-status"); kL.appendChild(hashEl);
     kR.appendChild(h("div", "lab-h", "pipeline cache"));
@@ -1750,6 +1753,7 @@
     function pack() {
       var b = [];
       FIELDS.forEach(function (f) {
+        if (f.dynamic) return;
         var active = !f.dep || state[f.dep];
         b.push(active ? (state[f.k] & 0xFF) : 0);
         b.push(active ? 0x01 : 0x00);
@@ -1796,7 +1800,7 @@
       else state[f.k] = +e.target.value;
       render(true);
       st.className = "lab-status";
-      st.textContent = "key changed — press look up to see whether a pipeline already exists";
+      st.textContent = f.dynamic ? "dynamic stencil changed — the cache key stays the same" : "key changed — press look up to see whether a pipeline already exists";
     });
     lookBtn.addEventListener("click", function () {
       var hv = render(false);

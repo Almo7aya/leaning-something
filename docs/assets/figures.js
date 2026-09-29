@@ -221,19 +221,17 @@ if($("#sharpwrap")){
 }
 
 /* ---------------- memory map ---------------- */
-var BANDS=[
- {c:"h",a:"0x0000040000 – 0x07FFFFBFFF",n:"System managed",sz:"~32 GB",
-  d:"<p>Left entirely to the host operating system. The emulator's own image, the C++ runtime, Qt, SDL, the Vulkan loader and the graphics driver live here. Guest allocations never enter this band.</p><p>On Windows this is enforced by passing an explicit <code>LowestStartingAddress</code> / <code>HighestEndingAddress</code> pair to <code>VirtualAlloc2</code>, so the allocator physically cannot return an address outside the band it was asked for.</p>",
-  s:"src/common/platform/sysWindowsVirtual.cpp:102"},
- {c:"k",a:"0x07FFFFC000 – 0x0FFFFFFFFF",n:"System reserved",sz:"~32 GB",
-  d:"<p>Reserved by Kyty for structures the guest can see. Two things live here:</p><ul><li><strong>Loaded modules.</strong> The first lands at <code>0x900000000</code> — the band base <code>0x800000000</code> plus a <code>0x100000000</code> code offset — and each subsequent module is placed <code>0x10000000</code> (256 MB) further on.</li><li><strong>Custom PLT tables</strong>, the generated trampolines for guest imports.</li></ul><p>Because every module lands in a known, contiguous band, the crash handler can walk a guest stack by simply testing whether each return address falls inside it.</p>",
-  s:"src/loader/runtimeLinker.cpp:344"},
- {c:"g",a:"0x1000000000 – 0xFBFFFFFFFF",n:"User area",sz:"~1 TB",
-  d:"<p>Every guest allocation: direct memory mappings, flexible memory, memory pools, thread stacks, GPU-visible buffers. Kyty keeps its own free list and page-attribute tables across this range, because it has to answer <code>sceKernelVirtualQuery</code> with per-range protection, memory type, flags — and the <em>name</em> the game assigned to the range.</p><p>Page granularity here is the guest's 16 KB, not the host's 4 KB. One guest page covers four host pages, so every protection change applies in groups of four. This matters enormously in the memory tracker.</p>",
-  s:"src/kernel/memoryAddressSpace.inc:9"},
- {c:"h",a:"0xFC00000000 and above",n:"Host high memory",sz:"—",
-  d:"<p>Outside the guest's world entirely. The emulator binary is deliberately linked high — <code>--image-base=0x100000000000</code> on Linux, <code>-image_base 0x700000000000</code> on macOS — so its own code sits far above anything the guest can allocate.</p><p>This matters more than it sounds. It guarantees that a guest pointer and a host pointer can never be confused by value alone, which turns a whole class of bug into something you can spot by looking at a hex dump.</p>",
-  s:"CMakeLists.txt:126"}
+var BANDS = [
+ {c:"h",a:"0x0000040000 – 0x07FFFFBFFF",n:"System managed",ttl:"System managed",sz:"~32 GiB",
+  d:"<p>The ordinary Windows/Linux low-band layout leaves this range to the host. Host libraries and drivers are not confined to this band; macOS also uses different low-range boundaries.</p>",s:"src/common/platform/sysWindowsVirtual.cpp"},
+ {c:"k",a:"0x07FFFFC000 – 0x0FFFFFFFFF",n:"System reserved",ttl:"System reserved",sz:"~32 GiB",
+  d:"<p>Guest-visible runtime structures and loaded modules occupy this ordinary reserved band. Module placement is tracked by the runtime linker. Diagnostic import stubs and TLS bridges remain; the custom lazy-PLT generator has been removed.</p>",s:"src/loader/runtimeLinker.cpp"},
+ {c:"g",a:"0x1000000000 – 0xFBFFFFFFFF",n:"User area",ttl:"Ordinary user area",sz:"~944 GiB",
+  d:"<p>Ordinary direct, flexible and pooled allocations, stacks and GPU-visible buffers use the low guest range. The kernel tracks per-range permissions, flags and names. Guest allocation granularity is 16 KiB; host page size is platform-dependent.</p>",s:"src/kernel/memoryAddressSpace.inc"},
+ {c:"g",a:"0x080000000000 – 0x087FFFFFFFFF",n:"Extended guest",ttl:"Extended guest arena",sz:"512 GiB",
+  d:"<p>Extended allocations use a separate arena beginning at 8 TiB. Reserving it does not consume 512 GiB of physical RAM. Sparse GPU trackers accept 44-bit addresses, while dense buffer/BDA tables compact the low and extended intervals without indexing the gap.</p>",s:"src/kernel/memory.h"},
+ {c:"h",a:"outside reserved guest ranges",n:"Host high memory",ttl:"Host high memory",sz:"schematic",
+  d:"<p>High addresses are not automatically host-only: exclude the extended guest arena first. Host image placement varies by platform. Use actual mapping records to identify an address; a prefix alone does not prove ownership.</p>",s:"CMakeLists.txt"}
 ];
 var bh=$("#bands"), bd=$("#band-detail");
 if(bh){
@@ -288,17 +286,17 @@ var PIPE=[
   b:"<p><code>RewriteToSsa</code>, <code>ConstantPropagation</code>, <code>ResolveControlFlowIdentities</code>, <code>RemoveIdentities</code>, <code>EliminateDeadCode</code>. Then <code>EliminateReadLane</code>; if it rewrote any reads, the simplification sequence runs again.</p>",
   w:"The pass sequence makes value dependencies explicit for resource analysis and emission. SRT analysis follows this typed IR directly.",
   s:"…/ir/passes/SsaRewrite.cpp"},
- {t:"SRT plan", h:"BuildSrtPlan — a recipe for reading descriptor tables",
-  b:"<p>Walk the typed value graph, collect reachable shader-resource-table reads and turn them into a plan. Constant offsets are assigned flattened slots; genuinely dynamic reads stay explicit.</p>",
-  w:"Separating the plan from its execution is what lets one compiled shader be reused across draws that bind completely different resources.",
-  s:"…/ir/passes/SrtWalker.cpp"},
- {t:"Track resources", h:"TrackResources — classify every descriptor use",
-  b:"<p>Classify buffers, images, samplers and sampled pairs, including read/write/atomic behaviour, dimensions, formats, aliases and descriptor sources. This is the last step of <code>TranslateProgram()</code>; the result is an immutable <code>ResourcePlan</code>.</p>",
+ {t:"Tessellation", h:"LowerTessellationMemory — stage memory becomes typed I/O",
+  b:"<p>For Local, TessellationControl and TessellationEvaluation programs, lower the guest's stage-memory convention using the strides recovered by tessellation analysis. Ordinary vertex, mesh, pixel and compute programs continue to resource tracking.</p>",
+  w:"Guest LS/HS memory transfers must become valid cross-stage Vulkan interfaces before bindings and SPIR-V are emitted.",
+  s:"…/recompiler/Tessellation.cpp"},
+ {t:"Track resources", h:"TrackResources — scalar/SRT planning and descriptor classification",
+  b:"<p>Classify buffers, images, samplers and sampled pairs, including read/write/atomic behaviour, dimensions, formats, aliases and descriptor sources. After tracking and dead-code cleanup, translation returns temporary IR. The first program miss extracts a retained <code>ResourcePlan</code>.</p>",
   w:"This produces the list the Vulkan descriptor set layout is generated from. Wrong classification means either a pipeline that fails validation or, worse, one that silently reads the wrong memory.",
   s:"…/ir/passes/ResourceTracking.cpp"},
  {t:"Materialize", h:"MaterializeResources — at draw time, in the pipeline cache",
   b:"<p>The renderer, not the recompiler, runs the plan against current user data and guest memory. That produces a <code>ResourceSnapshot</code> and a <code>ResourceSpecialization</code>. A failed read is an <code>EXIT_IF</code>.</p>",
-  w:"The immutable plan is cached per shader binary; only the snapshot changes between draws. Specialisation is why two draws with differently-shaped resources must not share SPIR-V.",
+  w:"The resource plan is cached per program key and its snapshot is refreshed in place; a new permutation rebuilds IR. Specialisation is why two draws with differently-shaped resources must not share SPIR-V.",
   s:"…/ir/passes/ResourceMaterialization.cpp"},
  {t:"Compile", h:"ApplyResourceSpecialization → CollectShaderInfo → AllocateBindings",
   b:"<p><code>CompileProgram()</code> bakes the draw-time specialisation into the IR, then gathers stage I/O and allocates descriptor bindings — including <code>ShaderData</code>, <code>FlattenedSrt</code>, the BDA page table and the fault buffer.</p>",
@@ -307,9 +305,9 @@ var PIPE=[
  {t:"Requirements", h:"AnalyzeProgramRequirements",
   b:"<p>Record every subgroup, derivative, image, LDS, scratch and pixel-mask feature the final module needs before emission begins.</p>",
   w:"Capability selection is explicit and auditable, and the emitter can reject an unsupported combination before building a partial module.",
-  s:"…/backend/spirv/spirvEmitterAnalysis.cpp"},
+  s:"…/backend/spirv/SpirvEmitter.cpp"},
  {t:"Emit SPIR-V", h:"Spirv::EmitProgram",
-  b:"<p>The backend — about 404 KB across 18 files, including <code>spirvEmitterMesh.cpp</code> — declares capabilities, types, interfaces and descriptors, then lowers typed IR into SPIR-V flow, ALU, memory and image instructions.</p>",
+  b:"<p>The backend — about 386 KB across 18 files, including <code>spirvEmitterMesh.cpp</code> — declares capabilities, types, interfaces and descriptors, then lowers typed IR into SPIR-V flow, ALU, memory and image instructions.</p>",
   w:"SPIR-V is stricter than machine code in every respect — types declared, control flow structured, capabilities requested. This stage is where all that bookkeeping happens.",
   s:"…/backend/spirv/SpirvEmitter.cpp"}
 ];

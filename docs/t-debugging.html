@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Debugging &amp; diagnostics — KytyPS5</title>
 <meta name="description" content="The flags, dumps and tests that turn a black box into something you can inspect.">
-<link rel="stylesheet" href="assets/viz.css?v=26">
-<link rel="stylesheet" href="assets/atlas.css?v=26">
-<link rel="stylesheet" href="assets/lab.css?v=26">
-<link rel="stylesheet" href="assets/tutor.css?v=26">
-<link rel="stylesheet" href="assets/app.css?v=26">
-<link rel="stylesheet" href="assets/highlight.css?v=26">
+<link rel="stylesheet" href="assets/viz.css?v=20260929">
+<link rel="stylesheet" href="assets/atlas.css?v=20260929">
+<link rel="stylesheet" href="assets/lab.css?v=20260929">
+<link rel="stylesheet" href="assets/tutor.css?v=20260929">
+<link rel="stylesheet" href="assets/app.css?v=20260929">
+<link rel="stylesheet" href="assets/highlight.css?v=20260929">
 </head>
 <body>
 
@@ -32,12 +32,17 @@
     <table>
       <thead><tr><th>Flag</th><th>Default</th><th>Effect</th></tr></thead>
       <tbody>
-        <tr><td><code>--game &lt;dir|elf&gt;</code></td><td>—</td><td>A game directory (uses <code>/app0/eboot.bin</code>) or a single ELF.</td></tr>
+        <tr><td><code>--game &lt;dir|elf|zar&gt;</code></td><td>—</td><td>A directory, ELF, or <code>.zar</code> archive; directories and archives load <code>/app0/eboot.bin</code>.</td></tr>
         <tr><td><code>--game-patch &lt;json&gt;</code></td><td>—</td><td>An ETAHen cheat file.</td></tr>
         <tr><td><code>--screen-width</code> / <code>--screen-height</code></td><td>1280 / 720</td><td>Window size.</td></tr>
         <tr><td><code>--user-name</code> / <code>--user-id</code></td><td>Kyty / 1000</td><td>Local console user identity.</td></tr>
-        <tr><td><code>--present-mode</code></td><td>Fifo</td><td><code>Fifo</code>, <code>Mailbox</code>, or <code>Immediate</code>.</td></tr>
+        <tr><td><code>--present-mode</code></td><td>Mailbox</td><td><code>Fifo</code>, <code>Mailbox</code>, or <code>Immediate</code>.</td></tr>
         <tr><td><code>--gpu &lt;index&gt;</code></td><td>-1</td><td>Which Vulkan physical device to use, by enumeration index. <code>-1</code> picks automatically; a malformed index is a usage error, an out-of-range one falls back to automatic with a log line. The launcher exposes the same choice.</td></tr>
+        <tr><td><code>--mic</code></td><td>unset</td><td>Capture from the named microphone. Omit it for paced silent AudioIn.</td></tr>
+        <tr><td><code>--vr</code></td><td>off</td><td>Enable the virtual HMD2 headset model; this is not physical VR-headset support.</td></tr>
+        <tr><td><code>--amd-cpu</code></td><td>off</td><td>Enable AMD CPU instruction patches, including reciprocal-square-root emulation.</td></tr>
+        <tr><td><code>--tessellation</code></td><td>off</td><td>Enable native LS / hull / evaluation-stage draws. Tessellation patches are skipped by default.</td></tr>
+
         <tr><td><code>--fullscreen</code></td><td>false</td><td>Borderless desktop fullscreen.</td></tr>
         <tr><td><code>--vblank-frequency &lt;n&gt;</code></td><td>60</td><td>Virtual vertical-blank rate. Changing it changes game speed for engines that pace off vblank.</td></tr>
         <tr><td><code>--console-language &lt;0-29&gt;</code></td><td>1</td><td>Console language; 1 is English (US).</td></tr>
@@ -52,7 +57,7 @@
         <tr><td><code>--graphics-debug-dump</code></td><td>false</td><td>Additional graphics dumps, including textures into <code>_Textures</code>.</td></tr>
         <tr><td><code>--printf-direction</code></td><td>Silent</td><td><code>Silent</code>, <code>Console</code> or <code>File</code> for the emulator logger; it also gates guest printf and several debug dumps.</td></tr>
         <tr><td><code>--printf-output-file</code></td><td><code>_kyty.txt</code></td><td>Logger/guest-printf target when the direction is <code>File</code>.</td></tr>
-        <tr><td><code>--profiler-direction</code></td><td>None</td><td><code>None</code> or <code>Network</code> — streams to a Tracy client.</td></tr>
+        <tr><td><code>--profile</code></td><td>off</td><td>Enable the Tracy profiler; scopes use native <code>tracy::ScopedZone</code>.</td></tr>
         <tr><td><code>--spirv-debug-printf</code></td><td>false</td><td>Enables <code>printf</code> from inside shaders.</td></tr>
         <tr><td><code>--readback-linear-images</code></td><td>false</td><td>Read back writable linear images on submit — a coherency workaround.</td></tr>
         <tr><td><code>--playgo-hack</code></td><td>false</td><td>Use the supplied PlayGo stub fallback.</td></tr>
@@ -87,7 +92,7 @@ kyty_emulator.exe --game "D:\Games\Example" ^
         <tr><td>Wrong GPU picked on a multi-GPU machine</td><td><code>--gpu &lt;index&gt;</code></td><td>The startup log names the selected device; pass the index of the one you want.</td></tr>
         <tr><td>Textures flicker or go stale</td><td><code>--readback-linear-images true</code></td><td>A coherency bug. Start at <code>MemoryTracker</code>, not the texture cache.</td></tr>
         <tr><td>Device lost / validation errors</td><td><code>--vulkan-validation true --shader-validation true</code></td><td>Validation output first; malformed SPIR-V second.</td></tr>
-        <tr><td>Very slow</td><td><code>--profiler-direction Network</code></td><td>Tracy. Distinguish shader compilation (cold cache) from per-draw cost.</td></tr>
+        <tr><td>Very slow</td><td><code>--profile</code></td><td>Tracy. Distinguish shader compilation (cold cache) from per-draw cost.</td></tr>
         <tr><td>Hangs with no CPU use</td><td>debugger, all threads</td><td>A <code>WAIT_REG_MEM</code> whose condition never becomes true, or a thread waiting on an event queue nothing signals.</td></tr>
       </tbody>
     </table>
@@ -98,7 +103,7 @@ kyty_emulator.exe --game "D:\Games\Example" ^
     <table>
       <thead><tr><th>You will see</th><th>It means</th></tr></thead>
       <tbody>
-        <tr><td><code>EXIT_NOT_IMPLEMENTED(cond)</code><br><strong>~950 sites</strong></td><td>"If this is true, I did not handle this case." A marker of the frontier, not an impossibility claim. Grepping these maps what the emulator cannot yet do.</td></tr>
+        <tr><td><code>EXIT_NOT_IMPLEMENTED(cond)</code><br><strong>~980 sites</strong></td><td>"If this is true, I did not handle this case." A marker of the frontier, not an impossibility claim. Grepping these maps what the emulator cannot yet do.</td></tr>
         <tr><td><code>EXIT("…")</code><br><strong>~500 sites</strong></td><td>An unrecoverable invariant violation — a bug, not a gap. The shader recompiler now reports its own failures this way too, instead of passing error strings back up.</td></tr>
         <tr><td><code>KYTY_SYSV_ABI</code></td><td>Guest code calls this directly. Never call it from emulator code without thinking about the convention.</td></tr>
         <tr><td><code>PRINT_NAME()</code></td><td>Free per-call tracing, already wired up, off by default per thread.</td></tr>
@@ -125,48 +130,83 @@ kyty_emulator.exe --game "D:\Games\Example" ^
     <div class="lh">Learn more · the tools</div>
     <ul>
       <li><span class="kind">Docs</span><div><a href="https://renderdoc.org/docs/getting_started/quick_start.html">RenderDoc — Quick Start</a><span class="d">Capture a frame with <code>--rd</code>, then use the Event Browser to step through it. For a wrong-geometry bug this shows you the vertex buffer contents, the bound pipeline and the viewport in one place. Full <a href="https://renderdoc.org/docs/index.html">documentation</a>.</span></div></li>
-      <li><span class="kind code">Code</span><div><a href="https://github.com/wolfpld/tracy">Tracy Profiler</a><span class="d">What <code>--profiler-direction Network</code> streams to. The <code>KYTY_PROFILER_FUNCTION()</code> macros scattered through the PM4 handlers and the recompiler feed its frame view.</span></div></li>
+      <li><span class="kind code">Code</span><div><a href="https://github.com/wolfpld/tracy">Tracy Profiler</a><span class="d">What <code>--profile</code> streams to. The <code>KYTY_PROFILER_FUNCTION()</code> macros scattered through the PM4 handlers and the recompiler feed its frame view.</span></div></li>
       <li><span class="kind code">Code</span><div><a href="https://github.com/KhronosGroup/SPIRV-Tools">spirv-dis and spirv-val</a><span class="d"><code>spirv-dis</code> turns a dumped module into readable assembly; <code>spirv-val</code> is what <code>--shader-validation true</code> runs internally. Both are worth having on your PATH separately from the build.</span></div></li>
       <li><span class="kind code">Code</span><div><a href="https://github.com/KytyPS5/KytyPS5">KytyPS5 — issues and pull requests</a><span class="d">Read recent issues before reporting one. The Game Emulation Bug Report template asks for the complete log file, which after this chapter you know how to produce.</span></div></li>
     </ul>
   </div>
 
-<p class="deck">About 56,000 lines across sixteen standalone executables, concentrated in exactly the two places where failure is silent.</p>
+<p class="deck">The aggregate suite covers shader compilation, resource binding, memory, archive I/O, audio, save data and dialogs. CMake defines 25 portable test executables plus an x86-64 macOS SSE4a executable.</p>
 
   <h4 id="the-targets">The targets</h4>
 <pre>cmake --build _Build/windows --target memory_tracker_tests
 .\_Build\windows\memory_tracker_tests.exe
 
-<i># all are EXCLUDE_FROM_ALL, so a normal build skips them; `kyty_tests` builds them all</i>
-shader_recompiler_compute_tests  shader_cfg_tests               virtual_memory_allocation_tests
-resource_tracking_tests          resource_materialization_tests scalar_provenance_tests
-memory_tracker_tests             page_manager_tests             image_page_table_tests
-event_queue_lifetime_tests       kernel_file_system_tests       sync_on_address_tests
-audio_out2_port_tests            ime_dialog_tests               bit_array_tests
-shader_vertex_metadata_tests</pre>
+<i># Build the aggregate, then run the CTest registrations.</i>
+cmake --build _Build/windows --target kyty_tests
+ctest --test-dir _Build/windows --output-on-failure
+
+<i># 25 portable targets; macOS also adds macos_sse4a_tests:</i>
+ime_dialog_tests
+shader_cfg_tests
+scalar_provenance_tests
+image_page_table_tests
+memory_tracker_tests
+page_manager_tests
+archive_file_tests
+avplayer_file_tests
+bit_array_tests
+lru_cache_tests
+shader_vertex_metadata_tests
+resource_materialization_tests
+resource_tracking_tests
+event_queue_lifetime_tests
+kernel_file_system_tests
+sync_on_address_tests
+shader_recompiler_compute_tests
+virtual_memory_allocation_tests
+audio_out2_port_tests
+ngs2_sampler_tests
+pad_haptics_tests
+save_data_memory_tests
+ces_tests
+save_data_dialog_tests
+http_uri_parse_tests</pre>
 
   <p>The heavy executables carry several suites behind <code>--*-only</code> flags; <code>ctest</code> registers each as its own test (for example <code>compute_meta_clear_classification</code> is <code>shader_recompiler_compute_tests --compute-meta-clear-only</code>).</p>
 
   <div class="tw">
-    <table>
-      <thead><tr><th class="num">Size</th><th>Test file</th><th>Covers</th></tr></thead>
-      <tbody>
-        <tr><td class="num">1.43 MB</td><td><code>ShaderRecompilerComputeTests.cpp</code></td><td>End-to-end compute-shader recompilation, plus the GPU fixtures for the texture and buffer caches, DCC clears, depth layouts and PM4 register handling. The largest test file, and the one nearly every renderer commit touches.</td></tr>
-        <tr><td class="num">640 KB</td><td><code>shaderCfgTests.cpp</code></td><td>CFG construction and structurisation, including irreducible cases, plus SPIR-V size baselines and mesh-shader cases.</td></tr>
-        <tr><td class="num">126 KB</td><td><code>VirtualMemoryAllocationTests.cpp</code></td><td>The guest allocator, including deliberately injected failures.</td></tr>
-        <tr><td class="num">88 KB</td><td><code>ResourceTrackingTests.cpp</code></td><td>SRT planning, resource classification, shader info, bindings, and resources in untaken uniform branches.</td></tr>
-        <tr><td class="num">37 KB</td><td><code>MemoryTrackerTests.cpp</code></td><td>Dirty tracking, upload/download ranges, invariants, and the per-thread signal stacks.</td></tr>
-        <tr><td class="num">26 KB</td><td><code>ScalarProvenanceTests.cpp</code></td><td>SRT planning and typed-IR value tracing; the filename is retained from the older architecture.</td></tr>
-        <tr><td class="num">25 KB</td><td><code>PageManagerTests.cpp</code></td><td>Watch and page-protection semantics in isolation.</td></tr>
-        <tr><td class="num">19 KB</td><td><code>EventQueueLifetimeTests.cpp</code></td><td>Destroying a queue while threads block on it or events are being delivered.</td></tr>
-        <tr><td class="num">12.6 KB</td><td><code>AudioOut2PortTests.cpp</code></td><td>AudioOut2 port formats, including the new 12-channel downmix.</td></tr>
-        <tr><td class="num">11.7 KB</td><td><code>ResourceMaterializationTests.cpp</code></td><td>Materialising a <code>ResourceSnapshot</code> from user data and guest memory; uniform fills. New in September 2026.</td></tr>
-        <tr><td class="num">11.5 KB</td><td><code>ImeDialogTests.cpp</code></td><td>IME dialog lifecycle and result handling.</td></tr>
-        <tr><td class="num">9.3 KB</td><td><code>SyncOnAddressTests.cpp</code></td><td>Address-based synchronization behavior.</td></tr>
-        <tr><td class="num">18 KB</td><td><code>KernelFileSystemTests.cpp</code></td><td>The mount table and path translation, directory streams shared across seeks and reads, mount-root opens, plus socket readiness and error translation.</td></tr>
-      </tbody>
-    </table>
+    <table><thead><tr><th>File</th><th>Coverage</th></tr></thead><tbody>
+        <tr><td><code>ShaderRecompilerComputeTests.cpp</code></td><td>Executable shader semantics, rasterization, caches, transfers and scheduler subsets.</td></tr>
+        <tr><td><code>shaderCfgTests.cpp</code></td><td>Control-flow recovery, structurization and dispatcher fallback.</td></tr>
+        <tr><td><code>VirtualMemoryAllocationTests.cpp</code></td><td>Guest mappings, physical ownership, extended allocations, loader and instruction patches.</td></tr>
+        <tr><td><code>ResourceTrackingTests.cpp</code></td><td>Typed resource analysis, scalar reads, indirect buffers/images and bindings.</td></tr>
+        <tr><td><code>ResourceMaterializationTests.cpp</code></td><td>In-place snapshot refresh, specialization and uniform-fill classification.</td></tr>
+        <tr><td><code>ScalarProvenanceTests.cpp</code></td><td>Typed value/SRT evaluation; historical filename retained.</td></tr>
+        <tr><td><code>MemoryTrackerTests.cpp</code></td><td>CPU/GPU ownership, dirty regions and tracking ranges.</td></tr>
+        <tr><td><code>PageManagerTests.cpp</code></td><td>Page protection, fault handling and watch lifetimes.</td></tr>
+        <tr><td><code>ImagePageTableTests.cpp</code></td><td>Sparse image-page ownership, including extended guest addresses.</td></tr>
+        <tr><td><code>EventQueueLifetimeTests.cpp</code></td><td>Event callbacks, deletion and queue lifetime.</td></tr>
+        <tr><td><code>KernelFileSystemTests.cpp</code></td><td>Mounted paths, directory iteration, Unicode and unmapped-path isolation.</td></tr>
+        <tr><td><code>SyncOnAddressTests.cpp</code></td><td>Address waits/wakes, timed deadlines and interruptions.</td></tr>
+        <tr><td><code>AudioOut2PortTests.cpp</code></td><td>Audio port layouts, submission timing, capabilities and shared-buffer capture.</td></tr>
+        <tr><td><code>Ngs2SamplerTests.cpp</code></td><td>PCM/ATRAC9 sampling, looping and graph playback.</td></tr>
+        <tr><td><code>PadHapticsTests.cpp</code></td><td>Vibration-audio and controller-speaker routing.</td></tr>
+        <tr><td><code>ImeDialogTests.cpp</code></td><td>Dialog state, focus and lifecycle.</td></tr>
+        <tr><td><code>SaveDataMemoryTests.cpp</code></td><td>Persistent save memory, allocation metadata and capacity.</td></tr>
+        <tr><td><code>SaveDataDialogTests.cpp</code></td><td>Save dialog state and lock behavior.</td></tr>
+        <tr><td><code>CesTests.cpp</code></td><td>CP932/Shift-JIS and UTF-8 conversions.</td></tr>
+        <tr><td><code>HttpUriParseTests.cpp</code></td><td>HTTP URI parsing, including empty query strings.</td></tr>
+        <tr><td><code>ArchiveFileTests.cpp</code></td><td>ZArchive paths, reads, seeks and directory access.</td></tr>
+        <tr><td><code>AvPlayerFileTests.cpp</code></td><td>AVPlayer file access, including archive-backed data.</td></tr>
+        <tr><td><code>LruCacheTests.cpp</code></td><td>Least-recently-used cache behavior.</td></tr>
+        <tr><td><code>BitArrayTests.cpp</code></td><td>Bit-range operations.</td></tr>
+        <tr><td><code>ShaderVertexMetadataTests.cpp</code></td><td>Vertex metadata and semantic extraction.</td></tr>
+        <tr><td><code>macosSse4aTests.cpp</code></td><td>x86-64 macOS only: SSE4a signal-context restoration.</td></tr>
+      </tbody></table>
   </div>
+
+<p>CI now runs the recompiler suite as well as focused regressions. GPU-dependent cases can report a skip when required rasterization or subgroup capabilities are absent; inspect the test output to distinguish a skipped feature from a passing execution. CTest registrations include focused subsets of the heavy shader executable, so the number of CTest cases is larger than the number of executables. <code>ShaderRayTracingTests.inc</code> covers BVH handling, not implemented ray tracing.</p>
 
   <h4 id="failure-injection">Failure injection</h4>
   <p>The allocator compiles in deliberate failure hooks so its error paths are exercised rather than hoped about:</p>
@@ -189,6 +229,9 @@ uint64_t TestGuestBackingSize();
 python -m pre_commit install --install-hooks   <i># clang-format on staged .cpp/.h/.inc in src</i>
 
 cmake … -DKYTY_ENABLE_CLANG_TIDY=ON            <i># clang-tidy during builds</i></pre>
+<h4 id="profiling-and-fault-handlers">Profiling must preserve fault handlers</h4>
+  <p><code>--profile</code> enables Tracy. The build sets <code>TRACY_NO_CRASH_HANDLER=ON</code> so connecting a profiler does not replace the emulator's exception/signal handlers: instruction emulation and CPU/GPU coherency depend on those handlers. See <code>3rdparty/CMakeLists.txt</code>; the setting is independent of whether a recording client is attached.</p>
+
     </div>
   </section>
 
@@ -242,16 +285,16 @@ cmake … -DKYTY_ENABLE_CLANG_TIDY=ON            <i># clang-tidy during builds</
 
 </main>
 
-<script src="assets/topics.js?v=26" defer></script>
-<script src="assets/search-index.js?v=26" defer></script>
-<script src="assets/app.js?v=26" defer></script>
-<script src="assets/viz.js?v=26" defer></script>
-<script src="assets/atlas.js?v=26" defer></script>
-<script src="assets/lab.js?v=26" defer></script>
-<script src="assets/figs.js?v=26" defer></script>
-<script src="assets/figures.js?v=26" defer></script>
-<script src="assets/highlight.js?v=26" defer></script>
-<script src="assets/tutor.js?v=26" defer></script>
+<script src="assets/topics.js?v=20260929" defer></script>
+<script src="assets/search-index.js?v=20260929" defer></script>
+<script src="assets/app.js?v=20260929" defer></script>
+<script src="assets/viz.js?v=20260929" defer></script>
+<script src="assets/atlas.js?v=20260929" defer></script>
+<script src="assets/lab.js?v=20260929" defer></script>
+<script src="assets/figs.js?v=20260929" defer></script>
+<script src="assets/figures.js?v=20260929" defer></script>
+<script src="assets/highlight.js?v=20260929" defer></script>
+<script src="assets/tutor.js?v=20260929" defer></script>
 </body>
 </html>
 

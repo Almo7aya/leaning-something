@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Shaders: RDNA 2 → SPIR-V — KytyPS5</title>
 <meta name="description" content="Recompiling compiled GPU binaries into something Vulkan will accept — and recovering the control flow that was thrown away.">
-<link rel="stylesheet" href="assets/viz.css?v=26">
-<link rel="stylesheet" href="assets/atlas.css?v=26">
-<link rel="stylesheet" href="assets/lab.css?v=26">
-<link rel="stylesheet" href="assets/tutor.css?v=26">
-<link rel="stylesheet" href="assets/app.css?v=26">
-<link rel="stylesheet" href="assets/highlight.css?v=26">
+<link rel="stylesheet" href="assets/viz.css?v=20260929">
+<link rel="stylesheet" href="assets/atlas.css?v=20260929">
+<link rel="stylesheet" href="assets/lab.css?v=20260929">
+<link rel="stylesheet" href="assets/tutor.css?v=20260929">
+<link rel="stylesheet" href="assets/app.css?v=20260929">
+<link rel="stylesheet" href="assets/highlight.css?v=20260929">
 </head>
 <body>
 
@@ -25,11 +25,11 @@
   <section class="band band-read">
     <div class="band-h"><span class="band-t">Read</span></div>
     <div class="prose">
-  <p class="deck">At <code>main</code> commit <code>5b7d334</code> (18 September 2026), the recompiler is about 29,300 lines across 84 files under <code>recompiler/</code>. It is organised as an explicit compiler pipeline: <code>frontend/decode</code>, <code>frontend/cfg</code>, <code>frontend/translate</code>, a typed value IR and its passes, then <code>backend/spirv</code>.</p>
+  <p class="deck">At <code>main</code> commit <code>2650478</code> (29 September 2026), the recompiler is about 30,443 lines across 84 files under <code>recompiler/</code>. It is organised as an explicit compiler pipeline: <code>frontend/decode</code>, <code>frontend/cfg</code>, <code>frontend/translate</code>, a typed value IR and its passes, then <code>backend/spirv</code>.</p>
 
   <div class="callout k">
     <span class="lbl">How to read the recompiler</span>
-    <p><code>TranslateProgram()</code> builds a typed IR through encoding-family opcode dispatchers; SRT and resource analysis follow values in that IR. Failures <code>EXIT</code>. The pipeline is split so one translation can be specialised for many resource snapshots. Merged geometry stages compile as <code>ShaderType::Mesh</code> Vulkan mesh shaders.</p>
+    <p><code>TranslateProgram()</code> builds a typed IR through encoding-family opcode dispatchers; SRT and resource analysis follow values in that IR. Failures <code>EXIT</code>. The cache keeps a resource plan and compiled permutations. A permutation hit needs no translation; a new permutation rebuilds the temporary IR before compilation. Merged geometry stages compile as <code>ShaderType::Mesh</code> Vulkan mesh shaders.</p>
   </div>
 
   <h4 id="why-it-is-hard-restated-precisely">Why it is hard, restated precisely</h4>
@@ -44,34 +44,32 @@
   <figure data-viz="shaderflow"></figure>
 
   <h4 id="the-pipeline">The current pipeline</h4>
-  <p>Two functions in <code>ShaderRecompiler.cpp</code> are the authoritative reading map. <code>TranslateProgram()</code> runs once per shader binary and produces an immutable <em>plan</em>; <code>CompileProgram()</code> runs once per resource specialization and emits SPIR-V. Both log the expensive phases with the shader hash:</p>
+  <p>Two functions in <code>ShaderRecompiler.cpp</code> are the authoritative reading map. <code>TranslateProgram()</code> runs when a new SPIR-V permutation is needed; the first translation also seeds the cached resource <em>plan</em>; <code>CompileProgram()</code> runs once per resource specialization and emits SPIR-V. Both log the expensive phases with the shader hash:</p>
 
   <div class="filename">src/graphics/shader/recompiler/ShaderRecompiler.cpp — TranslateProgram()</div>
-<pre>Decoder::DecodeProgram(code, decoded);            <i>// or DecodeFusedProgram() for ShaderType::Mesh</i>
-auto cfg = CFG::BuildGraph(decoded);
-if (cfg.irreducible) dispatcher_fallback = true;
-else if (!CFG::Structurize(cfg)) { cfg = unstructured_cfg; dispatcher_fallback = true; }
-embedded_fetch = DetectEmbeddedVertexFetch(decoded, ...);   <i>// vertex stage, fetch_embedded</i>
-auto ir = Frontend::TranslateProgram(decoded, cfg, translate_options);
-
+<pre><i>// Schematic: TranslateProgram(code, options)</i>
+<i>// Decode fused halves when present; Local decodes its front half.</i>
+<i>// Compute binaries containing BVH instructions return skip_dispatch.</i>
+auto native_cfg = CFG::BuildGraph(decoded);
+auto structured_cfg = CFG::Structurize(native_cfg); <i>// use native CFG for dispatcher fallback</i>
+auto ir = Frontend::TranslateProgram(decoded, selected_cfg, translate_options);
 IR::RewriteToSsa(ir.blocks);
 IR::ConstantPropagationPass(ir.blocks);
 IR::ResolveControlFlowIdentities(ir);
 IR::RemoveIdentities(ir.blocks);
 IR::EliminateDeadCode(ir.blocks);
-if (IR::EliminateReadLane(ir, ir.wave_size).rewritten_reads != 0) { <i>/* simplify again */</i> }
-
-IR::BuildSrtPlan(ir);      IR::EliminateDeadCode(ir.blocks);
-IR::TrackResources(ir);    IR::EliminateDeadCode(ir.blocks);
-return TranslateResult{ std::move(ir), decoded_dump, cfg_dump };</pre>
+IR::EliminateReadLane(ir, ir.wave_size); <i>// simplify again if reads changed</i>
+LowerTessellationMemory(ir, options);
+IR::TrackResources(ir, decoded, native_cfg); <i>// includes scalar/SRT planning</i>
+IR::EliminateDeadCode(ir.blocks);</pre>
 
   <div class="filename">… — CompileProgram(translated, options, specialization, push_data_start_dword)</div>
 <pre>IR::ApplyResourceSpecialization(ir, specialization);   <i>// the snapshot chosen at draw time</i>
 IR::RemoveIdentities(ir.blocks);
 IR::EliminateDeadCode(ir.blocks);
-IR::CollectShaderInfo(ir, info_options);
+IR::CollectShaderInfo(ir, options.input_info);
 IR::AllocateBindings(ir, push_data_start_dword);
-Spirv::AnalyzeProgramRequirements(ir);
+<i>// EmitProgram constructs the emitter, which analyses requirements.</i>
 auto spirv = Spirv::EmitProgram(ir, options.input_info);</pre>
 
   <p>Materialisation happens in the renderer's pipeline cache between the two functions above — see <a href="t-registers.html#why-compilation-and-binding-are-separate">topic 15</a>.</p>
@@ -98,12 +96,17 @@ auto spirv = Spirv::EmitProgram(ir, options.input_info);</pre>
   <h4 id="mesh-shaders">Merged geometry stages become mesh shaders</h4>
   <p>RDNA 2 runs a merged ES/GS ("NGG") stage that has no fixed-function equivalent in Vulkan's classic pipeline. Since September 2026 Kyty compiles that stage as a <code>VK_EXT_mesh_shader</code> mesh shader: <code>DecodeFusedProgram()</code> joins the front and back stage code into one instruction stream with an ordinary CFG edge between them, <code>ShaderType::Mesh</code> carries it through translation, and <code>backend/spirv/spirvEmitterMesh.cpp</code> emits the mesh entry point. The pipeline cache checks the guest's thread, vertex, primitive and LDS limits against the device's mesh-shader properties and stops with <code>mesh shader exceeds host limits</code> when they do not fit; if the extension is missing, that path is an <code>EXIT_NOT_IMPLEMENTED</code>.</p>
 
+<h4 id="native-tessellation">Native tessellation and stage metadata</h4>
+  <p><code>ShaderVertexInputInfo::logical_stage</code> selects Vertex, Mesh, Local, TessellationControl or TessellationEvaluation. <code>PrepareTessellationPrograms()</code> prepares three programs; <code>Tessellation.cpp</code> analyses LS/HS memory dataflow to derive strides and lowers cross-stage memory. <code>spirvEmitterTessellation.cpp</code> emits the Vulkan tessellation stages. Enable this path with <code>--tessellation</code>; patch draws are skipped by default.</p>
+  <p>Wave size is stage metadata, not a universal 64-lane constant: vertex and pixel stages carry their own widths and the NGG prologue respects guest wave32. Mesh stages retain their own workgroup limits. Recent opcode work includes FP64 arithmetic/conversions, DPP8, packed integer and half-float operations, partial SDWA destinations, image float-maximum atomics and buffer-cache policy bits. Host FP64 denormal limitations are logged.</p>
+  <p>Ray tracing remains unsupported. A compute binary containing BVH intersection instructions produces <code>TranslateResult::skip_dispatch</code>, which the cache retains so later dispatches are skipped with a warning instead of compiling an unsupported program. This exception does not turn other unimplemented opcodes into no-ops.</p>
+
   <span id="stage-4-the-ir"></span>
   <h4 id="the-typed-ir">One typed value IR</h4>
   <p>The current <code>IR::Program</code> derives from <code>IR::ResourcePlan</code>. The plan is the part the shader cache keeps for the lifetime of the run — stage, hash, descriptor sources, SRT reads, the values they depend on, the uniform-branch skeleton around them — while the program adds the blocks that exist only during translation and emission. Neither carries the old lane-mask mode or scalar-provenance structures:</p>
 
   <div class="filename">…/ir/ShaderIR.h — ResourcePlan and Program</div>
-<pre><i>// Immutable runtime resource analysis retained by the shader cache.</i>
+<pre><i>// Retained resource analysis; evaluation scratch is mutable and renderer-serialized.</i>
 struct ResourcePlan {
     ShaderType stage;  uint64_t shader_hash;
     uint32_t user_data_base, user_data_count = 64;
@@ -111,7 +114,7 @@ struct ResourcePlan {
     std::vector&lt;MemoryInfo&gt;       memory_info;
     std::vector&lt;DescriptorSource&gt; descriptor_sources;
     std::vector&lt;ResourceBlock&gt;    control_flow;
-    std::vector&lt;uint32_t&gt;         materialization_sources;
+    mutable std::vector&lt;uint8_t&gt;         active_sources;
     std::vector&lt;SrtRead&gt;          srt_reads;
     std::vector&lt;uint8_t&gt;          clean_flat_slots;
     bool requires_specialization_memory, srt_plan_complete, resource_tracking_complete;
@@ -128,9 +131,7 @@ struct Program : ResourcePlan {
     std::string      fallback_reason;
     std::vector&lt;BlockInfo&gt;  block_info;
     std::vector&lt;ExportInfo&gt; export_info;
-    std::vector&lt;Value&gt;      dynamic_reads;
     BindingLayout    bindings;
-    std::optional&lt;SpirvRequirements&gt; spirv_requirements;
 };</pre>
 
   <p>Translation initially permits register-like identities and control-flow joins. <code>RewriteToSsa()</code> establishes SSA form, then propagation, identity removal, and dead-code elimination simplify it. <code>EliminateReadLane()</code> removes cross-lane reads when a direct value is provably safe; if it rewrites anything, the simplification sequence runs again. Once emission is done the renderer keeps only a <code>CompiledShaderInfo</code> (stage, hash, wave size, <code>ShaderInfo</code>, <code>BindingLayout</code>) next to the plan; the blocks are discarded.</p>
@@ -139,7 +140,7 @@ struct Program : ResourcePlan {
   <span id="stage-9-bindings"></span>
   <span id="stage-10-read-lane-elimination"></span>
   <h4 id="resources-and-bindings">SRT planning, resources, and bindings</h4>
-  <p><code>BuildSrtPlan()</code> walks typed values to identify reachable shader-resource-table reads. Constant reads receive flattened offsets while genuinely dynamic reads stay explicit. <code>TrackResources()</code> then classifies buffers, images, samplers, access modes, formats, and sampled pairs.</p>
+  <p><code>TrackResources()</code> walks typed values to identify reachable shader-resource-table reads. Constant reads receive flattened offsets while genuinely dynamic reads stay explicit. The same pass classifies buffers, images, samplers, access modes, formats, and sampled pairs.</p>
 
   <p>Concrete resource data comes from <code>MaterializeResources()</code> (in <code>ir/passes/ResourceMaterialization.cpp</code>) reading current user data and guest memory into a <code>ResourceSnapshot</code> and a <code>ResourceSpecialization</code>. It runs in the renderer's pipeline cache on every draw, not inside the recompiler; <code>CompileProgram()</code> then calls <code>ApplyResourceSpecialization()</code> to bake those facts into the IR. It also skips resources that sit in uniform branches the current user data never takes, and detects whole-buffer fills from uniform stores so the renderer can replace a dispatch with a native clear. Compilation and per-draw resource state therefore remain separate concerns.</p>
 
@@ -156,20 +157,23 @@ struct Program : ResourcePlan {
 
   <p><code>BdaPagetable</code> and <code>FaultBuffer</code> support buffer-device-address translation and recoverable RDNA2 FLAT-access faults. <code>FlattenedSrt</code> and <code>ShaderData</code> expose data that the guest ABI expected in scalar registers or tables; <code>PushData</code> is 32 dwords of push constants, the first six of which a mesh draw uses for its own parameters. Finally, <code>AnalyzeProgramRequirements()</code> records the subgroup, derivative, LDS, scratch, and pixel-mask features emission must request.</p>
 
+<p>The retained <code>ResourcePlan</code> owns immutable descriptor/SRT analysis and reusable evaluation scratch. <code>TrackResources(ir, decoded, native_cfg)</code> performs scalar-read and indirect-image planning; there is no separate SRT-plan call in the top-level pipeline. <code>ExtractResourcePlan()</code> derives stable clean-slot and specialization policy once. A shared memoized <code>SrtWalker</code> refreshes descriptors, active branches, flattened reads and specialization in place. Bounded indirect image tables, guarded Phis and GPU-selected raw buffers follow this same value graph.</p>
+  <p><code>ShaderStageRuntime</code> borrows two pointers: compiled program info and the cache entry's current <code>ResourceSnapshot</code>. The renderer consumes them under its serialization contract; keeping that snapshot as an immutable per-draw copy would describe the former implementation.</p>
+
   <span id="stage-11-spir-v-emission"></span>
   <h4 id="spir-v-emission">SPIR-V emission</h4>
-  <p><code>backend/spirv</code> is about 404 KB across 18 files. It is split by responsibility rather than by the old “ops” filenames:</p>
+  <p><code>backend/spirv</code> is about 386 KB across 18 files. It is split by responsibility rather than by the old “ops” filenames:</p>
 
   <div class="tw">
     <table>
       <thead><tr><th class="num">Approx. size</th><th>File</th><th>Handles</th></tr></thead>
       <tbody>
-        <tr><td class="num">59 KB</td><td><code>spirvEmitterMemory.cpp</code></td><td>Buffer, scalar-memory, FLAT/BDA, LDS, atomics, and safety checks.</td></tr>
-        <tr><td class="num">42 KB</td><td><code>spirvEmitterImage.cpp</code></td><td>Image sampling, loading, storage, dimensions, and formats.</td></tr>
-        <tr><td class="num">39 KB</td><td><code>spirvEmitterModule.cpp</code></td><td>Capabilities, types, interfaces, descriptors, and entry-point setup.</td></tr>
-        <tr><td class="num">37 KB</td><td><code>spirvEmitterInternal.h</code></td><td>Shared emitter state and lowering helpers.</td></tr>
-        <tr><td class="num">35 KB</td><td><code>spirvEmitterAlu.cpp</code></td><td>Scalar/vector arithmetic, comparisons, conversion, and packing.</td></tr>
-        <tr><td class="num">31 KB</td><td><code>spirvEmitterFlow.cpp</code></td><td>Structured control flow and the dispatcher fallback.</td></tr>
+        <tr><td class="num">64 KB</td><td><code>spirvEmitterMemory.cpp</code></td><td>Buffer, scalar-memory, FLAT/BDA, LDS, atomics, and safety checks.</td></tr>
+        <tr><td class="num">43 KB</td><td><code>spirvEmitterImage.cpp</code></td><td>Image sampling, loading, storage, dimensions, and formats.</td></tr>
+        <tr><td class="num">33 KB</td><td><code>spirvEmitterModule.cpp</code></td><td>Capabilities, types, interfaces, descriptors, and entry-point setup.</td></tr>
+        <tr><td class="num">26 KB</td><td><code>spirvEmitterInternal.h</code></td><td>Shared emitter state and lowering helpers.</td></tr>
+        <tr><td class="num">24 KB</td><td><code>spirvEmitterAlu.cpp</code></td><td>Scalar/vector arithmetic, comparisons, conversion, and packing.</td></tr>
+        <tr><td class="num">35 KB</td><td><code>spirvEmitterFlow.cpp</code></td><td>Structured control flow and the dispatcher fallback.</td></tr>
         <tr><td class="num">31 KB</td><td><code>spirvEmitterProgram.cpp</code></td><td>Entry-point bodies per stage, exports, and the mesh/vertex handoff.</td></tr>
         <tr><td class="num">10 KB</td><td><code>spirvEmitterMesh.cpp</code></td><td>Mesh-shader output assembly for merged geometry stages (new).</td></tr>
       </tbody>
@@ -181,7 +185,7 @@ struct Program : ResourcePlan {
   <p>RDNA 2 has no conventional fixed-function vertex-input stage. A fetch prologue may load attributes into registers before the main vertex shader. When <code>fetch_embedded</code> is set, <code>DetectEmbeddedVertexFetch()</code> analyses the decoded instructions <em>before translation</em> and builds a <code>Frontend::EmbeddedFetchPlan</code>. That plan is passed through <code>TranslateOptions::embedded_fetch</code>, so translation emits the correct vertex-input operations directly; there is no later <code>RewriteEmbeddedVertexFetches()</code> pass.</p>
 
   <h4 id="where-the-test-weight-is">Where the test weight is</h4>
-  <p><code>ShaderRecompilerComputeTests.cpp</code> is now about 1.43 MB and <code>shaderCfgTests.cpp</code> about 640 KB. The focused resource-tracking, resource-materialization (new, replacing the stage-runtime tests), scalar-tracing and vertex-metadata tests sit alongside them. The growth is useful evidence: shader behavior is specified most reliably by executable cases because a miscompile can produce only a visual error. Almost every shader commit in September 2026 lands with a new case in one of these two files.</p>
+  <p><code>ShaderRecompilerComputeTests.cpp</code> is now about 1.59 MiB and <code>shaderCfgTests.cpp</code> about 666 KB. The focused resource-tracking, resource-materialization (new, replacing the stage-runtime tests), scalar-tracing and vertex-metadata tests sit alongside them. The growth is useful evidence: shader behavior is specified most reliably by executable cases because a miscompile can produce only a visual error. Almost every shader commit in September 2026 lands with a new case in one of these two files.</p>
 
   <div class="learn">
     <div class="lh">Learn more · shader compilation</div>
@@ -192,6 +196,9 @@ struct Program : ResourcePlan {
       <li><span class="kind code">Code</span><div><a href="https://github.com/shadps4-emu/shadPS4">shadPS4</a><span class="d">An independent emulator solving a related AMD-ISA-to-SPIR-V problem with different design choices.</span></div></li>
     </ul>
   </div>
+<h4 id="typed-lds-and-instruction-coverage">Typed LDS and instruction coverage</h4>
+  <p>The recompiler adds <code>V_CMPX_NLE_F16</code> and native 64-bit LDS atomic OR. Shared-memory storage exposes compatible typed views instead of separate unrelated 32-bit and 64-bit stores; shader-info collection and SPIR-V emission carry the required capabilities. Read <code>spirvEmitterMemory.cpp</code>, <code>spirvEmitterMemoryHelpers.cpp</code> and the compute/CFG regression tests together.</p>
+
     </div>
   </section>
 
@@ -240,7 +247,7 @@ struct Program : ResourcePlan {
         </li>
         <li class="check-item">
           <input type="checkbox">
-          <label>Follow a descriptor source through <code>BuildSrtPlan</code>, <code>MaterializeResources</code> in the pipeline cache, <code>ApplyResourceSpecialization</code>, binding allocation, and emission.</label>
+          <label>Follow a descriptor source through <code>TrackResources</code>, <code>MaterializeResources</code> in the pipeline cache, <code>ApplyResourceSpecialization</code>, binding allocation, and emission.</label>
         </li>
       </ul>
     </div>
@@ -253,15 +260,15 @@ struct Program : ResourcePlan {
 
 </main>
 
-<script src="assets/topics.js?v=26" defer></script>
-<script src="assets/search-index.js?v=26" defer></script>
-<script src="assets/app.js?v=26" defer></script>
-<script src="assets/viz.js?v=26" defer></script>
-<script src="assets/atlas.js?v=26" defer></script>
-<script src="assets/lab.js?v=26" defer></script>
-<script src="assets/figs.js?v=26" defer></script>
-<script src="assets/figures.js?v=26" defer></script>
-<script src="assets/highlight.js?v=26" defer></script>
-<script src="assets/tutor.js?v=26" defer></script>
+<script src="assets/topics.js?v=20260929" defer></script>
+<script src="assets/search-index.js?v=20260929" defer></script>
+<script src="assets/app.js?v=20260929" defer></script>
+<script src="assets/viz.js?v=20260929" defer></script>
+<script src="assets/atlas.js?v=20260929" defer></script>
+<script src="assets/lab.js?v=20260929" defer></script>
+<script src="assets/figs.js?v=20260929" defer></script>
+<script src="assets/figures.js?v=20260929" defer></script>
+<script src="assets/highlight.js?v=20260929" defer></script>
+<script src="assets/tutor.js?v=20260929" defer></script>
 </body>
 </html>

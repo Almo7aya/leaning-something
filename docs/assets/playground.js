@@ -28,11 +28,11 @@
 
   /* ============================================================
      1. PM4 packet decoder
-     Encoding from src/graphics/guest_gpu/pm4.h:13-18
+     Encoding from src/graphics/guest_gpu/pm4.h
        cmd = 0xC0000000
            | (((len - 2) & 0x3FFF) << 16)
            | ((op & 0xFF) << 8)
-           | ((r & (R_NUM-1)) << 2)     // R_NUM = 0x40  (pm4.h:92)
+           | ((r & (R_NUM-1)) << 2)     // R_NUM = 0x40  (pm4.h)
      ============================================================ */
 
   var IT = {
@@ -173,8 +173,8 @@
       '<button type="button" class="pg-btn" id="pm4-build">Encode →</button>' +
       '</div></div></div>' +
       '<div class="pg-out" id="pm4-out"></div>' +
-      '<p class="pg-src">Encoding from <code>src/graphics/guest_gpu/pm4.h:13–18</code>; ' +
-      'opcode table from <code>pm4.h:22–64</code>.</p>';
+      '<p class="pg-src">Encoding from <code>src/graphics/guest_gpu/pm4.h</code>; ' +
+      'opcode table from <code>pm4.h</code>.</p>';
 
     var inp = $("#pm4-in", root), out = $("#pm4-out", root);
 
@@ -245,7 +245,7 @@
 
   /* ============================================================
      2. Module / library ID encoder  (EncodeId64)
-     Verbatim from src/loader/runtimeLinker.cpp:846-860
+     Verbatim from src/loader/runtimeLinker.cpp
      ============================================================ */
 
   var ID64_ALPHA = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-";
@@ -289,7 +289,7 @@
       '<div class="pg-row"><input id="id-range" class="pg-range" type="range" min="0" max="65535" value="0"></div>' +
       '</div>' +
       '<div class="pg-out" id="id-out"></div>' +
-      '<p class="pg-src">Verbatim from <code>src/loader/runtimeLinker.cpp:846–860</code>. ' +
+      '<p class="pg-src">Verbatim from <code>src/loader/runtimeLinker.cpp</code>. ' +
       'This is how the 16-bit module and library ids packed into Sony dynamic entries become ' +
       'the short strings you see inside symbol names.</p>';
 
@@ -343,7 +343,7 @@
 
   /* ============================================================
      3. ELF / SELF inspector — drop a real module from your dumps
-     Sony constants from src/loader/elf.h:57-101
+     Sony constants from src/loader/elf.h
      ============================================================ */
 
   var PT = {
@@ -582,7 +582,7 @@
       '<div class="pg-out" id="elf-out"><p class="pg-hint">Nothing loaded. Everything is parsed ' +
       "locally in your browser — no file leaves this page.</p></div>" +
       '<p class="pg-src">Sony segment and dynamic-tag constants from ' +
-      "<code>src/loader/elf.h:57–101</code>.</p>";
+      "<code>src/loader/elf.h</code>.</p>";
 
     var drop = $("#elf-drop", root), file = $("#elf-file", root), out = $("#elf-out", root);
 
@@ -817,7 +817,7 @@
      member alignment. #pragma pack(1) forces alignment 1
      everywhere — the trick behind VaList (vaContext.h) and the
      machine-code structs (jit.h). static_assert(sizeof(...)==N)
-     is how the tree locks these layouts (kernel/memory.h:47).
+     is how the tree locks these layouts (kernel/memory.h).
      ============================================================ */
 
   var LAYOUT_TYPES = [
@@ -844,9 +844,9 @@
     { id: "valist",  label: "VaList — the real packed struct (vaContext.h)",
       members: ["u32", "u32", "ptr", "ptr"], pack: true,
       why: "#pragma pack(1) removes all padding: 4 + 4 + 8 + 8 = 24 bytes, exactly what the guest ABI expects." },
-    { id: "jit",     label: "JmpWithIndex — machine code as bytes (jit.h)",
+    { id: "jit",     label: "JmpRax — machine code as bytes (jit.h)",
       members: ["u8x16"], pack: true,
-      why: "A struct whose 16 bytes ARE x86 instructions. pack(1) is what makes &code[6] really point at the jmp's operand." }
+      why: "A 16-byte array containing mov rax,imm64; jmp rax plus zero padding. SetFunc writes the eight-byte address at &code[2]; array elements are contiguous." }
   ];
 
   function computeLayout(memberIds, pack) {
@@ -965,7 +965,7 @@
         "sizeof(MyStruct) == " + want + ')</code> → <strong>' + (ok ? "PASS" : "FAIL") +
         "</strong>" + (ok ? " — the layout is exactly " + want + " bytes." :
           " — sizeof is actually " + L.size + ", not " + want +
-          ". The tree uses this to guarantee ABI layouts (memory.h:47).") + "</div>";
+          ". The tree uses this to guarantee ABI layouts (memory.h).") + "</div>";
 
       out.innerHTML =
         '<div class="ly-wrap"><div class="ly-strip">' + strip + "</div><div class='ly-scale'>" + scale + "</div></div>" + big +
@@ -1002,12 +1002,6 @@
      ============================================================ */
 
   var JIT_STUBS = {
-    jmp: {
-      label: "JmpWithIndex — push imm32; jmp rel32 (jit.h, 16 bytes)",
-      opName: "jmp", op: "E9", opByte: 6, ripByte: 10, nops: 6,
-      prefix: "68 00 00 00 00 E9 ", // push <index>; jmp — operand zeroed in this demo
-      total: 16
-    },
     call9: {
       label: "Call9 — rex.w call rel32; mov rax,rax (jit.h, 9 bytes)",
       opName: "call", op: "E8", opByte: 2, ripByte: 6, nops: 0,
@@ -1144,7 +1138,7 @@
   /* ============================================================
      C. C++ primer — crash-log reader
      Parses the forensic dump written by KytyExceptionHandler
-     (src/loader/runtimeLinker.cpp:782-844) and annotates each
+     (src/loader/runtimeLinker.cpp) and annotates each
      block. The faulting address is usually a symptom; the stack
      trace at the bottom is the cause.
      ============================================================ */
@@ -1671,7 +1665,7 @@
         h += "<tr><td>" + esc(f.n) + " <span class='pg-dim'>(bits " + esc(f.b) + ")</span></td><td>" + esc(String(f.v)) + "</td></tr>";
       });
       h += "</tbody></table>";
-      h += '<p class="pg-src">Dispatch logic from <code>ShaderDecoder.cpp:360–393</code>; opcode tables from ' +
+      h += '<p class="pg-src">Dispatch logic from <code>ShaderDecoder.cpp</code>; opcode tables from ' +
         "<code>ScalarAluOps.cpp</code>, <code>VectorAluOps.cpp</code>, <code>MemoryOps.cpp</code>, <code>ExportOps.cpp</code>. " +
         "SDWA/DPP modifiers and some rare encodings are elided — the family and operands are still right.</p>";
 
@@ -1709,8 +1703,8 @@
   /* ============================================================
      E. C++ primer — shader artifact reader
      Accepts what --shader-log-direction File actually produces:
-       .rdna2  the decoded input ISA text (shader.cpp:1402)
-       .spvasm the SPIR-V disassembly (shader.cpp:1364)
+       .rdna2  the decoded input ISA text (shader.cpp)
+       .spvasm the SPIR-V disassembly (shader.cpp)
        .spv    the SPIR-V binary
        raw 32-bit ISA words
      ============================================================ */
@@ -1998,7 +1992,7 @@
       '<button type="button" class="pg-btn" id="dc-demo-t">Demo: T# sampler</button></div>' +
       '<div class="pg-out" id="dc-out"></div>' +
       '<p class="pg-src">V# layout: base (W0 + W1[0:15]), stride (W1[16:29], as read at ' +
-      "<code>SrtWalker.cpp:466</code>), num_records (W2[0:29]), data_format (W3[0:5]). Enums from " +
+      "<code>SrtWalker.cpp</code>), num_records (W2[0:29]), data_format (W3[0:5]). Enums from " +
       "<code>gpu_defs.h</code>. The T# sampler has no address — it only describes filtering.</p>";
 
     var kindSel = $("#dc-kind", root), w = [

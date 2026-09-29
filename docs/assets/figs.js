@@ -275,28 +275,28 @@
      19 · your first change — the contribution loop
      ============================================================ */
   V.register("contribloop", function (host) {
-    var body = frame(host, "The loop", "log → pick → implement → register → verify",
-      "This is the smallest complete contribution to the project, and it is the same five steps every time. The first one takes an evening; the fifth takes fifteen minutes.");
+    var body = frame(host, "The loop", "observe → specify → implement → bind → test",
+      "A focused contribution starts with a reproducible symptom and an understood contract. Reaching a function and implementing it correctly are separate claims.");
 
     var wrap = el("div", "atl-reloc");
     wrap.innerHTML = '<div class="atl-code" data-r="loop"></div>';
     var loop = wrap.querySelector('[data-r="loop"]');
 
     var L = [
-      ["1 · run", "kyty_emulator --printf-direction File", "let the title get as far as it can"],
-      ["2 · pick", "unresolved symbol rPo6tV8D9bM", "one NID from the log — self-contained work"],
+      ["1 · observe", "source SHA + exact reproduction", "preserve the failing input and result"],
+      ["2 · specify", "inputs / outputs / errors / ownership", "choose a bounded contract you can establish"],
       ["3 · implement", "static int KYTY_SYSV_ABI …", "the annotation is not optional"],
-      ["4 · register", 'LIB_FUNC("rPo6tV8D9bM", …)', "bind the id to your function"],
-      ["5 · verify", "PRINT_NAME() appears", "resolved is not the same as called"]
+      ["4 · bind", "verified NID + library + module", "check resolution and actual reachability"],
+      ["5 · test", "fails before / passes after", "outputs, errors, side effects and regressions"]
     ];
 
     var CAPS = [
-      "Start by running a title you own with logging on. You are not looking for it to work — you are looking for what it asks for and does not get.",
-      "The unresolved imports are your work queue. Each one is a function some game genuinely needs, chosen by the actual behaviour of real software rather than by a tutorial.",
-      "Write the implementation. Ordinary C++, with two obligations: <code>KYTY_SYSV_ABI</code> so the arguments arrive where the guest put them, and a <code>PRINT_NAME()</code> trace.",
-      "Register it against the NID in the library's <code>LIB_DEFINE</code> block. This is the whole binding mechanism — one line mapping an encoded id to your function.",
-      "Rebuild and re-run, then check <b>both</b> things: the unresolved line is gone, <em>and</em> your trace appears. Only the second proves the guest actually called through.",
-      "Then do it again. The loop is the same every time, and after a few passes you stop reading the log for errors and start reading it for which missing function is blocking all the others."
+      "Use a bounded reproduction: an existing regression test or a recorded route in your own title. Keep the source revision, binary and configuration with the evidence.",
+      "An unresolved import is a research lead, not automatically a small task. Establish its full signature, output layout, error behavior, side effects and ownership before guessing an implementation.",
+      "Implement the established contract with the correct <code>KYTY_SYSV_ABI</code> signature. Trace output helps observation but cannot establish behavioral correctness.",
+      "Register against the verified NID in the owning library/module. Do not add duplicates of exports already implemented in current source.",
+      "A resolved slot proves binding; a breakpoint proves reachability. Neither proves correct behavior. Test success, boundaries, errors, outputs and relevant state transitions.",
+      "Keep a failing-before/passing-after regression and build affected targets. Report unit, integration and game evidence separately; mark what was not tested. Continue with the developer curriculum's capstone."
     ];
 
     var drv = driver(body, CAPS, function (i) {
@@ -373,7 +373,7 @@
 
     var STEPS = [
       ["git submodule update --init --recursive",
-       "dependencies pinned as commits in 3rdparty/: SDL2, FFmpeg, SPIRV-Tools, fmt, gtest, imgui, Zydis, xbyak, LibAtrac9"],
+       "dependencies pinned as commits in 3rdparty/: SDL3, FFmpeg, SPIRV-Tools, fmt, gtest, imgui, Zydis, xbyak, LibAtrac9"],
       ["cmake -S . -B _Build/windows -G Ninja -DCMAKE_CXX_COMPILER=clang-cl …",
        "configure: checks 64-bit, detects endianness, rejects MSVC, finds glslangValidator, generates cmake_config.h + kytyGitVersion.h. Nothing compiles yet."],
       ["cmake --build _Build/windows --target launcher",

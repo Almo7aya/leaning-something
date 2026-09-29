@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Page faults &amp; CPU/GPU coherency — KytyPS5</title>
 <meta name="description" content="Guest and host share memory both believe they own. Faults are how the emulator finds out who touched what.">
-<link rel="stylesheet" href="assets/viz.css?v=26">
-<link rel="stylesheet" href="assets/atlas.css?v=26">
-<link rel="stylesheet" href="assets/lab.css?v=26">
-<link rel="stylesheet" href="assets/tutor.css?v=26">
-<link rel="stylesheet" href="assets/app.css?v=26">
-<link rel="stylesheet" href="assets/highlight.css?v=26">
+<link rel="stylesheet" href="assets/viz.css?v=20260929">
+<link rel="stylesheet" href="assets/atlas.css?v=20260929">
+<link rel="stylesheet" href="assets/lab.css?v=20260929">
+<link rel="stylesheet" href="assets/tutor.css?v=20260929">
+<link rel="stylesheet" href="assets/app.css?v=20260929">
+<link rel="stylesheet" href="assets/highlight.css?v=20260929">
 </head>
 <body>
 
@@ -66,7 +66,7 @@ public:
   <h4 id="the-upload-path">The upload path</h4>
   <p>Before a draw reads a texture, the renderer asks which sub-ranges the CPU dirtied:</p>
 
-  <div class="filename">src/graphics/host_gpu/memoryTracker.h:121</div>
+  <div class="filename">src/graphics/host_gpu/memoryTracker.h</div>
 <pre>template &lt;typename RangeFunc, typename UploadFunc&gt;
 void ForEachUploadRange(uint64_t vaddr, uint64_t size, bool is_written,
                         RangeFunc&amp;&amp; range_func, UploadFunc&amp;&amp; upload_func) {
@@ -128,6 +128,11 @@ void ForEachDownloadRange(uint64_t vaddr, uint64_t size, Preflight&amp;&amp; pre
     if constexpr (clear) { /* clear GPU-dirty bits and re-apply protection */ }
 }</pre>
 
+<h4 id="extended-guest-memory">The separate extended-memory arena</h4>
+  <p>Ordinary guest mappings keep their existing low address bands. Extended allocations use a separate <strong>512 GiB virtual arena at <code>0x080000000000</code></strong>, an 8 TiB base, described by <code>kExtendedMemoryBase</code> and <code>kExtendedMemorySize</code> in <code>kernel/memory.h</code>. Reserving that address range does not allocate 512 GiB of physical RAM. Extended requests and ordinary mapping searches have separate allocation rules.</p>
+  <p>GPU tracking accepts the low 1 TiB region and that explicit extended interval; the space between them is not a valid resource range. Sparse image tracking covers 44-bit addresses. Dense buffer/BDA tables pack the low and extended intervals together through <code>BufferCache::PageIndex()</code> and <code>PageAddress()</code>, avoiding tables for the entire gap.</p>
+  <p>Automatic backing is recycled through physical-allocation ownership. Reserved mappings are published only after backing commit succeeds, and partial POSIX unmaps preserve still-live mappings. These are allocation/alias invariants tested by <code>VirtualMemoryAllocationTests.cpp</code>. Host primitives are declared directly in <code>common/virtualMemory.h</code> and implemented by <code>sysWindowsVirtual.cpp</code> / <code>sysLinuxVirtual.cpp</code>.</p>
+
   <h4 id="the-invariants-enforced-by-hard-failure">The invariants, enforced by hard failure</h4>
   <p>This code is unusually defensive, and the reason is worth internalising: a coherency bug produces corruption <em>many frames later</em>, with no traceable link to its cause. So Kyty converts each one into an immediate crash at the point of the mistake.</p>
 
@@ -166,7 +171,7 @@ void InvalidateRegion(uint64_t vaddr, uint64_t size, Flush&amp;&amp; on_flush) {
 <p class="deck">Because guest code runs natively, Kyty cannot instrument it. The CPU's own fault mechanism becomes the emulator's primary hook — two of the handler's three branches are load-bearing, not diagnostic.</p>
 
   <h4 id="the-handler">The handler</h4>
-  <div class="filename">src/loader/runtimeLinker.cpp:782</div>
+  <div class="filename">src/loader/runtimeLinker.cpp</div>
 <pre>static bool KytyExceptionHandler(const Common::HostException::ExceptionInfo&amp; exception_info) {
     const auto* info = &amp;exception_info;
 
@@ -255,6 +260,9 @@ void InvalidateRegion(uint64_t vaddr, uint64_t size, Flush&amp;&amp; on_flush) {
     <span class="lbl">Reading a crash</span>
     <p>An <code>address=0x28</code> means an unpatched <code>fs:[0x28]</code> canary store. A small address generally means a null-pointer dereference in guest code, often downstream of a stubbed import that returned zero. A <code>pc</code> in the <code>0x9…</code> band with sensible-looking return addresses among the stack words is a genuine guest crash worth investigating.</p>
   </div>
+<h4 id="sparse-texture-uploads">Sparse texture uploads</h4>
+  <p><code>BufferCache::ObtainBufferForImage()</code> reads streamed mip ranges through <code>Memory::TryReadSparseBacking()</code>. The guest address-space owner validates the complete range and rejects private mappings before the backing store copies resident pieces and zero-fills holes. A hole inside an owned sparse reservation is not the same as an arbitrary invalid guest address; do not replace failed reads with unconditional zeroes.</p>
+
     </div>
   </section>
 
@@ -311,16 +319,16 @@ void InvalidateRegion(uint64_t vaddr, uint64_t size, Flush&amp;&amp; on_flush) {
 
 </main>
 
-<script src="assets/topics.js?v=26" defer></script>
-<script src="assets/search-index.js?v=26" defer></script>
-<script src="assets/app.js?v=26" defer></script>
-<script src="assets/viz.js?v=26" defer></script>
-<script src="assets/atlas.js?v=26" defer></script>
-<script src="assets/lab.js?v=26" defer></script>
-<script src="assets/figs.js?v=26" defer></script>
-<script src="assets/figures.js?v=26" defer></script>
-<script src="assets/highlight.js?v=26" defer></script>
-<script src="assets/tutor.js?v=26" defer></script>
+<script src="assets/topics.js?v=20260929" defer></script>
+<script src="assets/search-index.js?v=20260929" defer></script>
+<script src="assets/app.js?v=20260929" defer></script>
+<script src="assets/viz.js?v=20260929" defer></script>
+<script src="assets/atlas.js?v=20260929" defer></script>
+<script src="assets/lab.js?v=20260929" defer></script>
+<script src="assets/figs.js?v=20260929" defer></script>
+<script src="assets/figures.js?v=20260929" defer></script>
+<script src="assets/highlight.js?v=20260929" defer></script>
+<script src="assets/tutor.js?v=20260929" defer></script>
 </body>
 </html>
 

@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Intro machine — KytyPS5</title>
 <meta name="description" content="A two-thread demoscene cockpit: guest uniforms, NID/GOT, TLS patch, PM4, shader specialisation and a live intro — not a copy of Signal Run.">
-<link rel="stylesheet" href="assets/tutor.css?v=26">
-<link rel="stylesheet" href="assets/app.css?v=26">
-<link rel="stylesheet" href="assets/highlight.css?v=26">
-<link rel="stylesheet" href="assets/advanced-emulator.css?v=10">
+<link rel="stylesheet" href="assets/tutor.css?v=20260929">
+<link rel="stylesheet" href="assets/app.css?v=20260929">
+<link rel="stylesheet" href="assets/highlight.css?v=20260929">
+<link rel="stylesheet" href="assets/advanced-emulator.css?v=20260929">
 </head>
 <body>
 <main data-app-content class="ax-wrap">
@@ -227,16 +227,16 @@
       pipeline to read its RDNA&nbsp;2 → IR → SPIR-V — the <b>Vulkan</b> panel for the host
       <code>vk*</code> calls, and the <b>Pipeline cache</b> for the two levels the emulator keeps:
       an in-memory ProgramCache (L1) and the on-disk <code>VkPipelineCache</code> (L2). Flush L1 and
-      the next draws rebuild pipelines straight from disk without recompiling SPIR-V; wipe the disk
+      the next draws translate the shaders again while the disk cache may accelerate host pipeline creation; wipe the disk
       cache and everything compiles cold, exactly like a first run of a game.
     </p>
   </section>
 </main>
-<script src="assets/topics.js?v=26" defer></script>
-<script src="assets/search-index.js?v=26" defer></script>
-<script src="assets/app.js?v=26" defer></script>
-<script src="assets/highlight.js?v=26" defer></script>
-<script src="assets/advanced-emulator.js?v=10" defer></script>
-<script src="assets/tutor.js?v=26" defer></script>
+<script src="assets/topics.js?v=20260929" defer></script>
+<script src="assets/search-index.js?v=20260929" defer></script>
+<script src="assets/app.js?v=20260929" defer></script>
+<script src="assets/highlight.js?v=20260929" defer></script>
+<script src="assets/advanced-emulator.js?v=20260929" defer></script>
+<script src="assets/tutor.js?v=20260929" defer></script>
 </body>
 </html>
