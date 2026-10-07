@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-4">
+<link rel="stylesheet" href="assets/app.css?v=20261007-5">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
@@ -20,6 +20,9 @@
   <p class="topic-deck">
     Every design decision in this project is a performance decision in disguise. This page collects the ones that matter: why an HLE emulator can be fast at all, the five choices that make it fast, and an honest list of where the time actually goes.
   </p>
+<!-- prerequisites:cpp-performance -->
+<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="t-vulkan.html">The Vulkan backend</a> · <a href="t-coherency.html">Page faults &amp; CPU/GPU coherency</a>. <a href="start.html">View the learning route</a>.</p>
+<!-- /prerequisites -->
 
   <section class="band band-read">
     <div class="band-h"><span class="band-t">Read</span></div>
@@ -120,9 +123,9 @@ std::scoped_lock lock(g_shader_map_mutex);
 
 </main>
 
-<script src="assets/topics.js?v=20261007" defer></script>
-<script src="assets/search-index.js?v=20261007-d2413fc2" defer></script>
-<script src="assets/app.js?v=20261007-4" defer></script>
+<script src="assets/topics.js?v=20261007-5" defer></script>
+<script src="assets/search-index.js?v=20261007-5" defer></script>
+<script src="assets/app.js?v=20261007-5" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>

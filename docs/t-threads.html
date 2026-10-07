@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-4">
+<link rel="stylesheet" href="assets/app.css?v=20261007-5">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
@@ -20,6 +20,9 @@
   <p class="topic-deck">
     There is no scheduler here. A guest thread is a host thread, and the host OS runs it. The work is in setting up the world that thread expects before its first instruction — thread-local storage, a stack, and a correct ABI transition.
   </p>
+<!-- prerequisites:threads -->
+<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="b-completion.html">Submitted is not completed</a> · <a href="t-virtual-memory.html">Virtual memory, briefly</a>. <a href="start.html">View the learning route</a>.</p>
+<!-- /prerequisites -->
 
   <section class="band band-read">
     <div class="band-h"><span class="band-t">Read</span></div>
@@ -36,12 +39,12 @@ LIB_FUNC("IafI2PxcPnQ", LibKernel::PthreadMutexTimedlock);
 LIB_FUNC("Op8TBGY5KHg", Posix::pthread_cond_wait);</pre>
 
   <h4 id="guest-stacks">Guest stacks</h4>
-  <p>A guest thread cannot simply use the host thread's stack. Guest code computes addresses relative to its own stack, and those addresses may be handed to the GPU or stored in structures Kyty inspects — so they must lie inside the guest address bands:</p>
+  <p data-shared="excerpt-094">A guest thread cannot simply use the host thread's stack. Guest code computes addresses relative to its own stack, and those addresses may be handed to the GPU or stored in structures Kyty inspects — so they must lie inside the guest address bands:</p>
 <pre>void  PthreadInitSelfForMainThread();
 void* <b>PthreadCreateMainGuestStack</b>();
 bool  PthreadGetGuestStack(Pthread thread, uint64_t* stack_addr, uint64_t* stack_size);</pre>
 
-  <p>The guest stack is allocated with <code>AllocateGuestStackMemory</code>, and <code>RunEntry</code> switches to it before calling the entry point. The entry parameters are placed at the top of that stack, 16-byte aligned as the ABI requires:</p>
+  <p data-shared="excerpt-095">The guest stack is allocated with <code>AllocateGuestStackMemory</code>, and <code>RunEntry</code> switches to it before calling the entry point. The entry parameters are placed at the top of that stack, 16-byte aligned as the ABI requires:</p>
 <pre>auto* params = reinterpret_cast&lt;EntryParams*&gt;(
     (reinterpret_cast&lt;uintptr_t&gt;(main_stack_top) - 0x100u) &amp; <b>~0x0fu</b>);
 params-&gt;argc    = 1;
@@ -70,7 +73,7 @@ params-&gt;argv[0] = "KytyEmu";</pre>
     Common::Mutex                  mutex;
 };</pre>
 
-  <p>Note <code>free_func</code>. If the game has installed its own heap through <code>SetApplicationHeapApi</code>, TLS blocks are allocated from <em>that</em> heap and must be released through it — freeing them with <code>delete[]</code> would corrupt the game's allocator. <code>FreeTlsBlock</code> handles all three cases (game heap, guest VM allocation, plain <code>new[]</code>).</p>
+  <p data-shared="excerpt-096">Note <code>free_func</code>. If the game has installed its own heap through <code>SetApplicationHeapApi</code>, TLS blocks are allocated from <em>that</em> heap and must be released through it — freeing them with <code>delete[]</code> would corrupt the game's allocator. <code>FreeTlsBlock</code> handles all three cases (game heap, guest VM allocation, plain <code>new[]</code>).</p>
 
   <p>Blocks are released per thread on exit via <code>DeleteTlss(thread_id)</code>, and per module on unload via <code>DeleteTls(program, thread_id)</code>.</p>
 
@@ -79,13 +82,13 @@ params-&gt;argv[0] = "KytyEmu";</pre>
 <pre>void  SetApplicationHeapApi(void* const api[10]);
 void* ApplicationHeapMalloc(uint64_t size);
 void* ApplicationHeapMemalign(uint64_t alignment, uint64_t size);</pre>
-  <p>An array of ten function pointers, of which Kyty uses malloc, free and posix_memalign. This matters because memory Kyty allocates on the game's behalf may be freed by the game, and vice versa.</p>
+  <p data-shared="excerpt-097">An array of ten function pointers, of which Kyty uses malloc, free and posix_memalign. This matters because memory Kyty allocates on the game's behalf may be freed by the game, and vice versa.</p>
     </div>
   </section>
 
   <section class="band band-read"><div class="band-h"><span class="band-t">Current wait and fiber behavior</span></div><div class="prose"><p>Timed <code>_umtx_op</code> waits use shared <code>SyncOnAddress</code> deadlines and pending-signal dispatch. Pthread key values and wakeup state are maintained per thread. Fiber context uses native TLS when execution migrates between threads; small guest stacks are preserved.</p>
 <h4 id="blocking-short-sleeps">Short sleeps block too</h4>
-  <p><code>KernelUsleep()</code> and <code>KernelNanosleep()</code> use signal-polling sleep helpers. Nonzero short waits use blocking waits with signal polling. Windows uses its high-resolution waitable timer path; POSIX uses an absolute monotonic deadline that survives signal interruptions. Zero-duration requests still have their explicit signal-dispatch behavior.</p>
+  <p data-shared="excerpt-093"><code>KernelUsleep()</code> and <code>KernelNanosleep()</code> use signal-polling sleep helpers. Nonzero short waits use blocking waits with signal polling. Windows uses its high-resolution waitable timer path; POSIX uses an absolute monotonic deadline that survives signal interruptions. Zero-duration requests still have their explicit signal-dispatch behavior.</p>
 </div></section>
 
   <section class="band band-watch">
@@ -137,9 +140,9 @@ void* ApplicationHeapMemalign(uint64_t alignment, uint64_t size);</pre>
 
 </main>
 
-<script src="assets/topics.js?v=20261007" defer></script>
-<script src="assets/search-index.js?v=20261007-d2413fc2" defer></script>
-<script src="assets/app.js?v=20261007-4" defer></script>
+<script src="assets/topics.js?v=20261007-5" defer></script>
+<script src="assets/search-index.js?v=20261007-5" defer></script>
+<script src="assets/app.js?v=20261007-5" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>

@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-4">
+<link rel="stylesheet" href="assets/app.css?v=20261007-5">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
@@ -20,6 +20,9 @@
   <p class="topic-deck">
     Everything in this course is easier when you can see inside a running emulator. These are the switches that produce the artifacts — and the test suite that tells you whether a change broke something.
   </p>
+<!-- prerequisites:debugging -->
+<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="developer-curriculum.html">The developer route &amp; coverage</a>. <a href="start.html">View the learning route</a>.</p>
+<!-- /prerequisites -->
 
   <section class="band band-read">
     <div class="band-h"><span class="band-t">Read</span></div>
@@ -128,7 +131,7 @@ kyty_emulator.exe --game "D:\Games\Example" ^
 
   <div class="callout k">
     <span class="lbl">The two questions to ask constantly</span>
-    <p>Reading any pointer: <strong>guest address or host address?</strong> Reading any function: <strong>which thread runs this — guest, GPU, or main/window?</strong> Most genuinely confusing emulator bugs are a confusion about one of those, and the code does not always spell out the answer.</p>
+    <p data-shared="excerpt-173">Reading any pointer: <strong>guest address or host address?</strong> Reading any function: <strong>which thread runs this — guest, GPU, or main/window?</strong> Most genuinely confusing emulator bugs are a confusion about one of those, and the code does not always spell out the answer.</p>
   </div>
 
   <div class="learn">
@@ -141,7 +144,7 @@ kyty_emulator.exe --game "D:\Games\Example" ^
     </ul>
   </div>
 
-<p class="deck">The aggregate suite covers shader compilation, resource binding, memory, archive I/O, audio, save data and dialogs. CMake defines 29 portable test executables plus an x86-64 macOS SSE4a executable.</p>
+<p data-shared="excerpt-178" class="deck">The aggregate suite covers shader compilation, resource binding, memory, archive I/O, audio, save data and dialogs. CMake defines 29 portable test executables plus an x86-64 macOS SSE4a executable.</p>
 
   <h4 id="the-targets">The targets</h4>
 <pre>cmake --build _Build/windows --target memory_tracker_tests
@@ -215,7 +218,7 @@ http_uri_parse_tests</pre>
       </tbody></table>
   </div>
 
-<p>CI now runs the recompiler suite as well as focused regressions. GPU-dependent cases can report a skip when required rasterization or subgroup capabilities are absent; inspect the test output to distinguish a skipped feature from a passing execution. CTest registrations include focused subsets of the heavy shader executable, so the number of CTest cases is larger than the number of executables. <code>ShaderRayTracingTests.inc</code> covers decoding and compilation; <code>ShaderRayTracingGpuTests.inc</code> exercises software triangle/box intersections and traversal.</p>
+<p data-shared="excerpt-179">CI now runs the recompiler suite as well as focused regressions. GPU-dependent cases can report a skip when required rasterization or subgroup capabilities are absent; inspect the test output to distinguish a skipped feature from a passing execution. CTest registrations include focused subsets of the heavy shader executable, so the number of CTest cases is larger than the number of executables. <code>ShaderRayTracingTests.inc</code> covers decoding and compilation; <code>ShaderRayTracingGpuTests.inc</code> exercises software triangle/box intersections and traversal.</p>
 
   <h4 id="failure-injection">Failure injection</h4>
   <p>The allocator compiles in deliberate failure hooks so its error paths are exercised rather than hoped about:</p>
@@ -231,7 +234,7 @@ uint64_t TestGuestBackingSize();
   <p>The same pattern appears in the loader (<code>TestMainEntryUsesGuestStack</code>, <code>TestModuleRelocationUsesWritableHostMapping</code>) and in pthreads (<code>TestGuestStackOwnerLifecycle</code>).</p>
 
   <h4 id="why-the-ratio-is-right">Why the ratio is right</h4>
-  <p>Notice what is <em>not</em> heavily tested: the HLE libraries. That is a correct allocation of effort. When an HLE function is wrong, the game misbehaves visibly and the log points at it. When the shader compiler or the memory tracker is wrong, nothing crashes and nothing logs — you get subtly wrong pixels, or corruption several frames after the cause. Tests are the only instrument that works there.</p>
+  <p data-shared="excerpt-180">Notice what is <em>not</em> heavily tested: the HLE libraries. That is a correct allocation of effort. When an HLE function is wrong, the game misbehaves visibly and the log points at it. When the shader compiler or the memory tracker is wrong, nothing crashes and nothing logs — you get subtly wrong pixels, or corruption several frames after the cause. Tests are the only instrument that works there.</p>
 
   <h4 id="formatting-and-static-analysis">Formatting and static analysis</h4>
 <pre>python -m pip install pre-commit
@@ -239,7 +242,7 @@ python -m pre_commit install --install-hooks   <i># clang-format on staged .cpp/
 
 cmake … -DKYTY_ENABLE_CLANG_TIDY=ON            <i># clang-tidy during builds</i></pre>
 <h4 id="profiling-and-fault-handlers">Profiling must preserve fault handlers</h4>
-  <p><code>--profile</code> enables Tracy. The build sets <code>TRACY_NO_CRASH_HANDLER=ON</code> so connecting a profiler does not replace the emulator's exception/signal handlers: instruction emulation and CPU/GPU coherency depend on those handlers. See <code>3rdparty/CMakeLists.txt</code>; the setting is independent of whether a recording client is attached.</p>
+  <p data-shared="excerpt-172"><code>--profile</code> enables Tracy. The build sets <code>TRACY_NO_CRASH_HANDLER=ON</code> so connecting a profiler does not replace the emulator's exception/signal handlers: instruction emulation and CPU/GPU coherency depend on those handlers. See <code>3rdparty/CMakeLists.txt</code>; the setting is independent of whether a recording client is attached.</p>
 
     </div>
   </section>
@@ -294,9 +297,9 @@ cmake … -DKYTY_ENABLE_CLANG_TIDY=ON            <i># clang-tidy during builds</
 
 </main>
 
-<script src="assets/topics.js?v=20261007" defer></script>
-<script src="assets/search-index.js?v=20261007-d2413fc2" defer></script>
-<script src="assets/app.js?v=20261007-4" defer></script>
+<script src="assets/topics.js?v=20261007-5" defer></script>
+<script src="assets/search-index.js?v=20261007-5" defer></script>
+<script src="assets/app.js?v=20261007-5" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>

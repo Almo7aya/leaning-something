@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-4">
+<link rel="stylesheet" href="assets/app.css?v=20261007-5">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
@@ -20,11 +20,14 @@
   <p class="topic-deck">
     A game module looks like an ELF and is rejected by every normal ELF loader. The type is <code>ET_SCE_*</code>, and the machinery a linker needs — symbols, strings, relocations — has been moved into a proprietary segment.
   </p>
+<!-- prerequisites:elf-and-self -->
+<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="t-virtual-memory.html">Virtual memory, briefly</a>. <a href="start.html">View the learning route</a>.</p>
+<!-- /prerequisites -->
 
   <section class="band band-read">
     <div class="band-h"><span class="band-t">Read</span></div>
     <div class="prose">
-<p class="deck">A game is a file. Something has to turn that file into a running program. On Linux that job belongs to <code>ld.so</code>; in KytyPS5 it belongs to <code>RuntimeLinker</code>. To read that code you need to know what a dynamic linker does.</p>
+<p data-shared="excerpt-029" class="deck">A game is a file. Something has to turn that file into a running program. On Linux that job belongs to <code>ld.so</code>; in KytyPS5 it belongs to <code>RuntimeLinker</code>. To read that code you need to know what a dynamic linker does.</p>
 
   <h4 id="the-elf-layout">The ELF layout</h4>
   <p>ELF — Executable and Linkable Format — is the Unix executable format, and the PS5 uses it. An ELF file has two overlapping views:</p>
@@ -39,7 +42,7 @@
     </table>
   </div>
 
-  <p>A program header entry says: "take <code>p_filesz</code> bytes at file offset <code>p_offset</code>, place them at virtual address <code>p_vaddr</code>, zero-fill up to <code>p_memsz</code>, and apply these permissions." Loading is essentially a loop over those entries.</p>
+  <p data-shared="excerpt-030">A program header entry says: "take <code>p_filesz</code> bytes at file offset <code>p_offset</code>, place them at virtual address <code>p_vaddr</code>, zero-fill up to <code>p_memsz</code>, and apply these permissions." Loading is essentially a loop over those entries.</p>
 
   <div class="filename">src/loader/elf.h — the actual struct Kyty parses</div>
 <pre>struct Elf64_Phdr {
@@ -54,7 +57,7 @@
 };</pre>
 
   <h4 id="why-relocation-exists">Why relocation exists</h4>
-  <p>A shared library does not know where it will be loaded. It is compiled position-independently, and every absolute address inside it is left as a placeholder. The loader must go back and fix them. Each fix is a <strong>relocation</strong>: a record saying "at offset X, write value Y."</p>
+  <p data-shared="excerpt-031">A shared library does not know where it will be loaded. It is compiled position-independently, and every absolute address inside it is left as a placeholder. The loader must go back and fix them. Each fix is a <strong>relocation</strong>: a record saying "at offset X, write value Y."</p>
 
   <p>The principal relocation types are:</p>
   <div class="tw">
@@ -72,13 +75,13 @@
 
   <div class="primer">
     <span class="lbl">Jargon · GOT and PLT</span>
-    <p>The <strong>Global Offset Table</strong> is an array of pointers. Instead of embedding an absolute address in code, the compiler emits "load the pointer from GOT slot 12, then use it." The loader fills the GOT, so the code itself never needs patching.</p>
+    <p data-shared="excerpt-032">The <strong>Global Offset Table</strong> is an array of pointers. Instead of embedding an absolute address in code, the compiler emits "load the pointer from GOT slot 12, then use it." The loader fills the GOT, so the code itself never needs patching.</p>
     <p>The <strong>Procedure Linkage Table</strong> is the same idea for calls. A call to an external function jumps to a small PLT stub, which jumps to whatever address the GOT holds.</p>
-    <p><strong>This is the hook KytyPS5 uses.</strong> When the loader writes the address of its own C++ function into a GOT slot, every subsequent guest call to that "console function" lands in the emulator instead. No patching of the game's code is needed.</p>
+    <p data-shared="excerpt-033"><strong>This is the hook KytyPS5 uses.</strong> When the loader writes the address of its own C++ function into a GOT slot, every subsequent guest call to that "console function" lands in the emulator instead. No patching of the game's code is needed.</p>
   </div>
 
   <h4 id="symbols-and-why-the-ps5-s-are-unreadable">Symbols, and why the PS5's are unreadable</h4>
-  <p>Normally a dynamic symbol has a name: <code>printf</code>, <code>malloc</code>. PS5 modules instead export <strong>NIDs</strong> — an 11-character encoding of a hash of the original name — qualified by the library and module they belong to:</p>
+  <p data-shared="excerpt-034">Normally a dynamic symbol has a name: <code>printf</code>, <code>malloc</code>. PS5 modules instead export <strong>NIDs</strong> — an 11-character encoding of a hash of the original name — qualified by the library and module they belong to:</p>
 
 <pre>b4fpgH5ZXxQ<b>#</b>Graphics5Driver<b>#</b>Graphics5Driver
 └─ symbol ─┘ └─── library ───┘ └──── module ────┘</pre>
@@ -86,7 +89,7 @@
   <p>Kyty stores its HLE implementations under the same key, so resolution is a dictionary lookup. You will meet the exact mechanism in <a href="t-nids.html">topic 07</a> and <a href="t-hle.html">topic 12</a>.</p>
 
   <h4 id="thread-local-storage-in-one-paragraph">Thread-local storage in one paragraph</h4>
-  <p>A variable declared <code>thread_local</code> needs a different copy per thread. The usual implementation gives each thread a block of memory and a pointer to it, reachable through a segment register — <code>fs</code> on x86-64 Linux and FreeBSD. Code that reads a thread-local reads <code>fs:[offset]</code>.</p>
+  <p data-shared="excerpt-035">A variable declared <code>thread_local</code> needs a different copy per thread. The usual implementation gives each thread a block of memory and a pointer to it, reachable through a segment register — <code>fs</code> on x86-64 Linux and FreeBSD. Code that reads a thread-local reads <code>fs:[offset]</code>.</p>
   <p>On x86-64 Windows the host TEB uses <code>gs</code>; a guest <code>fs</code> access does not address the guest TLS block. <a href="t-patching.html">topic 08</a> is entirely about the fix.</p>
 
   <div class="learn">
@@ -101,9 +104,9 @@
 <p class="deck">Sony's executable format is standard ELF64 wrapped in a container, with a set of custom type and tag values bolted on. Here is the complete set Kyty understands.</p>
 
 <h4 id="archive-loading">Directories and ZArchive content</h4>
-  <p><code>--game</code> accepts a directory, ELF or <code>.zar</code> ZArchive with <code>eboot.bin</code> at its root. <code>common/archive.cpp</code> exposes virtual paths such as <code>game.zar!/sce_sys/param.json</code> through <code>Common::File</code>. A retained <code>ArchiveReader</code> shares the index and block cache while a mount or launcher scan is active. This is read-only game content; saves and temporary files use writable host locations.</p>
-  <p>Windows starts through <code>wmain</code>, converts arguments to UTF-8 and preserves native <code>std::filesystem::path</code> values through file operations. Guest paths without a matching mount stay outside the host namespace. The launcher uses <code>gameContent.cpp</code> to inspect folders and archives uniformly, including icons, title metadata and game size.</p>
-  <p><code>libSaveData.cpp</code> persists SaveDataMemory2 data and allocation metadata on disk, including search/mount capacity and timestamps. Save-data dialog locking and CP932 conversion have dedicated regression tests. Treat these as observable guest behavior when debugging missing progress or stuck dialogs.</p>
+  <p data-shared="excerpt-055"><code>--game</code> accepts a directory, ELF or <code>.zar</code> ZArchive with <code>eboot.bin</code> at its root. <code>common/archive.cpp</code> exposes virtual paths such as <code>game.zar!/sce_sys/param.json</code> through <code>Common::File</code>. A retained <code>ArchiveReader</code> shares the index and block cache while a mount or launcher scan is active. This is read-only game content; saves and temporary files use writable host locations.</p>
+  <p data-shared="excerpt-056">Windows starts through <code>wmain</code>, converts arguments to UTF-8 and preserves native <code>std::filesystem::path</code> values through file operations. Guest paths without a matching mount stay outside the host namespace. The launcher uses <code>gameContent.cpp</code> to inspect folders and archives uniformly, including icons, title metadata and game size.</p>
+  <p data-shared="excerpt-057"><code>libSaveData.cpp</code> persists SaveDataMemory2 data and allocation metadata on disk, including search/mount capacity and timestamps. Save-data dialog locking and CP932 conversion have dedicated regression tests. Treat these as observable guest behavior when debugging missing progress or stuck dialogs.</p>
 
   <h4 id="the-self-container">The SELF container</h4>
   <p><code>eboot.bin</code> starts with a small header describing compressed or encrypted segments, followed by the ELF proper:</p>
@@ -126,7 +129,7 @@ struct SelfSegment {
     uint64_t decompressed_size;
 };</pre>
 
-  <p><code>Elf64::IsSelf()</code> tests for the container; <code>IsNextGen()</code> distinguishes PS5-era files from PS4-era ones. Retail files are encrypted, which is why the project cannot and does not distribute games — you supply files you already have the right to use.</p>
+  <p data-shared="excerpt-058"><code>Elf64::IsSelf()</code> tests for the container; <code>IsNextGen()</code> distinguishes PS5-era files from PS4-era ones. Retail files are encrypted, which is why the project cannot and does not distribute games — you supply files you already have the right to use.</p>
 
   <h4 id="the-elf-header-values-that-are-not-standard">The ELF header values that are not standard</h4>
   <div class="tw">
@@ -176,7 +179,7 @@ struct SelfSegment {
     </table>
   </div>
 
-  <p>The module and library tables matter more than they look. A NID is only unique <em>within</em> a library, so resolution needs all three parts. <code>GetDynModules</code> and <code>GetDynLibs</code> unpack these into <code>DynamicInfo</code>:</p>
+  <p data-shared="excerpt-059">The module and library tables matter more than they look. A NID is only unique <em>within</em> a library, so resolution needs all three parts. <code>GetDynModules</code> and <code>GetDynLibs</code> unpack these into <code>DynamicInfo</code>:</p>
 
   <div class="filename">src/loader/runtimeLinker.h — abbreviated</div>
 <pre>struct DynamicInfo {
@@ -191,7 +194,7 @@ struct SelfSegment {
 };</pre>
 
   <h4 id="the-encoded-identifiers">The encoded identifiers</h4>
-  <p>Module and library identifiers in a NID string are not names — they are small integers encoded in a base64-like alphabet. <code>EncodeId64</code> converts an index into the one- or two-character form, and resolution then looks that up in the file's own import tables to find the real name and version. This is why the same NID string can mean different things in two different modules.</p>
+  <p data-shared="excerpt-060">Module and library identifiers in a NID string are not names — they are small integers encoded in a base64-like alphabet. <code>EncodeId64</code> converts an index into the one- or two-character form, and resolution then looks that up in the file's own import tables to find the real name and version. This is why the same NID string can mean different things in two different modules.</p>
   <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp</span><span class="src">src/loader/runtimeLinker.cpp</span></div>
     </div>
   </section>
@@ -250,9 +253,9 @@ struct SelfSegment {
 
 </main>
 
-<script src="assets/topics.js?v=20261007" defer></script>
-<script src="assets/search-index.js?v=20261007-d2413fc2" defer></script>
-<script src="assets/app.js?v=20261007-4" defer></script>
+<script src="assets/topics.js?v=20261007-5" defer></script>
+<script src="assets/search-index.js?v=20261007-5" defer></script>
+<script src="assets/app.js?v=20261007-5" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>

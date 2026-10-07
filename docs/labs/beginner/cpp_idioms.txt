@@ -1,0 +1,4 @@
+lvalue
+rvalue
+shared value=7
+bit pattern round trip preserved

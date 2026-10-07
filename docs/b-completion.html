@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en" class="notranslate" translate="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Submitted is not completed — KytyPS5</title>
+<meta name="description" content="Keep an object alive until the work using it has actually finished.">
+<link rel="stylesheet" href="assets/app.css?v=20261007-5">
+<link rel="stylesheet" href="assets/highlight.css?v=20261007">
+</head>
+<body>
+<main class="topic" data-app-content>
+<p class="topic-eyebrow">Beginner · B5</p>
+<h1 id="overview">Submitted is not completed</h1>
+<p class="topic-deck">Keep an object alive until the work using it has actually finished.</p>
+<!-- prerequisites:beginner-completion -->
+<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="b-machine.html">Instructions, addresses and the guest</a>. <a href="start.html">View the learning route</a>.</p>
+<!-- /prerequisites -->
+<section class="band band-read"><div class="band-h"><span class="band-t">Learn, run, explain</span></div><div class="prose">
+
+<h2 id="before">Before you start</h2><p>Complete <a href="b-machine.html">B4</a>, and recall B3's distinction between an owner and a borrow. This program models lifetime bookkeeping in one thread; it does not submit Vulkan work or implement synchronization.</p>
+<h2 id="timeline">Two clocks of progress</h2>
+<p>The CPU can enqueue work and continue while a device is still processing earlier work. <strong>Submitted</strong> means the request was handed off; <strong>completed</strong> means the relevant work has finished. A resource used by an unfinished request must remain valid. Imagine tickets 7 and 9 on one ordered queue: seeing completion 7 does not let you release something also used by ticket 9.</p>
+<p>Our resource records an id and its last-use ticket. A completed value permits retirement only when <code>last_use &lt;= completed</code>. A real implementation must associate the value with the correct queue/timeline and actual completion signal. Writing a number in a CPU variable does not wait for a GPU.</p>
+<h2 id="lambda">Read a small callback</h2>
+<p><code>std::erase_if</code> removes vector elements for which a predicate returns true. The expression <code>[completed](const Resource&amp; resource) { ... }</code> is a <strong>lambda</strong>: a small unnamed function object. It captures a copy of completed, borrows one resource for inspection, and returns whether that resource may be removed. This is your first callback; templates and forwarding can wait until you need the more advanced C++ reference.</p>
+<p class="filename">Complete runnable teaching program · <a href="labs/beginner/completion.cpp">completion.cpp</a></p>
+<!-- code:labs/beginner/completion.cpp -->
+<pre><code>#include &lt;algorithm&gt;
+#include &lt;cstdint&gt;
+#include &lt;iostream&gt;
+#include &lt;vector&gt;
+
+// Single-threaded bookkeeping model: no GPU work or synchronization is performed.
+struct Resource { int id; std::uint64_t last_use; };
+
+void retire(std::vector&lt;Resource&gt;&amp; retained, std::uint64_t completed) {
+    std::erase_if(retained, [completed](const Resource&amp; resource) {
+        return resource.last_use &lt;= completed;
+    });
+}
+
+int main() {
+    std::vector&lt;Resource&gt; retained{{1, 7}};
+    const std::uint64_t submitted = 7;
+    std::uint64_t completed = 6;
+    retire(retained, completed);
+    if (retained.size() != 1) return 1;
+    std::cout &lt;&lt; &quot;submitted=&quot; &lt;&lt; submitted &lt;&lt; &quot; completed=&quot; &lt;&lt; completed
+              &lt;&lt; &quot; retained=&quot; &lt;&lt; retained.size() &lt;&lt; '\n';
+    // A later submission reuses resource 1 before submission 7 completes.
+    retained[0].last_use = 9;
+    completed = 7;
+    retire(retained, completed);
+    if (retained.size() != 1) return 1;
+    std::cout &lt;&lt; &quot;completed=7 retained=&quot; &lt;&lt; retained.size() &lt;&lt; '\n';
+    completed = 9;
+    retire(retained, completed);
+    if (!retained.empty()) return 1;
+    std::cout &lt;&lt; &quot;completed=9 retained=&quot; &lt;&lt; retained.size() &lt;&lt; '\n';
+    retire(retained, completed); // Retiring an empty list is valid.
+    if (!retained.empty()) return 1;
+}</code></pre>
+<!-- /code --><p>Use the <a href="b-first-program.html#setup">B1 setup</a> once. From this learning repository's root:</p>
+<pre>cmake --build _Build/curriculum/beginner --target completion
+ctest --test-dir _Build/curriculum/beginner -R '^beginner_completion$' --output-on-failure</pre>
+<p>To see the output directly in PowerShell, run <code>.\_Build\curriculum\beginner\completion.exe</code>; in a POSIX shell, run <code>./_Build/curriculum/beginner/completion</code>. Tests compare the full output and require a successful exit.</p><p>Expected output, with exit status <code>0</code>:</p><!-- output:labs/beginner/completion.txt -->
+<pre>submitted=7 completed=6 retained=1
+completed=7 retained=1
+completed=9 retained=0</pre>
+<!-- /output -->
+<h2 id="threads">Where threads and locks enter</h2>
+<p>A thread is an independently scheduled sequence of CPU execution. If one CPU thread updates a shared container while another reads it, they need an appropriate synchronization protocol. A <strong>mutex</strong> grants one thread at a time access to a protected critical section; an RAII lock releases it when its scope ends. A C++ data race on ordinary shared data can cause undefined behavior.</p>
+<p>That CPU lock protects access to the bookkeeping. It does not by itself establish that device work is complete. Conversely, a completion value does not automatically make unsynchronized CPU access to the container safe. Read <a href="t-cpp-concurrency.html">C4</a> before changing threaded project code.</p>
+<h2 id="practice">Exercise</h2><p>Draw the resource's last-use value above each completion value. Change the last-use update from 9 to 10: should completion 9 free it? Update the fixture to observe completion 10 before expecting an empty list. Then consider two resources, last used at 7 and 10, and predict which remain at completion 9.</p>
+<details><summary>Hint</summary><p>Retirement compares each resource's last use, not the first submission that ever mentioned it.</p></details>
+<details><summary>Worked answer and rubric</summary><p>With last use 10, completion 9 retains the resource; completion 10 retires it. With resources used at 7 and 10, only the latter remains at completion 9. Update both the program's check and output file to reflect your intended additional observation. The baseline tests cover incomplete work, reuse by a later submission, equality at completion and an empty list. You are ready when you can explain why using submitted in place of completed would be an early-release bug.</p></details>
+<h2 id="project-bridge">Follow real ownership through completion</h2><p>Compare this model with <code>src/graphics/host_gpu/renderer/commandScheduler.cpp</code> and <code>src/graphics/host_gpu/renderer/masterSemaphore.cpp</code> after the graphics introduction. <a href="t-debugging-labs.html#lifetime">D4's lifetime lab</a> gives you a deliberate bookkeeping bug to fix; <a href="t-trace-draw.html">D3</a> connects the model to an actual draw path.</p>
+<div class="check"><p class="check-h">Before moving on</p><ul class="check-list"><li class="check-item"><input type="checkbox"><label>I can explain all three retained counts and the equality boundary.</label></li><li class="check-item"><input type="checkbox"><label>I can distinguish CPU mutual exclusion from GPU completion.</label></li><li class="check-item"><input type="checkbox"><label>I kept the teaching model separate from a real device wait and am ready for emulation foundations.</label></li></ul></div><p>Ticks record your own assessment. Keep your prediction, actual output and explanation; a tick alone is not evidence of understanding.</p>
+</div></section>
+</main>
+<script src="assets/topics.js?v=20261007-5" defer></script>
+<script src="assets/search-index.js?v=20261007-5" defer></script>
+<script src="assets/app.js?v=20261007-5" defer></script>
+<script src="assets/highlight.js?v=20261007" defer></script>
+</body>
+</html>

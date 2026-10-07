@@ -260,7 +260,7 @@ h3::before{content:"▸ ";color:var(--faint)}
   <div class="sh"><span class="sn">03·3</span><h2 id="how-a-console-call-reaches-emulator-code">How a console call reaches emulator code</h2></div>
   <p class="deck">The single most important mechanism in the project, and it hinges on one pointer.</p>
   <figure data-viz="gotplt"></figure>
-  <p>This is also the easiest place to contribute. Find a stubbed NID in a log, add a <code>LIB_FUNC</code> pointing at a function that logs its arguments and returns <code>OK</code>, and re-run — the stub message disappears and the game gets a little further. Two ways it silently fails: one wrong character in the NID string, or a <code>LIB_VERSION</code> whose library or module version does not match what the game imports.</p>
+  <p>Before implementing an unresolved NID, establish its arguments, outputs, lifetime and error contract from evidence. Register a justified implementation and test ordinary, boundary and error behavior. Removing a stub message or returning OK does not prove the guest-visible behavior is correct. Follow the <a href="t-first-change.html">first-change lesson</a> and <a href="developer-curriculum.html#capstone">contribution capstone</a>. Two ways it silently fails: one wrong character in the NID string, or a <code>LIB_VERSION</code> whose library or module version does not match what the game imports.</p>
 </section>
 
 <!-- ============================== 04 THREADS -->

@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-4">
+<link rel="stylesheet" href="assets/app.css?v=20261007-5">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
@@ -20,11 +20,14 @@
   <p class="topic-deck">
     Choose a bounded behavior you can specify and test. Implementing a missing function is one route; adding a regression test for an existing function is another. The goal is a defensible change, not just a resolved import.
   </p>
+<!-- prerequisites:first-change -->
+<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="t-debugging-labs.html">Reproducible debugging labs</a> · <a href="t-debugging.html">Debugging &amp; diagnostics</a>. <a href="start.html">View the learning route</a>.</p>
+<!-- /prerequisites -->
 
   <section class="band band-read">
     <div class="band-h"><span class="band-t">Read</span></div>
     <div class="prose">
-<p class="deck">A small, understood HLE contract can make a good first contribution. An unresolved import is a research lead, not proof that returning success will improve compatibility. Use the <a href="developer-curriculum.html">developer curriculum</a> to turn a hypothesis into evidence.</p>
+<p data-shared="excerpt-108" class="deck">A small, understood HLE contract can make a good first contribution. An unresolved import is a research lead, not proof that returning success will improve compatibility. Use the <a href="developer-curriculum.html">developer curriculum</a> to turn a hypothesis into evidence.</p>
 
   <h4 id="step-1-find-what-is-missing">Step 1 — find what is missing</h4>
   <p>Run the game with logging to a file and search for stub messages:</p>
@@ -41,7 +44,7 @@
 
   <h4 id="step-3-write-it">Step 3 — write it</h4>
   <p>Add to the appropriate module file — or create one following the template in <a href="t-hle.html">topic 12</a> (a small standalone file such as <code>libCes.cpp</code> is the pattern):</p>
-<p>The following is a <strong>fictional structural sketch</strong>, not a real API contract or copy-ready implementation. Establish size/flags validation, guest-pointer policy, ownership and output semantics for the actual function before using this pattern.</p>
+<p data-shared="excerpt-109">The following is a <strong>fictional structural sketch</strong>, not a real API contract or copy-ready implementation. Establish size/flags validation, guest-pointer policy, ownership and output semantics for the actual function before using this pattern.</p>
 <pre>struct ExampleParam {
     uint32_t size;
     uint32_t flags;
@@ -70,11 +73,11 @@ static int <b>KYTY_SYSV_ABI</b> ExampleGetStatus(const ExampleParam* param, int*
 }</pre>
 
   <h4 id="step-4-verify-it-is-actually-reached">Step 4 — verify it is actually reached</h4>
-  <p>Rebuild and check that the import binds to the intended address. A breakpoint or trace can establish whether that path was called. If it was not reached, record it as untested. Neither a resolved slot nor a function-entry log proves correct return values, output bytes or side effects.</p>
+  <p data-shared="excerpt-110">Rebuild and check that the import binds to the intended address. A breakpoint or trace can establish whether that path was called. If it was not reached, record it as untested. Neither a resolved slot nor a function-entry log proves correct return values, output bytes or side effects.</p>
 
   <h4 id="step-5-prove-the-contract">Step 5 — prove the guest-visible contract</h4>
-  <p>Keep a test that fails before the change and passes after it. Check normal input, size/flag boundaries, null handling where the contract defines it, output layout and values, error codes and side effects. Use sentinels to detect unintended writes on error; do not dereference arbitrary invalid guest addresses just to add a negative test. Check ownership and concurrency when state survives the call.</p>
-  <p>Build affected targets and run the focused regression plus adjacent tests. If you run a title, record the exact binary, configuration and route with before/after observations. A unit test, a binding check and game progression are separate evidence. <a href="t-debugging-labs.html#contract">Lab C</a> demonstrates why the return code alone is insufficient.</p>
+  <p data-shared="excerpt-111">Keep a test that fails before the change and passes after it. Check normal input, size/flag boundaries, null handling where the contract defines it, output layout and values, error codes and side effects. Use sentinels to detect unintended writes on error; do not dereference arbitrary invalid guest addresses just to add a negative test. Check ownership and concurrency when state survives the call.</p>
+  <p data-shared="excerpt-112">Build affected targets and run the focused regression plus adjacent tests. If you run a title, record the exact binary, configuration and route with before/after observations. A unit test, a binding check and game progression are separate evidence. <a href="t-debugging-labs.html#contract">Lab C</a> demonstrates why the return code alone is insufficient.</p>
 
   <h4 id="when-it-does-not-bind">When it does not bind</h4>
   <div class="tw">
@@ -91,7 +94,7 @@ static int <b>KYTY_SYSV_ABI</b> ExampleGetStatus(const ExampleParam* param, int*
 
   <div class="callout k">
     <span class="lbl">Contribution etiquette</span>
-    <p>The README asks that code contributions be focused, build on the platforms they touch, and include tests where practical. It also carries an explicit AI-use policy: assistance is allowed for research and development, but you must understand and test what you submit, disclose the scope of any AI involvement, and write the pull-request text yourself.</p>
+    <p data-shared="excerpt-113">The README asks that code contributions be focused, build on the platforms they touch, and include tests where practical. It also carries an explicit AI-use policy: assistance is allowed for research and development, but you must understand and test what you submit, disclose the scope of any AI involvement, and write the pull-request text yourself.</p>
   </div>
     </div>
   </section>
@@ -154,9 +157,9 @@ static int <b>KYTY_SYSV_ABI</b> ExampleGetStatus(const ExampleParam* param, int*
 
 </main>
 
-<script src="assets/topics.js?v=20261007" defer></script>
-<script src="assets/search-index.js?v=20261007-d2413fc2" defer></script>
-<script src="assets/app.js?v=20261007-4" defer></script>
+<script src="assets/topics.js?v=20261007-5" defer></script>
+<script src="assets/search-index.js?v=20261007-5" defer></script>
+<script src="assets/app.js?v=20261007-5" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>

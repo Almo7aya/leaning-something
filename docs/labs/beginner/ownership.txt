@@ -1,0 +1,5 @@
+counter=5
+borrow=20
+old owner empty=true
+buffer destroyed
+scope ended

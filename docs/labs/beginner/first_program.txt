@@ -1,0 +1,3 @@
+pixels=12
+pixels=4
+total=16

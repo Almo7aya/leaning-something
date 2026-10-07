@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-4">
+<link rel="stylesheet" href="assets/app.css?v=20261007-5">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
@@ -20,6 +20,9 @@
   <p class="topic-deck">
     Reading the code is one thing; making it build and telling a crash log apart from a feature is the other. This page is the bridge: how source becomes a binary in this project, what the linker is really doing, and how the emulator tells you what broke.
   </p>
+<!-- prerequisites:cpp-build -->
+<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="b-first-program.html">Your first C++ program</a>. <a href="start.html">View the learning route</a>.</p>
+<!-- /prerequisites -->
 
   <section class="band band-read">
     <div class="band-h"><span class="band-t">Read</span></div>
@@ -72,14 +75,14 @@ cmake --install _Build/windows --prefix _Build/windows/install</pre>
   <p><strong>Step 3 — build.</strong> Compile and link. Everything after this is the rest of the page.</p>
 
 <h4 id="current-build-options">Current build options</h4>
-  <p>The root <code>CMakeLists.txt</code> requires CMake 3.19 or newer (the root declares compatibility through 4.3; dependencies may impose additional requirements). Use <code>clang-cl</code> on Windows and the documented Clang toolchain on Linux/macOS. <code>glslangValidator</code> must be on <code>PATH</code>. CMake automatically selects <code>sccache</code>, then <code>ccache</code>, unless a compiler launcher was already supplied.</p>
-  <p>Qt is optional: configure a separate directory with <code>-DKYTY_BUILD_LAUNCHER=OFF</code> to build <code>kyty_emulator</code> and <code>kyty_tests</code> without it. SDL3 provides window, input and audio services. FFmpeg comes from the pinned static FFmpeg-core release, including VP9/WebM; system FFmpeg packages are not required. Dependencies include both submodules and configure-time downloads, including ZArchive and zstd.</p>
+  <p data-shared="excerpt-052">The root <code>CMakeLists.txt</code> requires CMake 3.19 or newer (the root declares compatibility through 4.3; dependencies may impose additional requirements). Use <code>clang-cl</code> on Windows and the documented Clang toolchain on Linux/macOS. <code>glslangValidator</code> must be on <code>PATH</code>. CMake automatically selects <code>sccache</code>, then <code>ccache</code>, unless a compiler launcher was already supplied.</p>
+  <p data-shared="excerpt-053">Qt is optional: configure a separate directory with <code>-DKYTY_BUILD_LAUNCHER=OFF</code> to build <code>kyty_emulator</code> and <code>kyty_tests</code> without it. SDL3 provides window, input and audio services. FFmpeg comes from the pinned static FFmpeg-core release, including VP9/WebM; system FFmpeg packages are not required. Dependencies include both submodules and configure-time downloads, including ZArchive and zstd.</p>
 <pre>cmake -S . -B _Build/no-qt -G Ninja -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
   -DKYTY_BUILD_LAUNCHER=OFF
 cmake --build _Build/no-qt --target kyty_emulator kyty_tests --parallel
 ctest --test-dir _Build/no-qt --output-on-failure</pre>
-  <p>On NixOS, enter <code>nix develop</code> or <code>nix-shell</code> first. The shell supplies the toolchain, Qt paths and SDL3 backend dependencies; configure still needs network access. See <code>flake.nix</code> and <code>nix/devshell.nix</code>.</p>
+  <p data-shared="excerpt-054">On NixOS, enter <code>nix develop</code> or <code>nix-shell</code> first. The shell supplies the toolchain, Qt paths and SDL3 backend dependencies; configure still needs network access. See <code>flake.nix</code> and <code>nix/devshell.nix</code>.</p>
 
   <h4 id="what-actually-compiles">What actually compiles</h4>
   <p>The source list is collected by explicit <code>file(GLOB ... CONFIGURE_DEPENDS)</code> entries in the root <code>CMakeLists.txt</code>. The shader entries now spell out <code>frontend/cfg</code>, <code>frontend/decode</code>, <code>frontend/translate</code>, <code>ir</code>, <code>ir/opcodes</code>, <code>ir/passes</code> and <code>backend/spirv</code>. Adding a new directory requires a new glob; adding a file to a listed directory triggers a CMake re-run.</p>
@@ -307,9 +310,9 @@ ctest --test-dir _Build/windows --output-on-failure</pre>
 
 </main>
 
-<script src="assets/topics.js?v=20261007" defer></script>
-<script src="assets/search-index.js?v=20261007-d2413fc2" defer></script>
-<script src="assets/app.js?v=20261007-4" defer></script>
+<script src="assets/topics.js?v=20261007-5" defer></script>
+<script src="assets/search-index.js?v=20261007-5" defer></script>
+<script src="assets/app.js?v=20261007-5" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>

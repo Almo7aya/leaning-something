@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-4">
+<link rel="stylesheet" href="assets/app.css?v=20261007-5">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
@@ -22,15 +22,18 @@
     rings a doorbell. Everything the graphics half of this emulator does begins by reading those
     packets back.
   </p>
+<!-- prerequisites:pm4 -->
+<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="t-gpu-basics.html">How a GPU actually draws</a> · <a href="b-bytes.html">Bytes, bits and bounded reads</a>. <a href="start.html">View the learning route</a>.</p>
+<!-- /prerequisites -->
 
   <!-- ---------------------------------------------------------- -->
   <section class="band band-read">
     <div class="band-h"><span class="band-t">Read</span></div>
     <div class="prose">
-<p class="deck">The game never calls a draw function Kyty can intercept. It writes packets into a buffer and hands the buffer to the kernel. Understanding that distinction is the key to the whole graphics stack.</p>
+<p data-shared="excerpt-114" class="deck">The game never calls a draw function Kyty can intercept. It writes packets into a buffer and hands the buffer to the kernel. Understanding that distinction is the key to the whole graphics stack.</p>
 
   <h4 id="what-an-agc-call-actually-does">What an AGC call actually does</h4>
-  <p>On a PC, <code>vkCmdDraw</code> goes into a driver that eventually produces hardware commands. On the PS5 the game <em>is</em> the driver. AGC functions are thin builders that write dwords into memory the game owns:</p>
+  <p data-shared="excerpt-115">On a PC, <code>vkCmdDraw</code> goes into a driver that eventually produces hardware commands. On the PS5 the game <em>is</em> the driver. AGC functions are thin builders that write dwords into memory the game owns:</p>
 
 <pre>uint32_t* KYTY_SYSV_ABI AgcCbDispatch(CommandBuffer* buf, uint32_t thread_group_x,
                                             uint32_t thread_group_y, uint32_t thread_group_z, ...);
@@ -38,18 +41,18 @@ uint32_t  KYTY_SYSV_ABI AgcCbDispatchGetSize();
 uint32_t* KYTY_SYSV_ABI AgcCbSetShRegistersDirect(CommandBuffer* buf, ...);
 uint32_t* KYTY_SYSV_ABI AgcCbReleaseMem(CommandBuffer* buf, uint8_t action, ...);</pre>
 
-  <p>Note the <code>…GetSize()</code> companions. A game asks for a command’s size in bytes so it can lay out its buffer in advance, then calls the builder to fill its dwords. Keep the return type and size unit attached to each API. This is why Kyty's reimplementations must produce <strong>byte-identical output</strong> to the real driver: the game may compute offsets into the buffer, patch values later, or jump over regions.</p>
+  <p data-shared="excerpt-116">Note the <code>…GetSize()</code> companions. A game asks for a command’s size in bytes so it can lay out its buffer in advance, then calls the builder to fill its dwords. Keep the return type and size unit attached to each API. This is why Kyty's reimplementations must produce <strong>byte-identical output</strong> to the real driver: the game may compute offsets into the buffer, patch values later, or jump over regions.</p>
 
 <div class="filename">src/libs/agc.cpp — byte size of an indirect shader-register command</div>
 <pre>uint64_t KYTY_SYSV_ABI AgcDcbSetShRegistersIndirectGetSize() {
     PRINT_NAME();
     return 5u * sizeof(uint32_t); <i>// 20 bytes, five dwords</i>
 }</pre>
-<p><code>src/libs/libAgcDriver.cpp</code> registers this function as <code>LIB_FUNC("nNlUtdDDvZ0", Gen5::AgcDcbSetShRegistersIndirectGetSize)</code>. Its declaration in <code>agc.h</code>, the returned byte count and the paired command builder are one ABI contract.</p>
+<p data-shared="excerpt-117"><code>src/libs/libAgcDriver.cpp</code> registers this function as <code>LIB_FUNC("nNlUtdDDvZ0", Gen5::AgcDcbSetShRegistersIndirectGetSize)</code>. Its declaration in <code>agc.h</code>, the returned byte count and the paired command builder are one ABI contract.</p>
 
   <div class="callout g">
     <span class="lbl">Patch functions prove the point</span>
-    <p>The AGC API includes functions such as <code>AgcSetCxRegIndirectPatchSetAddress</code>, <code>AgcJumpPatchSetTarget</code> and <code>AgcWriteDataPatchSetAddressOrOffset</code>. These exist so a game can build a command buffer once and rewrite specific fields each frame. A reimplementation that produced structurally different packets would break them.</p>
+    <p data-shared="excerpt-118">The AGC API includes functions such as <code>AgcSetCxRegIndirectPatchSetAddress</code>, <code>AgcJumpPatchSetTarget</code> and <code>AgcWriteDataPatchSetAddressOrOffset</code>. These exist so a game can build a command buffer once and rewrite specific fields each frame. A reimplementation that produced structurally different packets would break them.</p>
   </div>
 
   <h4 id="submission">Submission</h4>
@@ -64,7 +67,7 @@ void SubmitCompute(uint32_t queue, std::span&lt;const uint32_t&gt; commands);</p
 
   <p>Two buffers, not one — the draw stream and the constant stream, which correspond to the two engines described in <a href="t-pm4.html">topic 14</a>.</p>
 
-  <p><strong>The current implementation does not copy either stream.</strong> A submission stores
+  <p data-shared="excerpt-119"><strong>The current implementation does not copy either stream.</strong> A submission stores
   borrowed <code>std::span</code> views into guest memory. This is closer to the hardware contract:
   the submitter owns the memory and must keep it unchanged until execution completes. It also
   makes lifetime bugs visible instead of hiding them behind an emulator-only copy.</p>
@@ -86,7 +89,7 @@ private:
     std::jthread m_thread;
 };</pre>
 
-  <p>One graphics queue plus seven compute pipes of eight queues each, mirroring the hardware. Each queue has its <em>own</em> <code>CommandProcessor</code> instance, because each carries independent register state. Games rely on this for asynchronous compute: work on different queues must progress independently.</p>
+  <p data-shared="excerpt-120">One graphics queue plus seven compute pipes of eight queues each, mirroring the hardware. Each queue has its <em>own</em> <code>CommandProcessor</code> instance, because each carries independent register state. Games rely on this for asynchronous compute: work on different queues must progress independently.</p>
 
   <h4 id="the-submission-record">The submission record</h4>
 <pre>struct Submission {
@@ -154,7 +157,7 @@ len                    = ((cmd_id &gt;&gt; <b>16u</b>) &amp; 0x3fffu) + 1;   <i>
       <div class="bits" id="pm4bits" aria-hidden="true"></div>
       <div class="dec-out" id="pm4out"></div>
     </div>
-    <div class="fig-note"><p>The colour bands map to the fields: <span style="color:var(--host)">type</span>, <span style="color:var(--kyty)">count</span>, <span style="color:var(--guest)">opcode</span>, then the Sony sub-selector. Note that the handlers assert on exact header values — <code>CpOpDrawIndexAuto</code> requires precisely <code>0xC0012D00</code> — so a malformed stream fails loudly rather than silently.</p></div>
+    <div class="fig-note"><p data-shared="excerpt-121">The colour bands map to the fields: <span style="color:var(--host)">type</span>, <span style="color:var(--kyty)">count</span>, <span style="color:var(--guest)">opcode</span>, then the Sony sub-selector. Note that the handlers assert on exact header values — <code>CpOpDrawIndexAuto</code> requires precisely <code>0xC0012D00</code> — so a malformed stream fails loudly rather than silently.</p></div>
   </div>
 
   <h4 id="dispatch-by-jump-table">Dispatch by jump table</h4>
@@ -356,10 +359,10 @@ enum class Pm4ProcessResult { Complete, Blocked };
 
 </main>
 
-<script src="assets/topics.js?v=20261007" defer></script>
-<script src="assets/search-index.js?v=20261007-d2413fc2" defer></script>
+<script src="assets/topics.js?v=20261007-5" defer></script>
+<script src="assets/search-index.js?v=20261007-5" defer></script>
 <script src="assets/highlight.js?v=20261007" defer></script>
-<script src="assets/app.js?v=20261007-4" defer></script>
+<script src="assets/app.js?v=20261007-5" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>

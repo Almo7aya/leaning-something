@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en" class="notranslate" translate="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Instructions, addresses and the guest — KytyPS5</title>
+<meta name="description" content="Step a tiny invented CPU, then identify which parts of that model KytyPS5 implements differently.">
+<link rel="stylesheet" href="assets/app.css?v=20261007-5">
+<link rel="stylesheet" href="assets/highlight.css?v=20261007">
+</head>
+<body>
+<main class="topic" data-app-content>
+<p class="topic-eyebrow">Beginner · B4</p>
+<h1 id="overview">Instructions, addresses and the guest</h1>
+<p class="topic-deck">Step a tiny invented CPU, then identify which parts of that model KytyPS5 implements differently.</p>
+<!-- prerequisites:beginner-machine -->
+<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="b-memory.html">Objects, owners and borrowed memory</a>. <a href="start.html">View the learning route</a>.</p>
+<!-- /prerequisites -->
+<section class="band band-read"><div class="band-h"><span class="band-t">Learn, run, explain</span></div><div class="prose">
+
+<h2 id="before">Before you start</h2><p>Complete <a href="b-memory.html">B3</a>. You can now read the array, borrowed program view and Cpu reference in this example.</p>
+<h2 id="machine">What a CPU keeps track of</h2>
+<p>A processor executes instructions and keeps small working values in registers. The <strong>program counter</strong> identifies the next instruction. Real x86-64 instructions have varying byte lengths; our invented machine instead indexes an array of fixed C++ Instruction objects. Its only arithmetic register is called accumulator. Its memory is four numbered words, not a console address space.</p>
+<p><code>enum class Op</code> names the allowed operations. A <code>switch</code> chooses behavior by operation; <code>break</code> exits that switch, while <code>return</code> exits the function. <code>Cpu&amp;</code> lets run update the caller's Cpu object. A <code>bool</code> is true or false; here false reports an invalid program.</p>
+<div class="tw"><table><thead><tr><th>Instruction</th><th>Effect</th></tr></thead><tbody><tr><td>set 7</td><td>accumulator becomes 7</td></tr><tr><td>add 5</td><td>accumulator becomes 12</td></tr><tr><td>store 2</td><td>memory word 2 receives 12</td></tr><tr><td>halt</td><td>execution returns success</td></tr></tbody></table></div>
+<p>The loop fetches the instruction at pc, increments pc, then executes it. There are no jumps, calls, interrupts, caches or real instruction encodings in this model. Unsigned addition wraps at its type's width; this program only adds the small values 7 and 5.</p>
+<p class="filename">Complete runnable teaching program · <a href="labs/beginner/machine.cpp">machine.cpp</a></p>
+<!-- code:labs/beginner/machine.cpp -->
+<pre><code>#include &lt;array&gt;
+#include &lt;cstddef&gt;
+#include &lt;cstdint&gt;
+#include &lt;iostream&gt;
+#include &lt;span&gt;
+
+// Invented instruction set. These are not x86, RDNA, ELF or PM4 encodings.
+enum class Op { set, add, store, halt };
+struct Instruction { Op op; std::uint32_t operand; };
+struct Cpu {
+    std::size_t pc = 0;
+    std::uint32_t accumulator = 0;
+    std::array&lt;std::uint32_t, 4&gt; memory{};
+};
+
+bool run(std::span&lt;const Instruction&gt; program, Cpu&amp; cpu) {
+    while (cpu.pc &lt; program.size()) {
+        const Instruction instruction = program[cpu.pc];
+        ++cpu.pc;
+        switch (instruction.op) {
+        case Op::set: cpu.accumulator = instruction.operand; break;
+        case Op::add: cpu.accumulator += instruction.operand; break;
+        case Op::store:
+            if (instruction.operand &gt;= cpu.memory.size()) return false;
+            cpu.memory[instruction.operand] = cpu.accumulator;
+            break;
+        case Op::halt: return true;
+        default: return false;
+        }
+    }
+    return false; // Reaching the end without halt is an error in this model.
+}
+
+int main() {
+    const std::array program{Instruction{Op::set, 7}, Instruction{Op::add, 5},
+                            Instruction{Op::store, 2}, Instruction{Op::halt, 0}};
+    Cpu cpu;
+    if (!run(program, cpu) || cpu.memory[2] != 12 || cpu.pc != 4) return 1;
+    std::cout &lt;&lt; &quot;pc=&quot; &lt;&lt; cpu.pc &lt;&lt; &quot; accumulator=&quot; &lt;&lt; cpu.accumulator
+              &lt;&lt; &quot; memory[2]=&quot; &lt;&lt; cpu.memory[2] &lt;&lt; '\n';
+    const std::array bad{Instruction{Op::store, 4}, Instruction{Op::halt, 0}};
+    Cpu invalid;
+    if (run(bad, invalid) || invalid.memory != std::array&lt;std::uint32_t, 4&gt;{}) return 1;
+    Cpu missing_halt;
+    if (run(std::span&lt;const Instruction&gt;{program}.first(3), missing_halt)) return 1;
+    std::cout &lt;&lt; &quot;out-of-range store and missing halt rejected\n&quot;;
+}</code></pre>
+<!-- /code --><p>Use the <a href="b-first-program.html#setup">B1 setup</a> once. From this learning repository's root:</p>
+<pre>cmake --build _Build/curriculum/beginner --target machine
+ctest --test-dir _Build/curriculum/beginner -R '^beginner_machine$' --output-on-failure</pre>
+<p>To see the output directly in PowerShell, run <code>.\_Build\curriculum\beginner\machine.exe</code>; in a POSIX shell, run <code>./_Build/curriculum/beginner/machine</code>. Tests compare the full output and require a successful exit.</p><p>Expected output, with exit status <code>0</code>:</p><!-- output:labs/beginner/machine.txt -->
+<pre>pc=4 accumulator=12 memory[2]=12
+out-of-range store and missing halt rejected</pre>
+<!-- /output -->
+<h2 id="guest-host">Guest versus host</h2>
+<p>The <strong>guest</strong> is the software and machine contract being supported. The <strong>host</strong> is the computer and operating system running the emulator. Our host C++ program interprets each invented instruction in a switch. On KytyPS5's native x86-64 execution path, the host CPU executes guest CPU instructions directly; the emulator supplies compatible mappings and services and adapts selected boundaries. The GPU's shader instructions still need a different translation path.</p>
+<p>Real programs also call functions. A return address records where execution should continue after a call. Registers and a stack hold arguments, local state and saved values according to an <strong>ABI</strong>, a binary agreement between caller and callee. Two x86-64 programs can use different agreements. Matching the instruction set therefore does not automatically make a console program callable like a normal host function.</p>
+<p>A <strong>virtual address</strong> identifies a location in a process's address space. The operating system maps pages of that space to backing storage and assigns access permissions. An ELF file offset, a guest virtual address and a host pointer are different concepts. KytyPS5 arranges mappings so supported guest addresses are usable in the host process; an arbitrary integer cast to a pointer does not create a mapping or make an access valid.</p>
+<h2 id="practice">Exercise</h2><p>Write a row after each instruction containing pc, accumulator and memory[2]. Change add's operand to 8 and predict the result. Explain why store 4 must fail even though the memory array has four elements, and why a missing halt is reported as an error.</p>
+<details><summary>Hint</summary><p>After fetch, pc has already advanced. Four elements have indices 0 through 3.</p></details>
+<details><summary>Worked answer and rubric</summary><p>The original rows are (1,7,0), (2,12,0), (3,12,12), (4,12,12). With add 8, the last three accumulator values are 15 and memory[2] becomes 15 at the store; update the internal check and expected output. Store 4 is outside [0,4). Missing halt is an error by this invented machine's contract, not a claim about x86 execution. You are ready when you can explain why this interpreter is useful for learning but does not describe KytyPS5's guest CPU implementation.</p></details>
+<h2 id="project-bridge">Follow the real boundary next</h2><p><a href="t-no-cpu-emulator.html">Native execution</a>, <a href="t-calling-conventions.html">calling conventions</a> and <a href="t-virtual-memory.html">virtual memory</a> expand these ideas. Later <a href="t-trace-boot.html">D2</a> follows actual source functions from mapped ELF segments to guest entry. Keep those real addresses separate from this lesson's word indices.</p>
+<div class="check"><p class="check-h">Before moving on</p><ul class="check-list"><li class="check-item"><input type="checkbox"><label>I wrote the four state rows and explained the out-of-range case.</label></li><li class="check-item"><input type="checkbox"><label>I can distinguish interpreting guest instructions from executing mapped guest code natively.</label></li><li class="check-item"><input type="checkbox"><label>I can explain the purpose of a return address, ABI and virtual-memory mapping.</label></li></ul></div><p>Ticks record your own assessment. Keep your prediction, actual output and explanation; a tick alone is not evidence of understanding.</p>
+</div></section>
+</main>
+<script src="assets/topics.js?v=20261007-5" defer></script>
+<script src="assets/search-index.js?v=20261007-5" defer></script>
+<script src="assets/app.js?v=20261007-5" defer></script>
+<script src="assets/highlight.js?v=20261007" defer></script>
+</body>
+</html>

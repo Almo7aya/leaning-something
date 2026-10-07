@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-4">
+<link rel="stylesheet" href="assets/app.css?v=20261007-5">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
@@ -16,6 +16,9 @@
 <p class="topic-eyebrow">Developer curriculum · D1</p>
 <h1 id="overview">The developer curriculum</h1>
 <p class="topic-deck">A source-grounded route from understanding KytyPS5 to making and verifying a focused contribution.</p>
+<!-- prerequisites:developer-curriculum -->
+<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="t-cpp-build.html">Building, linking &amp; debugging</a> · <a href="t-coherency.html">Page faults &amp; CPU/GPU coherency</a>. <a href="start.html">View the learning route</a>.</p>
+<!-- /prerequisites -->
 <section class="band band-read">
 <div class="band-h"><span class="band-t">Read, trace, prove</span></div>
 <div class="prose">
@@ -24,14 +27,19 @@
 <p>This is a route from reading the emulator to making a defensible change. It is pinned to <code>d2413fc2</code> (7 October 2026), not a guarantee about future main. The traces follow selected real source paths; the labs deliberately introduce caller mistakes in isolated fixtures. They do not demonstrate that a game works, and they do not claim upstream has these bugs.</p></div>
 
 <h2 id="prerequisites">Before you start</h2>
-<p>You should be able to build a small C++20 executable, read pointers and half-open ranges, distinguish an integer from an address, and explain ownership and a mutex. If those are unfamiliar, start with <a href="t-pointers-memory.html">C10: pointers and memory</a>, <a href="t-cpp-language.html">C1: C++</a>, <a href="t-calling-conventions.html">calling conventions</a> and <a href="t-cpp-concurrency.html">C4: concurrency</a>. Use the <a href="path.html">seven-level reading path</a> for orientation; use the gates below for developer readiness.</p>
-<p>Keep two roots distinct: this learning repository, and the emulator checkout at <code>KytyPS5/</code>. Run the native labs from the learning root. Run emulator build commands from the emulator root. The site itself has no build step; the optional native labs need CMake and a C++20 toolchain.</p>
+<p>Before this contributor track, build a small C++20 executable, read pointers and half-open ranges, distinguish integers from addresses, and explain ownership and synchronization. If any are new, follow <a href="start.html">Start here</a> through B1–B5, then the emulation foundations; read <a href="t-cpp-concurrency.html">C4</a> before threaded changes. The <a href="path.html">project practice checklist</a> is an optional companion for readers who already meet these prerequisites. Use the gates below as evidence of developer readiness.</p>
+<p>Keep two roots distinct: this learning repository, and the emulator checkout at <code>KytyPS5/</code>. Run the native labs from the learning root. Run emulator build commands from the emulator root. The committed site can be served directly. Authors regenerate shared excerpts and navigation with the documentation script. Beginner labs need only CMake and a C++20 toolchain; these developer labs also use the emulator source checkout.</p>
 <pre>git -C KytyPS5 rev-parse HEAD
 git -C KytyPS5 status --short
 git status --short</pre>
 <p>Record the full source SHA, compiler, OS and test command. If your checkout differs, compare the named functions before trusting the trace. Do not reset an existing worktree just to match a lesson.</p>
 
 <h2 id="gates">The developer route: pass by evidence</h2>
+<div class="check"><p class="check-h">Ready for the developer route</p><ul class="check-list">
+<li class="check-item"><input type="checkbox"><label>I checked the prerequisites and can distinguish the learning repository from my emulator source checkout.</label></li>
+<li class="check-item"><input type="checkbox"><label>I chose a bounded subsystem goal and identified its required evidence and coverage limits below.</label></li>
+</ul></div>
+<p>These ticks record orientation, not completion of the later labs or capstone. Keep the evidence for those on their own lesson pages.</p>
 <div class="tw"><table>
 <thead><tr><th>Gate</th><th>Work</th><th>Evidence needed to pass</th></tr></thead>
 <tbody>
@@ -88,8 +96,10 @@ Files changed and why:</pre>
 <p>Do not report “game fixed” from a unit test, “GPU completed” from a CPU log, or “all platforms supported” from one Windows build. Record missing evidence explicitly.</p>
 
 <h2 id="maintaining">Keep the curriculum current</h2>
-<p>On an upstream update, compare the old and new source revisions, re-walk the functions named by D2/D3, rebuild the labs and re-run the documentation checks. Update examples, legacy copies, navigation and search together. A source-symbol check detects a renamed function, not a semantic change; manual review is still required.</p>
-<pre>node scripts/check-docs.cjs
+<p>On an upstream update, compare the old and new source revisions, re-walk the functions named by D2/D3, rebuild the labs and re-run the documentation checks. Edit the owning topic paragraphs and docs/content/learning.json, regenerate shared copies and navigation with scripts/build-docs.cjs --write, then regenerate the search index. Review unique long-form explanations separately. A source-symbol check detects a renamed function, not a semantic change; manual review is still required.</p>
+<pre>node scripts/build-docs.cjs
+node scripts/check-beginner.cjs
+node scripts/check-docs.cjs
 node scripts/check-doc-examples.cjs
 node scripts/check-curriculum.cjs
 node scripts/build-search-index.cjs</pre>
@@ -97,9 +107,9 @@ node scripts/build-search-index.cjs</pre>
 
 </div></section>
 </main>
-<script src="assets/topics.js?v=20261007" defer></script>
-<script src="assets/search-index.js?v=20261007-d2413fc2" defer></script>
-<script src="assets/app.js?v=20261007-4" defer></script>
+<script src="assets/topics.js?v=20261007-5" defer></script>
+<script src="assets/search-index.js?v=20261007-5" defer></script>
+<script src="assets/app.js?v=20261007-5" defer></script>
 <script src="assets/highlight.js?v=20261007" defer></script>
 </body>
 </html>

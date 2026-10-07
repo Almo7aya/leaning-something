@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-4">
+<link rel="stylesheet" href="assets/app.css?v=20261007-5">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
@@ -20,11 +20,14 @@
   <p class="topic-deck">
     Before any of the detail: what problem is an emulator solving, what are the two ways to solve it, and which one is KytyPS5? Answer that and the rest of the project stops looking arbitrary.
   </p>
+<!-- prerequisites:what-an-emulator-is -->
+<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="b-machine.html">Instructions, addresses and the guest</a>. <a href="start.html">View the learning route</a>.</p>
+<!-- /prerequisites -->
 
   <section class="band band-read">
     <div class="band-h"><span class="band-t">Read</span></div>
     <div class="prose">
-<p class="deck">An emulator makes one computer behave like another, so that software built for the second runs on the first. That is the whole idea. Everything else is engineering trade-offs about <em>where</em> you cut.</p>
+<p data-shared="excerpt-001" class="deck">An emulator makes one computer behave like another, so that software built for the second runs on the first. That is the whole idea. Everything else is engineering trade-offs about <em>where</em> you cut.</p>
 
   <h4 id="the-simplest-possible-emulator">The simplest possible emulator</h4>
   <p>Imagine a toy machine with four registers and a handful of instructions. An emulator for it is a loop:</p>
@@ -56,9 +59,9 @@ for (;;) {
     }
 }</pre>
 
-  <p>This illustrates an <strong>interpreter</strong>: fetch an instruction, decode it, perform its operation, repeat. A complete implementation also defines invalid instructions, exceptions and every other part of the guest machine.</p>
+  <p data-shared="excerpt-002">This illustrates an <strong>interpreter</strong>: fetch an instruction, decode it, perform its operation, repeat. A complete implementation also defines invalid instructions, exceptions and every other part of the guest machine.</p>
 
-  <p>The loop adds decoding and dispatch work to every guest instruction. Its cost depends on the interpreter, host and workload; CPU clock rates alone cannot predict emulation speed. Caching translated code or executing compatible guest instructions natively can avoid much of that repeated work.</p>
+  <p data-shared="excerpt-003">The loop adds decoding and dispatch work to every guest instruction. Its cost depends on the interpreter, host and workload; CPU clock rates alone cannot predict emulation speed. Caching translated code or executing compatible guest instructions natively can avoid much of that repeated work.</p>
 
   <h4 id="the-four-strategies-from-slowest-to-fastest">Execution strategies and HLE</h4>
 
@@ -96,9 +99,9 @@ for (;;) {
 
   <div class="primer">
     <span class="lbl">Jargon · LLE versus HLE</span>
-    <p><strong>Low-level emulation (LLE)</strong> reproduces lower-level hardware interfaces, often allowing original firmware or libraries to execute. It can preserve behavior that an HLE replacement omits, but neither accuracy nor speed follows from the label alone.</p>
-    <p><strong>High-level emulation (HLE)</strong> replaces those libraries with reimplementations. It can avoid executing those system-library binaries, but each replacement must match the guest-visible contract. A missing function can fail immediately or fall back to a logging zero-return stub; silent incorrect results can cause failures much later. HLE does not by itself establish compatibility.</p>
-    <p>KytyPS5 primarily replaces system services with HLE. Its README says no external low-level emulation modules are required. The loader can still execute a game-supplied <code>/app0/sce_module/libc.prx</code>; “HLE” does not mean every instruction outside the main executable is replaced.</p>
+    <p data-shared="excerpt-004"><strong>Low-level emulation (LLE)</strong> reproduces lower-level hardware interfaces, often allowing original firmware or libraries to execute. It can preserve behavior that an HLE replacement omits, but neither accuracy nor speed follows from the label alone.</p>
+    <p data-shared="excerpt-005"><strong>High-level emulation (HLE)</strong> replaces those libraries with reimplementations. It can avoid executing those system-library binaries, but each replacement must match the guest-visible contract. A missing function can fail immediately or fall back to a logging zero-return stub; silent incorrect results can cause failures much later. HLE does not by itself establish compatibility.</p>
+    <p data-shared="excerpt-006">KytyPS5 primarily replaces system services with HLE. Its README says no external low-level emulation modules are required. The loader can still execute a game-supplied <code>/app0/sce_module/libc.prx</code>; “HLE” does not mean every instruction outside the main executable is replaced.</p>
   </div>
 
   <h4 id="what-an-emulator-must-actually-reproduce">What an emulator must actually reproduce</h4>
@@ -113,7 +116,7 @@ for (;;) {
     <li><strong>The timing model</strong> — vertical blank, frame pacing, audio clocks. Games are full of code that assumes 60 Hz.</li>
   </ol>
 
-  <p>Most ordinary guest CPU instructions execute directly in a compatible x86-64 environment. Targeted instruction compatibility is still necessary; the remaining responsibilities account for most of this project.</p>
+  <p data-shared="excerpt-007">Most ordinary guest CPU instructions execute directly in a compatible x86-64 environment. Targeted instruction compatibility is still necessary; the remaining responsibilities account for most of this project.</p>
 
   <div class="learn">
     <div class="lh">Learn more · emulation fundamentals</div>
@@ -155,11 +158,11 @@ for (;;) {
     <div class="layer g"><span class="nm">GPU command processor</span><span class="chip guest">guest</span><span class="ds">Reads PM4 packets straight out of memory. There is no "driver" between the game and the hardware in the PC sense.</span></div>
   </div>
 
-  <p>KytyPS5 replaces the middle two layers wholesale with native C++, and models the fourth in software. The game executes natively, with relocations and targeted compatibility patches applied by the loader.</p>
+  <p data-shared="excerpt-008">KytyPS5 replaces the middle two layers wholesale with native C++, and models the fourth in software. The game executes natively, with relocations and targeted compatibility patches applied by the loader.</p>
 
   <div class="callout g">
     <span class="lbl">Naming you will meet</span>
-    <p><strong>Prospero</strong> is Sony's internal codename for the PS5, and it is the namespace name used throughout Kyty's graphics code (<code>Libs::Graphics::Prospero</code>). <strong>AGC</strong> is the PS5's low-level graphics API, referred to as <strong>Gen5</strong> in the source. <strong>GNM</strong> was its PS4 predecessor, and some symbol names still carry that lineage.</p>
+    <p data-shared="excerpt-009"><strong>Prospero</strong> is Sony's internal codename for the PS5, and it is the namespace name used throughout Kyty's graphics code (<code>Libs::Graphics::Prospero</code>). <strong>AGC</strong> is the PS5's low-level graphics API, referred to as <strong>Gen5</strong> in the source. <strong>GNM</strong> was its PS4 predecessor, and some symbol names still carry that lineage.</p>
   </div>
 
   <h4 id="what-a-game-file-actually-is">What a game file actually is</h4>
@@ -232,9 +235,9 @@ for (;;) {
 
 </main>
 
-<script src="assets/topics.js?v=20261007" defer></script>
-<script src="assets/search-index.js?v=20261007-d2413fc2" defer></script>
-<script src="assets/app.js?v=20261007-4" defer></script>
+<script src="assets/topics.js?v=20261007-5" defer></script>
+<script src="assets/search-index.js?v=20261007-5" defer></script>
+<script src="assets/app.js?v=20261007-5" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>

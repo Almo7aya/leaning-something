@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en" class="notranslate" translate="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bytes, bits and bounded reads — KytyPS5</title>
+<meta name="description" content="Decode a four-byte value without reading past the buffer or confusing a value with an address.">
+<link rel="stylesheet" href="assets/app.css?v=20261007-5">
+<link rel="stylesheet" href="assets/highlight.css?v=20261007">
+</head>
+<body>
+<main class="topic" data-app-content>
+<p class="topic-eyebrow">Beginner · B2</p>
+<h1 id="overview">Bytes, bits and bounded reads</h1>
+<p class="topic-deck">Decode a four-byte value without reading past the buffer or confusing a value with an address.</p>
+<!-- prerequisites:beginner-bytes -->
+<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="b-first-program.html">Your first C++ program</a>. <a href="start.html">View the learning route</a>.</p>
+<!-- /prerequisites -->
+<section class="band band-read"><div class="band-h"><span class="band-t">Learn, run, explain</span></div><div class="prose">
+
+<h2 id="before">Before you start</h2><p>Complete <a href="b-first-program.html">B1</a>: functions, arrays, loops and a working build. Here we use fixed-width unsigned integers so each field has a known number of bits.</p>
+<h2 id="numbers">The same value in three notations</h2>
+<p>A bit is 0 or 1; an eight-bit byte represents values 0 through 255. Decimal uses ten digits, binary two, hexadecimal sixteen. Thus <code>15 == 0b1111 == 0x0f</code>. A hexadecimal digit represents four bits, so two digits represent a byte. <code>std::uint32_t</code> is an unsigned 32-bit integer on the platforms used here. <code>std::size_t</code> is the unsigned type used for object sizes and indices; its width depends on the platform.</p>
+<p><code>value &gt;&gt; 8</code> shifts a value right by eight bits. <code>&amp; 0xffu</code> keeps its lowest eight bits. <code>|</code> combines bit fields; <code>|=</code> combines into the variable on its left. The <code>u</code> suffix makes a literal unsigned. Keep shift counts below the width of the shifted type; our loop uses only 0, 8, 16 and 24.</p>
+<h2 id="layout">Bytes have an order</h2>
+<div class="tw"><table><thead><tr><th>Offset</th><th>Byte</th><th>Contribution</th></tr></thead><tbody>
+<tr><td>0</td><td>78</td><td>0x00000078</td></tr><tr><td>1</td><td>56</td><td>0x00005600</td></tr><tr><td>2</td><td>34</td><td>0x00340000</td></tr><tr><td>3</td><td>12</td><td>0x12000000</td></tr></tbody></table></div>
+<p>The bytes <code>78 56 34 12</code> encode <code>0x12345678</code> in <strong>little-endian</strong> order: the least significant byte comes first. The explicit shifts below decode that order regardless of the host's byte order. An offset is a position within this buffer, not an absolute memory address.</p>
+<p><code>std::span&lt;const std::uint8_t&gt;</code> passes a read-only view of bytes and their count without copying them. B3 explains its lifetime. <code>std::optional&lt;T&gt;</code> contains either a value or no value. Check it before using <code>*value</code>; <code>std::nullopt</code> reports that no result exists.</p>
+<h2 id="bounds">Check a range before using it</h2>
+<p>A five-byte buffer has valid indices <code>[0, 5)</code>: include zero, exclude five. A four-byte read at offset 1 ends exactly at 5 and is valid; a read at 2 is truncated. First reject an offset larger than the size, then check the remaining byte count. This avoids an overflowing <code>offset + 4</code> calculation. <code>||</code> means logical OR and evaluates its right side only when the left side is false, so the subtraction happens only after the offset check succeeds.</p>
+<p class="filename">Complete runnable teaching program · <a href="labs/beginner/bytes.cpp">bytes.cpp</a></p>
+<!-- code:labs/beginner/bytes.cpp -->
+<pre><code>#include &lt;array&gt;
+#include &lt;cstddef&gt;
+#include &lt;cstdint&gt;
+#include &lt;iostream&gt;
+#include &lt;limits&gt;
+#include &lt;optional&gt;
+#include &lt;span&gt;
+
+// Teaching format: four little-endian bytes, not an ELF or PM4 parser.
+std::optional&lt;std::uint32_t&gt; read_u32(std::span&lt;const std::uint8_t&gt; bytes,
+                                     std::size_t offset) {
+    if (offset &gt; bytes.size() || bytes.size() - offset &lt; 4) {
+        return std::nullopt;
+    }
+    std::uint32_t value = 0;
+    for (std::size_t i = 0; i &lt; 4; ++i) {
+        value |= std::uint32_t{bytes[offset + i]} &lt;&lt; (8 * i);
+    }
+    return value;
+}
+
+int main() {
+    const std::array&lt;std::uint8_t, 5&gt; bytes{0x78, 0x56, 0x34, 0x12, 0xff};
+    const auto value = read_u32(bytes, 0);
+    if (!value || *value != 0x12345678u) return 1;
+    std::cout &lt;&lt; &quot;word=0x&quot; &lt;&lt; std::hex &lt;&lt; *value &lt;&lt; '\n';
+    std::cout &lt;&lt; &quot;field=0x&quot; &lt;&lt; ((*value &gt;&gt; 8) &amp; 0xffu) &lt;&lt; '\n';
+    const auto last = read_u32(bytes, 1);
+    if (!last || *last != 0xff123456u) return 1;
+    if (read_u32(bytes, 2) || read_u32(bytes, bytes.size()) ||
+        read_u32(bytes, std::numeric_limits&lt;std::size_t&gt;::max()) ||
+        read_u32({}, 0)) return 1;
+    std::cout &lt;&lt; &quot;last valid offset=1\n&quot;;
+    std::cout &lt;&lt; &quot;truncated, end, huge and empty reads rejected\n&quot;;
+}</code></pre>
+<!-- /code --><p>Use the <a href="b-first-program.html#setup">B1 setup</a> once. From this learning repository's root:</p>
+<pre>cmake --build _Build/curriculum/beginner --target bytes
+ctest --test-dir _Build/curriculum/beginner -R '^beginner_bytes$' --output-on-failure</pre>
+<p>To see the output directly in PowerShell, run <code>.\_Build\curriculum\beginner\bytes.exe</code>; in a POSIX shell, run <code>./_Build/curriculum/beginner/bytes</code>. Tests compare the full output and require a successful exit.</p><p>Expected output, with exit status <code>0</code>:</p><!-- output:labs/beginner/bytes.txt -->
+<pre>word=0x12345678
+field=0x56
+last valid offset=1
+truncated, end, huge and empty reads rejected</pre>
+<!-- /output -->
+<h2 id="practice">Exercise</h2><p>Predict the result at offset 1. Then change the first byte from <code>0x78</code> to <code>0x79</code>. Which output and checks should change? Explain why offset 1 is unaffected. Finally design a two-byte reader on paper: specify its return type, length check and shifts before coding it.</p>
+<details><summary>Hint</summary><p>At offset 1 the selected bytes are <code>56 34 12 ff</code>. The first byte of the entire buffer is not part of that range.</p></details>
+<details><summary>Worked answer and rubric</summary><p>Offset 1 produces <code>0xff123456</code>. Changing byte 0 makes the first word <code>0x12345679</code>; its field at bits 8–15 remains <code>0x56</code>. A two-byte reader checks remaining size against 2 and combines shifts of 0 and 8. Test empty input, exactly two bytes, a last-valid offset, a truncated range and a huge offset. You are ready when you can justify the guard before discussing the decoding loop.</p></details>
+<h2 id="project-bridge">From teaching bytes to project formats</h2>
+<p>This is an invented four-byte field, not a PM4 packet or ELF file. Later compare the range checks with <code>src/loader/elf.cpp</code> and the bit fields in <code>src/graphics/guest_gpu/command_processor/pm4Handlers.cpp</code>. A real format also needs its own size, alignment, endianness and semantic rules. Casting a buffer to a struct does not establish those rules.</p>
+<div class="check"><p class="check-h">Before moving on</p><ul class="check-list"><li class="check-item"><input type="checkbox"><label>I decoded the offset-1 word and extracted one field by hand.</label></li><li class="check-item"><input type="checkbox"><label>I can explain half-open ranges and why the huge-offset case must be rejected.</label></li><li class="check-item"><input type="checkbox"><label>I can distinguish an integer value, a buffer offset and an address.</label></li></ul></div><p>Ticks record your own assessment. Keep your prediction, actual output and explanation; a tick alone is not evidence of understanding.</p>
+</div></section>
+</main>
+<script src="assets/topics.js?v=20261007-5" defer></script>
+<script src="assets/search-index.js?v=20261007-5" defer></script>
+<script src="assets/app.js?v=20261007-5" defer></script>
+<script src="assets/highlight.js?v=20261007" defer></script>
+</body>
+</html>

@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-4">
+<link rel="stylesheet" href="assets/app.css?v=20261007-5">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
@@ -20,6 +20,9 @@
   <p class="topic-deck">
     Guest code was compiled for the System V AMD64 ABI. On Windows your host compiler emits Microsoft x64. The two disagree about which registers carry arguments — and since guest code runs natively, nothing translates between them for free.
   </p>
+<!-- prerequisites:calling-conventions -->
+<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="t-no-cpu-emulator.html">Why there's no CPU emulator</a> · <a href="b-memory.html">Objects, owners and borrowed memory</a>. <a href="start.html">View the learning route</a>.</p>
+<!-- /prerequisites -->
 
   <section class="band band-read">
     <div class="band-h"><span class="band-t">Read</span></div>
@@ -41,7 +44,7 @@ rflags                 <i>condition flags</i></pre>
   <p>Plus <strong>segment registers</strong>, a leftover from 16-bit days. In 64-bit mode most are ignored, but two survive with a specific job: <code>fs</code> and <code>gs</code> provide a per-thread base address, used to reach thread-local storage. Remember <code>fs</code> — it comes back in <a href="t-patching.html">topic 08</a> and causes real trouble.</p>
 
   <h4 id="what-a-calling-convention-is">What a calling convention is</h4>
-  <p>Machine code has no concept of a "function argument." When you write <code>f(a, b)</code>, the compiler must decide: which register or stack slot does <code>a</code> go in? Who cleans up the stack? Which registers may <code>f</code> destroy? A <strong>calling convention</strong> (or ABI, application binary interface) is the agreed answer.</p>
+  <p data-shared="excerpt-015">Machine code has no concept of a "function argument." When you write <code>f(a, b)</code>, the compiler must decide: which register or stack slot does <code>a</code> go in? Who cleans up the stack? Which registers may <code>f</code> destroy? A <strong>calling convention</strong> (or ABI, application binary interface) is the agreed answer.</p>
 
   <p>Two conventions matter here, and they disagree about almost everything:</p>
 
@@ -63,10 +66,10 @@ rflags                 <i>condition flags</i></pre>
         </div>
       </div>
     </div>
-    <div class="fig-note"><p>System V passes six integer arguments in registers; Microsoft passes four, and requires the caller to reserve 32 bytes of "shadow space" on the stack even when all arguments fit in registers. The register order is different too — <code>rcx</code> is the fourth argument under System V and the <em>first</em> under Microsoft.</p></div>
+    <div class="fig-note"><p data-shared="excerpt-016">System V passes six integer arguments in registers; Microsoft passes four, and requires the caller to reserve 32 bytes of "shadow space" on the stack even when all arguments fit in registers. The register order is different too — <code>rcx</code> is the fourth argument under System V and the <em>first</em> under Microsoft.</p></div>
   </div>
 
-  <p>They also differ on which registers a function must preserve. Under System V, <code>rbx rbp r12–r15</code> are callee-saved. Under Microsoft, that list additionally includes <code>rsi rdi</code> and all 128 bits of <code>xmm6–xmm15</code> (the upper YMM/ZMM portions remain volatile). A function compiled for one convention and called by the other will silently corrupt registers the caller expected to survive.</p>
+  <p data-shared="excerpt-017">They also differ on which registers a function must preserve. Under System V, <code>rbx rbp r12–r15</code> are callee-saved. Under Microsoft, that list additionally includes <code>rsi rdi</code> and all 128 bits of <code>xmm6–xmm15</code> (the upper YMM/ZMM portions remain volatile). A function compiled for one convention and called by the other will silently corrupt registers the caller expected to survive.</p>
 
   <h4 id="how-kytyps5-bridges-it">How KytyPS5 bridges it</h4>
   <p>Clang lets you set the convention per function with an attribute. Kyty defines two macros and uses them everywhere the boundary is crossed:</p>
@@ -75,7 +78,7 @@ rflags                 <i>condition flags</i></pre>
 <pre>#define <b>KYTY_MS_ABI</b>   __attribute__((ms_abi))
 #define <b>KYTY_SYSV_ABI</b> __attribute__((sysv_abi))</pre>
 
-  <p>Any function the guest can call is marked <code>KYTY_SYSV_ABI</code>. The compiler then emits a System V prologue for that one function, while the rest of the emulator is compiled with the platform's native convention:</p>
+  <p data-shared="excerpt-018">Any function the guest can call is marked <code>KYTY_SYSV_ABI</code>. The compiler then emits a System V prologue for that one function, while the rest of the emulator is compiled with the platform's native convention:</p>
 
 <pre>int <b>KYTY_SYSV_ABI</b> ContentExportInit2(const ContentExportInitParam2* init_param) {
     PRINT_NAME();
@@ -100,12 +103,12 @@ ret</pre>
 
   <div class="callout h">
     <span class="lbl">Why the build refuses MSVC</span>
-    <p>Microsoft's compiler has no <code>sysv_abi</code> attribute. There is no way to write this code in MSVC, so the root <code>CMakeLists.txt</code> rejects <code>cl.exe</code> and the supported Windows build uses <code>clang-cl</code>. The POSIX branches also recognise GCC, although the documented and CI builds use Clang.</p>
+    <p data-shared="excerpt-019">Microsoft's compiler has no <code>sysv_abi</code> attribute. There is no way to write this code in MSVC, so the root <code>CMakeLists.txt</code> rejects <code>cl.exe</code> and the supported Windows build uses <code>clang-cl</code>. The POSIX branches also recognise GCC, although the documented and CI builds use Clang.</p>
   </div>
 
   <h4 id="one-more-x86-64-detail-variadic-functions">One more x86-64 detail: variadic functions</h4>
   <p>Under System V, a variadic function such as <code>printf</code> receives the vector-register argument count in <code>al</code>. This matters when forwarding a real variadic call. The current unresolved-import stub only logs and returns zero; it does not preserve arguments or forward a call.</p>
-  <p>It is also why Kyty cannot simply forward a guest <code>printf</code> to the host's <code>vprintf</code>: the argument list layout differs. <code>src/libs/guestPrintf.cpp</code> implements the guest format-string interpreter and argument decoding for exactly this reason.</p>
+  <p data-shared="excerpt-020">It is also why Kyty cannot simply forward a guest <code>printf</code> to the host's <code>vprintf</code>: the argument list layout differs. <code>src/libs/guestPrintf.cpp</code> implements the guest format-string interpreter and argument decoding for exactly this reason.</p>
 
   <div class="learn">
     <div class="lh">Learn more · the two calling conventions</div>
@@ -167,9 +170,9 @@ ret</pre>
 
 </main>
 
-<script src="assets/topics.js?v=20261007" defer></script>
-<script src="assets/search-index.js?v=20261007-d2413fc2" defer></script>
-<script src="assets/app.js?v=20261007-4" defer></script>
+<script src="assets/topics.js?v=20261007-5" defer></script>
+<script src="assets/search-index.js?v=20261007-5" defer></script>
+<script src="assets/app.js?v=20261007-5" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>

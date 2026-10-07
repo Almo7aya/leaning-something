@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-4">
+<link rel="stylesheet" href="assets/app.css?v=20261007-5">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
@@ -20,11 +20,19 @@
   <p class="topic-deck">
     The last leg: turning accumulated state into real Vulkan objects, getting texture memory into a layout the GPU can sample, and presenting the result. This is also where most performance answers live.
   </p>
+<!-- prerequisites:vulkan -->
+<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="t-gpu-basics.html">How a GPU actually draws</a> · <a href="b-completion.html">Submitted is not completed</a>. <a href="start.html">View the learning route</a>.</p>
+<!-- /prerequisites -->
 
-  <section class="band band-read">
-    <div class="band-h"><span class="band-t">Read</span></div>
+  <section class="band band-read"><div class="band-h"><span class="band-t">First pass</span></div><div class="prose">
+<h2 id="core-idea">The host rendering job</h2><p>The host backend obtains buffers and images, binds a pipeline and resources, records commands, submits them, and eventually presents an image. Recording or submitting a command does not mean the device finished it. Reused objects need correct contents, layouts and lifetime as well as a matching cache key.</p><p>First follow that sequence and the completion timeline. Read device features, tiling formulas, cache keys and alias synchronization as deeper reference, then follow D3 with the current source.</p>
+<details><summary>Can a cached image always be reused because its guest address matches?</summary><p>No. The format, extent, usage and current contents must still match the required view, and synchronization and lifetime must be valid. An address is only part of the resource identity.</p></details>
+<p>Use <a href="start.html#reading-code">the code-example guide</a>: snippets below are source excerpts or labelled schematic sequences, not standalone programs.</p>
+</div></section>
+<section class="band band-read">
+    <div class="band-h"><span class="band-t">Implementation reference</span></div>
     <div class="prose">
-<p class="deck">The host side. Its central job is caching: turning "this guest address range, in this format, used this way" into "this Vulkan object" — and knowing when that answer stops being true.</p>
+<p data-shared="excerpt-152" class="deck">The host side. Its central job is caching: turning "this guest address range, in this format, used this way" into "this Vulkan object" — and knowing when that answer stops being true.</p>
 
   <h4 id="device-setup">Device setup</h4>
   <div class="filename">src/graphics/host_gpu/graphicContext.h</div>
@@ -75,7 +83,7 @@ struct GraphicContext {
   </div>
 
   <h4 id="the-pipeline-key">The pipeline key</h4>
-  <p>Vulkan bakes fixed-function state into the pipeline object, so every state difference needs a distinct pipeline — unless the state is declared <em>dynamic</em> and set per draw instead. Kyty packs everything that is not dynamic into one byte-comparable struct:</p>
+  <p data-shared="excerpt-153">Vulkan bakes fixed-function state into the pipeline object, so every state difference needs a distinct pipeline — unless the state is declared <em>dynamic</em> and set per draw instead. Kyty packs everything that is not dynamic into one byte-comparable struct:</p>
 
   <div class="filename">…/pipeline/pipelineCache.h</div>
 <pre>#pragma pack(push, 1)
@@ -113,9 +121,9 @@ struct GraphicsPipelineKey {
   time but does not replace Kyty's exact C++ keys.</p>
 
 <h4 id="renderer-ownership-and-readback">Renderer ownership and transfers</h4>
-  <p><code>RenderContext</code> directly owns <code>PageManager</code>, <code>BufferCache</code>, <code>TextureCache</code> and the mapped-range set. Its fault, invalidation, map/unmap, BDA preparation and garbage-collection methods replaced the separate GPU-resource manager. The owning renderer serializes pipeline-cache use, including saving while the GPU is running; the cache is not independently thread-safe.</p>
-  <p>Buffer readback is batched through a 64 MiB download ring. Clean guest buffers can stream directly; GPU-written aliases still require synchronization before CPU use. Image dirty-region queries honor CPU ownership and image-local readback validity. Texture alias resolution shares canonical layouts across linear/tiled, 1D/2D, mip-tail and depth/stencil views. DCC/CMASK clears must become real pixels before an expanded alias or video-out consumer can use them.</p>
-  <p>Draw preparation reuses shader bindings and reads vertex semantics directly from metadata. Release-label work is batched without redundant submissions; indirect dispatch counts are read from GPU buffers. These changes reduce per-draw work while keeping ordering and resource lifetimes explicit.</p>
+  <p data-shared="excerpt-154"><code>RenderContext</code> directly owns <code>PageManager</code>, <code>BufferCache</code>, <code>TextureCache</code> and the mapped-range set. Its fault, invalidation, map/unmap, BDA preparation and garbage-collection methods replaced the separate GPU-resource manager. The owning renderer serializes pipeline-cache use, including saving while the GPU is running; the cache is not independently thread-safe.</p>
+  <p data-shared="excerpt-155">Buffer readback is batched through a 64 MiB download ring. Clean guest buffers can stream directly; GPU-written aliases still require synchronization before CPU use. Image dirty-region queries honor CPU ownership and image-local readback validity. Texture alias resolution shares canonical layouts across linear/tiled, 1D/2D, mip-tail and depth/stencil views. DCC/CMASK clears must become real pixels before an expanded alias or video-out consumer can use them.</p>
+  <p data-shared="excerpt-156">Draw preparation reuses shader bindings and reads vertex semantics directly from metadata. Release-label work is batched without redundant submissions; indirect dispatch counts are read from GPU buffers. These changes reduce per-draw work while keeping ordering and resource lifetimes explicit.</p>
 
   <h4 id="command-submission">Command submission</h4>
   <div class="filename">…/renderer/commandScheduler.h</div>
@@ -218,7 +226,7 @@ Common::LeastRecentlyUsedCache&lt;ImageId, uint64_t&gt; m_lru_cache;</pre>
     Count,
 };</pre>
 
-  <p>Each family has a different swizzle, and the parameters change with bytes-per-element and with mip level. Small mip levels share a packed mip tail whose offsets still follow the tiled layout:</p>
+  <p data-shared="excerpt-133">Each family has a different swizzle, and the parameters change with bytes-per-element and with mip level. Small mip levels share a packed mip tail whose offsets still follow the tiled layout:</p>
 
 <pre>struct TileSurfaceDescription {
 	Prospero::BufferFormat format    = Prospero::BufferFormat::kInvalid;
@@ -293,10 +301,10 @@ void     TileGetTextureTotalSize(Prospero::BufferFormat format, uint32_t width, 
 uint32_t TileGetTexturePitch(Prospero::BufferFormat format, uint32_t width,
                              Prospero::TileMode tile);</pre>
 
-  <p><code>TileGetBlockXor</code> deserves a note. Beyond the in-block interleave, AMD applies an XOR of block coordinates into the address so that adjacent blocks land in different memory channels and banks. Miss it and images come out looking like a shuffled checkerboard rather than obviously wrong.</p>
+  <p data-shared="excerpt-134"><code>TileGetBlockXor</code> deserves a note. Beyond the in-block interleave, AMD applies an XOR of block coordinates into the address so that adjacent blocks land in different memory channels and banks. Miss it and images come out looking like a shuffled checkerboard rather than obviously wrong.</p>
 
   <h4 id="conversion-runs-on-the-gpu">Conversion runs on the GPU</h4>
-  <p>Detiling a 4K texture on the CPU would be unacceptable, so Kyty ships a compute shader per layout family. They are compiled at build time and embedded into the binary (<code>embed_spirv.cmake</code>):</p>
+  <p data-shared="excerpt-135">Detiling a 4K texture on the CPU would be unacceptable, so Kyty ships a compute shader per layout family. They are compiled at build time and embedded into the binary (<code>embed_spirv.cmake</code>):</p>
 
 <pre>src/graphics/host_gpu/shaders/
 ├─ gpu_tiler_common.inc            shared helpers
@@ -314,7 +322,7 @@ uint32_t TileGetTexturePitch(Prospero::BufferFormat format, uint32_t width,
 ├─ gpu_tiler_demote_d16.comp       and back
 └─ gpu_tiler_color_transform.comp      channel order fix-ups</pre>
 
-  <p>The last three are not tiling at all — they are format adaptations for cases where the host GPU cannot represent a guest format directly. <code>promote_d16</code> / <code>demote_d16</code> exist because some drivers handle 16-bit depth poorly, so Kyty may store it as 32-bit and convert on the way in and out.</p>
+  <p data-shared="excerpt-136">The last three are not tiling at all — they are format adaptations for cases where the host GPU cannot represent a guest format directly. <code>promote_d16</code> / <code>demote_d16</code> exist because some drivers handle 16-bit depth poorly, so Kyty may store it as 32-bit and convert on the way in and out.</p>
 
   <h4 id="compression-metadata">Compression metadata</h4>
   <div class="tw">
@@ -330,10 +338,10 @@ uint32_t TileGetTexturePitch(Prospero::BufferFormat format, uint32_t width,
 
   <div class="callout g">
     <span class="lbl">Why fast clears matter so much</span>
-    <p>A "cleared" render target on real hardware may contain no pixel data at all — only a metadata surface saying "everything is this colour." If Kyty ignored that and read the pixels, it would get stale garbage. Tracking clear state is therefore not an optimisation but a correctness requirement.</p>
+    <p data-shared="excerpt-137">A "cleared" render target on real hardware may contain no pixel data at all — only a metadata surface saying "everything is this colour." If Kyty ignored that and read the pixels, it would get stale garbage. Tracking clear state is therefore not an optimisation but a correctness requirement.</p>
   </div>
 
-<p class="deck">A game does not "present a frame." It registers buffers, renders into one, and asks the display hardware to scan it out at the next vertical blank. Reproducing that protocol faithfully matters more than it sounds.</p>
+<p data-shared="excerpt-161" class="deck">A game does not "present a frame." It registers buffers, renders into one, and asks the display hardware to scan it out at the next vertical blank. Reproducing that protocol faithfully matters more than it sounds.</p>
 
   <h4 id="the-protocol">The protocol</h4>
   <div class="filename">src/graphics/presentation/videoOut.h</div>
@@ -371,13 +379,13 @@ public:
   <p>It becomes a Vulkan submission ordered by timeline semaphore, and the command processor has matching entry points — <code>Flip()</code>, <code>FlipWithInterrupt()</code>, <code>PrepareCpuFlip()</code>, <code>WaitFlipDone()</code>.</p>
 
   <h4 id="virtual-vertical-blank">Virtual vertical blank</h4>
-  <p>A timer fires at the configured rate — 60 Hz by default, <code>--vblank-frequency</code> — and pushes events into every queue that registered for them. This must stay steady even when rendering is slow, because many engines drive their entire simulation from it. A game that waits on vblank and gets it late does not just render late; it simulates late.</p>
+  <p data-shared="excerpt-162">A timer fires at the configured rate — 60 Hz by default, <code>--vblank-frequency</code> — and pushes events into every queue that registered for them. This must stay steady even when rendering is slow, because many engines drive their entire simulation from it. A game that waits on vblank and gets it late does not just render late; it simulates late.</p>
 
   <h4 id="the-final-blit">The final blit</h4>
-  <p>Only at the very end does the guest's buffer reach the host window. The swapchain path is ordinary Vulkan: acquire an image, blit or resolve the guest buffer into it, present. <code>swapchain.cpp</code> handles format negotiation, present modes and resize.</p>
+  <p data-shared="excerpt-163">Only at the very end does the guest's buffer reach the host window. The swapchain path is ordinary Vulkan: acquire an image, blit or resolve the guest buffer into it, present. <code>swapchain.cpp</code> handles format negotiation, present modes and resize.</p>
 <h4 id="window-title-thread">Presentation statistics and the window thread</h4>
-<p><code>Presenter::Impl::Present()</code> increments <code>WindowLoopState::presented_frames</code> after a successful presentation path. <code>WindowContext::Run()</code> samples that atomic counter on the main thread at roughly one-second intervals, computes FPS from the frame-count difference and elapsed SDL milliseconds, and calls <code>UpdateTitle(frame_num, current_fps)</code>. <code>HostInputWaitEvent(event, max_wait_ms)</code> bounds the input wait so title updates also happen when no input arrives.</p>
-<p>Follow <code>src/graphics/presentation/window/swapchain.cpp</code>, <code>window/window.cpp</code> and <code>window/hostInput.cpp</code>. The title uses <code>SDL_SetWindowTitle()</code> directly on the main thread; presentation does not wait for a title callback. The relaxed frame counter supplies display statistics, not a Vulkan completion fence. <a href="t-cpp-concurrency.html#atomics-and-memory-order">C4</a> explains the ordering distinction.</p>
+<p data-shared="excerpt-164"><code>Presenter::Impl::Present()</code> increments <code>WindowLoopState::presented_frames</code> after a successful presentation path. <code>WindowContext::Run()</code> samples that atomic counter on the main thread at roughly one-second intervals, computes FPS from the frame-count difference and elapsed SDL milliseconds, and calls <code>UpdateTitle(frame_num, current_fps)</code>. <code>HostInputWaitEvent(event, max_wait_ms)</code> bounds the input wait so title updates also happen when no input arrives.</p>
+<p data-shared="excerpt-165">Follow <code>src/graphics/presentation/window/swapchain.cpp</code>, <code>window/window.cpp</code> and <code>window/hostInput.cpp</code>. The title uses <code>SDL_SetWindowTitle()</code> directly on the main thread; presentation does not wait for a title callback. The relaxed frame counter supplies display statistics, not a Vulkan completion fence. <a href="t-cpp-concurrency.html#atomics-and-memory-order">C4</a> explains the ordering distinction.</p>
 
 
   <div class="tw">
@@ -394,8 +402,8 @@ public:
     </table>
   </div>
 <h4 id="blend-mapping-and-readback-lifetimes">Blend mapping and readback lifetimes</h4>
-  <p><code>PipelineStaticParameters</code> is <strong>116 bytes</strong>. Depth-bounds enable and range are dynamic state. Inactive blend fields are canonicalized, and identical color/alpha equations share a key. Logical-alpha handling belongs to <code>ShaderPixelInputInfo::alpha_blend_source</code> and the effective blend factors, with <code>None</code>, <code>SourceAlpha</code>, <code>SourceAlphaOne</code> and <code>SourceAlphaZero</code> variants. <code>blendMapping.cpp</code> classifies supported remaps; unsupported combinations disable blending with a warning. Sampler LOD bias is clamped to the host limit.</p>
-  <p>The 64 MiB download ring is the common readback path, not a hard transfer limit. Oversized transfers allocate a temporary download <code>Buffer</code>; the deferred completion operation owns it until GPU completion, then invalidates host caches and copies back. See <code>BufferCache::DownloadBufferMemory()</code> and <code>CommandScheduler::DeferPriorityOperation()</code>.</p>
+  <p data-shared="excerpt-150"><code>PipelineStaticParameters</code> is <strong>116 bytes</strong>. Depth-bounds enable and range are dynamic state. Inactive blend fields are canonicalized, and identical color/alpha equations share a key. Logical-alpha handling belongs to <code>ShaderPixelInputInfo::alpha_blend_source</code> and the effective blend factors, with <code>None</code>, <code>SourceAlpha</code>, <code>SourceAlphaOne</code> and <code>SourceAlphaZero</code> variants. <code>blendMapping.cpp</code> classifies supported remaps; unsupported combinations disable blending with a warning. Sampler LOD bias is clamped to the host limit.</p>
+  <p data-shared="excerpt-151">The 64 MiB download ring is the common readback path, not a hard transfer limit. Oversized transfers allocate a temporary download <code>Buffer</code>; the deferred completion operation owns it until GPU completion, then invalidates host caches and copies back. See <code>BufferCache::DownloadBufferMemory()</code> and <code>CommandScheduler::DeferPriorityOperation()</code>.</p>
 
     </div>
   </section>
@@ -457,9 +465,9 @@ public:
 
 </main>
 
-<script src="assets/topics.js?v=20261007" defer></script>
-<script src="assets/search-index.js?v=20261007-d2413fc2" defer></script>
-<script src="assets/app.js?v=20261007-4" defer></script>
+<script src="assets/topics.js?v=20261007-5" defer></script>
+<script src="assets/search-index.js?v=20261007-5" defer></script>
+<script src="assets/app.js?v=20261007-5" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>

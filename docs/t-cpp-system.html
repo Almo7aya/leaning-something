@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-4">
+<link rel="stylesheet" href="assets/app.css?v=20261007-5">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
@@ -20,6 +20,9 @@
   <p class="topic-deck">
     The graphics half is the hard half, but a game boots, keeps running, and stays audible because of the other half. This is the map of everything that is not a draw call: audio, video, network, input, the file sandbox, and the launcher — and the one pattern they all share.
   </p>
+<!-- prerequisites:cpp-system -->
+<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="t-hle.html">HLE libraries</a> · <a href="t-threads.html">Threads and TLS</a>. <a href="start.html">View the learning route</a>.</p>
+<!-- /prerequisites -->
 
   <section class="band band-read">
     <div class="band-h"><span class="band-t">Read</span></div>
@@ -45,10 +48,10 @@ subsystems.Initialize&lt;Libs::Graphics::Lifecycle&gt;();</pre>
   <p>Read the explicit sequence as the dependency contract: config first (everything reads it), logging second (everything writes it), then timer, pthread, profiler, network, memory, files, input, audio and finally graphics. Each <code>Lifecycle</code> supplies a name and <code>static constexpr</code> callbacks; successful shutdown and emergency-shutdown callbacks are recorded and later invoked in reverse order. This pattern is introduced in <a href="t-cpp-language.html">topic C1</a>.</p>
 
   <h4 id="audio">Audio — ports, graphs and decoders</h4>
-  <p>The implementation is now split by responsibility. <code>audio.cpp</code> owns AudioOut/AudioOut2 and AudioIn; <code>acm.cpp</code> owns ACM; <code>audio3d.cpp</code> owns Audio3D; and <code>ngs2.cpp</code> owns NGS2 systems, racks, voices and sampler graphs. Follow those files rather than looking for every API in the former monolithic audio implementation.</p>
-  <p>AudioOut2 supports 12-channel (7.1.4) data with downmix, user-capability queries, even blocking-write cadence and capture of submitted PCM before shared guest buffers change. NGS2 plays PCM16 and ATRAC9 sampler blocks, preserves stream/loop positions and supports rear low-pass filtering; unsupported custom modules warn and are skipped.</p>
-  <p><code>ajm.cpp</code> parses asynchronous jobs through <code>libs/ajm/decoder.h</code>. ATRAC9 uses LibAtrac9; AAC, MP3 and Opus use FFmpeg. <code>libs/ajm/opus_decoder.h</code> adds Opus decode/control handling, and shared reset logic handles gapless state.</p>
-  <p><code>--mic &lt;name&gt;</code> selects SDL3 microphone capture for AudioIn; omitting it produces paced silence. <code>dualSenseHaptics.cpp</code> routes vibration-audio ports to DualSense haptics and pad-speaker ports to the controller speaker when the host device is available. Audio haptics are a separate path from <code>PadSetVibration()</code> motor rumble.</p>
+  <p data-shared="excerpt-167">The implementation is now split by responsibility. <code>audio.cpp</code> owns AudioOut/AudioOut2 and AudioIn; <code>acm.cpp</code> owns ACM; <code>audio3d.cpp</code> owns Audio3D; and <code>ngs2.cpp</code> owns NGS2 systems, racks, voices and sampler graphs. Follow those files rather than looking for every API in the former monolithic audio implementation.</p>
+  <p data-shared="excerpt-168">AudioOut2 supports 12-channel (7.1.4) data with downmix, user-capability queries, even blocking-write cadence and capture of submitted PCM before shared guest buffers change. NGS2 plays PCM16 and ATRAC9 sampler blocks, preserves stream/loop positions and supports rear low-pass filtering; unsupported custom modules warn and are skipped.</p>
+  <p data-shared="excerpt-169"><code>ajm.cpp</code> parses asynchronous jobs through <code>libs/ajm/decoder.h</code>. ATRAC9 uses LibAtrac9; AAC, MP3 and Opus use FFmpeg. <code>libs/ajm/opus_decoder.h</code> adds Opus decode/control handling, and shared reset logic handles gapless state.</p>
+  <p data-shared="excerpt-170"><code>--mic &lt;name&gt;</code> selects SDL3 microphone capture for AudioIn; omitting it produces paced silence. <code>dualSenseHaptics.cpp</code> routes vibration-audio ports to DualSense haptics and pad-speaker ports to the controller speaker when the host device is available. Audio haptics are a separate path from <code>PadSetVibration()</code> motor rumble.</p>
 
   <h4 id="video">Video — FFmpeg behind a console API</h4>
   <p>Two layers: <code>avPlayer.cpp</code> for full-motion-video playback, and <code>libVideoDec2.cpp</code> plus <code>videoDec2Decoder.cpp</code> for the general video-decode API. Both sit on FFmpeg; the README credits <code>shadPS4</code> as a reference for the AVPlayer implementation. Games use these for cutscenes — the part of the run where the GPU thread is suddenly rendering video frames instead of the game.</p>
@@ -68,7 +71,7 @@ int KYTY_SYSV_ABI SslTerm(int ssl_ctx_id);
   <p>Trace each API’s return code, output fields and completion state together. Offline implementations provide only part of the console service contract; returning success alone does not establish that a login or network operation completed.</p>
 
 <h4 id="notice-screen-preference">Notice-screen preference</h4>
-<p><code>--skip-notice-screen true</code> sets <code>ConfigOptions::skip_notice_screen</code>, which defaults to <code>false</code>. The launcher persists the same option and exposes it as <strong>Skip boot logos</strong>. Follow <code>config.cpp</code> → <code>mainDialog.cpp</code> → <code>src/main.cpp</code> → <code>Config::SkipNoticeScreen()</code> to trace a saved preference into the guest API.</p>
+<p data-shared="excerpt-174"><code>--skip-notice-screen true</code> sets <code>ConfigOptions::skip_notice_screen</code>, which defaults to <code>false</code>. The launcher persists the same option and exposes it as <strong>Skip boot logos</strong>. Follow <code>config.cpp</code> → <code>mainDialog.cpp</code> → <code>src/main.cpp</code> → <code>Config::SkipNoticeScreen()</code> to trace a saved preference into the guest API.</p>
 <div class="filename">src/libs/libSystemService.cpp — the guest query</div>
 <pre>static int KYTY_SYSV_ABI SystemServiceGetNoticeScreenSkipFlag(bool* value) {
     PRINT_NAME();
@@ -81,14 +84,14 @@ int KYTY_SYSV_ABI SslTerm(int ssl_ctx_id);
 
     return OK;
 }</pre>
-<p>The game decides how to use the returned flag. This can skip notices or logos in games that honor the query; it does not remove every game’s intro sequence. The neighboring set/auto-set entry points currently return success without changing this configured value.</p>
+<p data-shared="excerpt-175">The game decides how to use the returned flag. This can skip notices or logos in games that honor the query; it does not remove every game’s intro sequence. The neighboring set/auto-set entry points currently return success without changing this configured value.</p>
 
   <h4 id="input">Input — SDL events become DualSense state</h4>
   <p><code>libPad.cpp</code>, <code>libs/controller.cpp</code>, and <code>presentation/window/hostInput.cpp</code> form a clean mapping example. SDL's event loop runs on the main thread; controller, keyboard, and mouse input become the <code>padData.h</code> state returned to the game. Repeatable <code>--keymap Control=Input</code> arguments customize PC controls, and guest vibration commands travel back to the physical controller through SDL rumble.</p>
 
   <p>SDL forwards light-bar and adaptive-trigger settings as well as rumble. <code>dualSenseBluetooth.cpp</code> handles the Bluetooth audio/haptics transport using Opus; <code>dualSenseHaptics.cpp</code> also routes USB controller audio. Device support and transport determine which outputs are available. The default keyboard keys <code>1</code>, <code>2</code> and <code>3</code> cycle speaker volume, vibration intensity and trigger-effect intensity. <code>--controller-color</code>, <code>--controller-volume</code> and <code>--controller-vibration</code> set startup preferences.</p>
 
-<p>SDL3 also supplies gyroscope and accelerometer samples for pad motion APIs. The default keyboard mapping uses Z/C for L2/R2. Windows are resizable and recreate the swapchain on resize; Space no longer acts as a pause shortcut. VideoOut supports RGB10A2 PQ buffers and layered presentation. <code>--vr</code> enables a virtual HMD2 model (<code>libHmd2.cpp</code>), including field-of-view/reprojection state, not a physical-headset backend.</p>
+<p data-shared="excerpt-171">SDL3 also supplies gyroscope and accelerometer samples for pad motion APIs. The default keyboard mapping uses Z/C for L2/R2. Windows are resizable and recreate the swapchain on resize; Space no longer acts as a pause shortcut. VideoOut supports RGB10A2 PQ buffers and layered presentation. <code>--vr</code> enables a virtual HMD2 model (<code>libHmd2.cpp</code>), including field-of-view/reprojection state, not a physical-headset backend.</p>
 
   <h4 id="the-file-sandbox">The file sandbox — guest paths, host files</h4>
   <p>The game believes it lives on a console with <code>/app0</code>, <code>/download0</code>, <code>/temp0</code> and <code>/savedata0</code>. The emulator synthesises that tree from host directories at boot:</p>
@@ -107,9 +110,15 @@ int KYTY_SYSV_ABI SslTerm(int ssl_ctx_id);
   <p><code>kernel/fileSystem.cpp</code> holds the mount table and <code>GetRealFilename()</code>, which every guest path passes through before touching the host. Two bugs live here in the real world: <strong>case sensitivity</strong> (host filesystems differ, so mounted-path lookup includes a case-insensitive fallback) and <strong>path translation</strong> (a game asking for <code>/app0/eboot.bin</code> is handed a host path by the loader, never the guest path).</p>
 
 <h4 id="archive-loading">Directories and ZArchive content</h4>
-  <p><code>--game</code> accepts a directory, ELF or <code>.zar</code> ZArchive with <code>eboot.bin</code> at its root. <code>common/archive.cpp</code> exposes virtual paths such as <code>game.zar!/sce_sys/param.json</code> through <code>Common::File</code>. A retained <code>ArchiveReader</code> shares the index and block cache while a mount or launcher scan is active. This is read-only game content; saves and temporary files use writable host locations.</p>
-  <p>Windows starts through <code>wmain</code>, converts arguments to UTF-8 and preserves native <code>std::filesystem::path</code> values through file operations. Guest paths without a matching mount stay outside the host namespace. The launcher uses <code>gameContent.cpp</code> to inspect folders and archives uniformly, including icons, title metadata and game size.</p>
-  <p><code>libSaveData.cpp</code> persists SaveDataMemory2 data and allocation metadata on disk, including search/mount capacity and timestamps. Save-data dialog locking and CP932 conversion have dedicated regression tests. Treat these as observable guest behavior when debugging missing progress or stuck dialogs.</p>
+  <!-- shared:t-elf-and-self.html:excerpt-055 -->
+<p><code>--game</code> accepts a directory, ELF or <code>.zar</code> ZArchive with <code>eboot.bin</code> at its root. <code>common/archive.cpp</code> exposes virtual paths such as <code>game.zar!/sce_sys/param.json</code> through <code>Common::File</code>. A retained <code>ArchiveReader</code> shares the index and block cache while a mount or launcher scan is active. This is read-only game content; saves and temporary files use writable host locations.</p>
+<!-- /shared -->
+  <!-- shared:t-elf-and-self.html:excerpt-056 -->
+<p>Windows starts through <code>wmain</code>, converts arguments to UTF-8 and preserves native <code>std::filesystem::path</code> values through file operations. Guest paths without a matching mount stay outside the host namespace. The launcher uses <code>gameContent.cpp</code> to inspect folders and archives uniformly, including icons, title metadata and game size.</p>
+<!-- /shared -->
+  <!-- shared:t-elf-and-self.html:excerpt-057 -->
+<p><code>libSaveData.cpp</code> persists SaveDataMemory2 data and allocation metadata on disk, including search/mount capacity and timestamps. Save-data dialog locking and CP932 conversion have dedicated regression tests. Treat these as observable guest behavior when debugging missing progress or stuck dialogs.</p>
+<!-- /shared -->
 
   <h4 id="the-launcher">The launcher — Qt in front of the emulator</h4>
   <p><code>src/launcher/</code> is a small Qt 6 application that searches the configured game folders recursively for directories containing <code>eboot.bin</code> and supported <code>.zar</code> archives, lists them with their compatibility status, and runs <code>kyty_emulator --game &lt;path&gt;</code> with the flags from a per-game or global configuration. It is deliberately thin — all the interesting state lives in <code>emulator.cpp</code> and the config layer (<code>common/emulatorConfig.cpp</code>, which receives the flags built from the launcher's persisted profiles).</p>
@@ -125,8 +134,8 @@ int KYTY_SYSV_ABI SslTerm(int ssl_ctx_id);
 
 <h4 id="local-trophies">Local trophies and notifications</h4>
 <p><code>libTrophy.cpp</code> and <code>common/trophies.cpp</code> implement local trophy registration, unlock/progress state and persistence using title trophy metadata. UDS events can map to trophy progress. The system overlay displays unlock notifications and the launcher provides a trophy viewer. <code>--trophy-notifications false</code> disables the notification presentation; these local paths are not PSN synchronization. Read <code>tests/TrophySystemTests.cpp</code> alongside the implementation.</p>
-<p>Click a trophy in the launcher to open <code>ShowTrophyInspector()</code> in <code>src/launcher/src/trophyViewerDialog.cpp</code>. It shows its grade, locked/unlocked status, local earned time, description and reward when present. A locked hidden trophy initially masks its metadata; <strong>Show Hidden Trophy</strong> reveals the details within that dialog without unlocking it. Labels use plain text, and the callback owns the trophy metadata and unlock snapshot through move captures.</p>
-<p><code>WrapTrophyTitle()</code> in <code>src/graphics/presentation/systemOverlay.cpp</code> wraps notification titles by words and explicit line breaks, then grows the toast height to fit. The icon stays at its base size and is vertically centered; a word wider than the text area remains intact and is clipped. This presentation path is separate from trophy persistence.</p>
+<p data-shared="excerpt-176">Click a trophy in the launcher to open <code>ShowTrophyInspector()</code> in <code>src/launcher/src/trophyViewerDialog.cpp</code>. It shows its grade, locked/unlocked status, local earned time, description and reward when present. A locked hidden trophy initially masks its metadata; <strong>Show Hidden Trophy</strong> reveals the details within that dialog without unlocking it. Labels use plain text, and the callback owns the trophy metadata and unlock snapshot through move captures.</p>
+<p data-shared="excerpt-177"><code>WrapTrophyTitle()</code> in <code>src/graphics/presentation/systemOverlay.cpp</code> wraps notification titles by words and explicit line breaks, then grows the toast height to fit. The icon stays at its base size and is vertically centered; a word wider than the text area remains intact and is clipped. This presentation path is separate from trophy persistence.</p>
 <h4 id="library-contracts">Library contracts worth tracing</h4>
 <p><code>libPngEnc.cpp</code> encodes PNG output using stb_image_write and validates the supplied buffers and parameters. Socket operations in <code>network.cpp</code> translate host errors and timeout units, including microsecond guest timeouts; URI building is covered with parsing in <code>HttpUriParseTests.cpp</code>. Sign-in dialogs remain active until dismissed. Bluetooth HID, DeviceService and USB library entry points include stubs, which must be distinguished from the host controller transport.</p>
 <p>The launcher exposes controller preferences, per-game configuration import/export, cheat browsing and the trophy viewer. For audio timing, follow both SDL stream conversion and guest submission cadence: resampling alone does not establish the correct blocking interval. <code>AudioOutTimingTests.cpp</code> covers that distinction.</p>
@@ -140,7 +149,7 @@ int KYTY_SYSV_ABI SslTerm(int ssl_ctx_id);
     </ul>
   </div>
 <h4 id="apr-command-order-and-waits">APR command order and waits</h4>
-  <p><code>src/libs/libAmpr.cpp</code> stores file reads, memory operations, address writes/waits and events in one append-ordered command sequence. The worker advances a submission cursor one command at a time. A blocked address wait holds up its own priority queue while other ready priorities can proceed; completion is published only when the sequence completes or fails. APR file reads reuse worker-owned staging storage rather than allocating a new buffer for each read.</p>
+  <p data-shared="excerpt-166"><code>src/libs/libAmpr.cpp</code> stores file reads, memory operations, address writes/waits and events in one append-ordered command sequence. The worker advances a submission cursor one command at a time. A blocked address wait holds up its own priority queue while other ready priorities can proceed; completion is published only when the sequence completes or fails. APR file reads reuse worker-owned staging storage rather than allocating a new buffer for each read.</p>
 
     </div>
   </section>
@@ -202,9 +211,9 @@ int KYTY_SYSV_ABI SslTerm(int ssl_ctx_id);
 
 </main>
 
-<script src="assets/topics.js?v=20261007" defer></script>
-<script src="assets/search-index.js?v=20261007-d2413fc2" defer></script>
-<script src="assets/app.js?v=20261007-4" defer></script>
+<script src="assets/topics.js?v=20261007-5" defer></script>
+<script src="assets/search-index.js?v=20261007-5" defer></script>
+<script src="assets/app.js?v=20261007-5" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>

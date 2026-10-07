@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-4">
+<link rel="stylesheet" href="assets/app.css?v=20261007-5">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
@@ -20,17 +20,20 @@
   <p class="topic-deck">
     Guest code assumes a working <code>fs</code> segment and a FreeBSD-shaped world. On Windows those assumptions are false, and since the code runs natively there is no interpreter to fix them up on the fly. So the loader edits the instructions themselves.
   </p>
+<!-- prerequisites:patching -->
+<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="t-no-cpu-emulator.html">Why there's no CPU emulator</a> · <a href="t-calling-conventions.html">Calling conventions &amp; the ABI wall</a>. <a href="start.html">View the learning route</a>.</p>
+<!-- /prerequisites -->
 
   <section class="band band-read">
     <div class="band-h"><span class="band-t">Read</span></div>
     <div class="prose">
-<p class="deck">Two instruction patterns in PS5 code cannot execute on Windows. Since there is no recompiler to fix them during translation, the loader rewrites the bytes in place before the code is ever run.</p>
+<p data-shared="excerpt-069" class="deck">Two instruction patterns in PS5 code cannot execute on Windows. Since there is no recompiler to fix them during translation, the loader rewrites the bytes in place before the code is ever run.</p>
 
   <h4 id="problem-1-thread-local-storage-through-fs">Problem 1 — thread-local storage through <code>fs</code></h4>
   <p>PS5 code reads its thread control block with a single instruction:</p>
 <pre>64 48 8B 04 25 00 00 00 00     mov rax, qword ptr <b>fs:[0]</b></pre>
 
-  <p>On x86-64 Windows the host TEB is addressed through <code>gs</code>. The guest’s <code>fs:[0]</code> assumption does not provide its TCB on the host, so the loader redirects the recognized access to a guest TLS helper.</p>
+  <p data-shared="excerpt-070">On x86-64 Windows the host TEB is addressed through <code>gs</code>. The guest’s <code>fs:[0]</code> assumption does not provide its TCB on the host, so the loader redirects the recognized access to a guest TLS helper.</p>
 
   <p>The fix replaces those exact nine bytes with a call to a generated stub, then moves the result into whatever register the original targeted:</p>
 
@@ -75,7 +78,7 @@ for (auto* ptr = start_ptr; ptr &lt;= end_ptr; ptr++) {
     uint8_t code[9] = {0x48, 0xE8, 0, 0, 0, 0, 0x48, 0x89, 0xC0};
 };</pre>
 
-  <p>The <code>mov rax,rax</code> byte is rewritten by <code>SetOutputReg</code> so the value lands in the register the original instruction wanted. For registers other than <code>rax</code> the stub jumps to a per-register variant at a fixed offset (<code>TlsRegStub::GetOffset(reg)</code>), each of which does <code>call handler; mov &lt;reg&gt;, rax</code>.</p>
+  <p data-shared="excerpt-071">The <code>mov rax,rax</code> byte is rewritten by <code>SetOutputReg</code> so the value lands in the register the original instruction wanted. For registers other than <code>rax</code> the stub jumps to a per-register variant at a fixed offset (<code>TlsRegStub::GetOffset(reg)</code>), each of which does <code>call handler; mov &lt;reg&gt;, rax</code>.</p>
 
   <div class="callout h">
     <span class="lbl">Why the call starts with a REX.W byte</span>
@@ -98,11 +101,11 @@ for (auto* ptr = start_ptr; ptr &lt;= end_ptr; ptr++) {
 
   <div class="callout h">
     <span class="lbl">Why this is expensive but acceptable</span>
-    <p>A single instruction has become a call plus register spills. Thread-local reads are common but not usually in the hottest loops, and the cached fast path keeps the handler short. The alternative — a full recompiler — costs vastly more.</p>
+    <p data-shared="excerpt-072">A single instruction has become a call plus register spills. Thread-local reads are common but not usually in the hottest loops, and the cached fast path keeps the handler short. The alternative — a full recompiler — costs vastly more.</p>
   </div>
 
   <h4 id="problem-2-the-stack-canary">Problem 2 — the stack canary</h4>
-  <p>Compiler stack-protector code stores a guard value through <code>fs:[0x28]</code>. With an unsuitable FS base this can fault, including at address <code>0x28</code> when that base is zero. The loader recognizes this store pattern:</p>
+  <p data-shared="excerpt-073">Compiler stack-protector code stores a guard value through <code>fs:[0x28]</code>. With an unsuitable FS base this can fault, including at address <code>0x28</code> when that base is zero. The loader recognizes this store pattern:</p>
 
   <div class="filename">src/loader/runtimeLinker.cpp — the fs:[0x28] pass</div>
 <pre>const uint8_t fs_store_pattern[8] = {0x64, 0xc7, 0x04, 0x25, 0x28, 0x00, 0x00, 0x00};
@@ -123,11 +126,15 @@ for (auto* ptr = start_ptr; ptr &lt;= end_ptr; ptr++) {
     }
 }</pre>
 
-  <p>This is a compatibility rewrite of a recognized instruction pattern. It changes the guest’s stack-protector behavior; it is not a general implementation of the guest TLS or stack-canary contract.</p>
+  <p data-shared="excerpt-074">This is a compatibility rewrite of a recognized instruction pattern. It changes the guest’s stack-protector behavior; it is not a general implementation of the guest TLS or stack-canary contract.</p>
 
 <h4 id="optional-instruction-emulation">Optional AMD patches and host instruction gaps</h4>
-  <p><code>--amd-cpu</code> enables the shared <code>guestInstructionPatcher.cpp</code> path on Windows, Linux and x86-64 macOS. <code>PatchGuestInstructions(..., protect_memory, emulate_amd, host_features)</code> uses function boundaries from <code>.eh_frame</code> and registered trampoline space. It patches supported <code>VRSQRTPS</code> forms and fills host-feature gaps for <code>EXTRQ</code>, <code>INSERTQ</code>, <code>RDPID</code> and <code>CLWB</code>, preferring native trampolines with safe trap fallbacks. Windows red-zone protection is controlled separately by <code>--redzone</code>.</p>
-  <p>The patch result records per-family counts for reciprocal square root, EXTRQ, INSERTQ, RDPID and CLWB, distinguishing native patches from trap fallback. Host features decide which compatibility path is needed; x86-64 macOS signal handling also preserves the SSE4a context. Native TLS keeps fiber context valid across host-thread migration, and fiber ownership preserves small guest stacks.</p>
+  <!-- shared:t-no-cpu-emulator.html:excerpt-075 -->
+<p><code>--amd-cpu</code> enables the shared <code>guestInstructionPatcher.cpp</code> path on Windows, Linux and x86-64 macOS. <code>PatchGuestInstructions(..., protect_memory, emulate_amd, host_features)</code> uses function boundaries from <code>.eh_frame</code> and registered trampoline space. It patches supported <code>VRSQRTPS</code> forms and fills host-feature gaps for <code>EXTRQ</code>, <code>INSERTQ</code>, <code>RDPID</code> and <code>CLWB</code>, preferring native trampolines with safe trap fallbacks. Windows red-zone protection is controlled separately by <code>--redzone</code>.</p>
+<!-- /shared -->
+  <!-- shared:t-no-cpu-emulator.html:excerpt-076 -->
+<p>The patch result records per-family counts for reciprocal square root, EXTRQ, INSERTQ, RDPID and CLWB, distinguishing native patches from trap fallback. Host features decide which compatibility path is needed; x86-64 macOS signal handling also preserves the SSE4a context. Native TLS keeps fiber context valid across host-thread migration, and fiber ownership preserves small guest stacks.</p>
+<!-- /shared -->
 
   <h4 id="how-to-see-this-yourself">How to see this yourself</h4>
   <p>Run any title and grep the log for <code>Patch tls at addr</code>. Take one of those addresses into a debugger and look at the nine bytes: you will find <code>48 E8 …</code> where the ELF file on disk has <code>64 48 8B 04 25 00 00 00 00</code>. Seeing that once makes the whole mechanism concrete in a way no description does.</p>
@@ -180,9 +187,9 @@ for (auto* ptr = start_ptr; ptr &lt;= end_ptr; ptr++) {
 
 </main>
 
-<script src="assets/topics.js?v=20261007" defer></script>
-<script src="assets/search-index.js?v=20261007-d2413fc2" defer></script>
-<script src="assets/app.js?v=20261007-4" defer></script>
+<script src="assets/topics.js?v=20261007-5" defer></script>
+<script src="assets/search-index.js?v=20261007-5" defer></script>
+<script src="assets/app.js?v=20261007-5" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>

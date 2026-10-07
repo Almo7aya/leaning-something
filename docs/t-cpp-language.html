@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-4">
+<link rel="stylesheet" href="assets/app.css?v=20261007-5">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
@@ -18,8 +18,11 @@
   <p class="topic-eyebrow">Appendix · C1</p>
   <h1 id="c-language-by-example">C++ language, by example</h1>
   <p class="topic-deck">
-    You already know how to program, so this is not a C++ course — it is a map of the small, dense subset of C++ this tree leans on. Every construct below appears within the first hour of reading, shown as it actually appears, not as a textbook would dress it up.
+    This is a reference for reading project C++, after <a href="b-memory.html">B3: objects and ownership</a>. Use one section when the source requires it; you do not need to master every construct before starting the emulator walkthrough. The Read section contains project excerpts, often with omitted declarations. The Try section provides a complete standalone program.
   </p>
+<!-- prerequisites:cpp-language -->
+<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="b-memory.html">Objects, owners and borrowed memory</a>. <a href="start.html">View the learning route</a>.</p>
+<!-- /prerequisites -->
 
   <section class="band band-read">
     <div class="band-h"><span class="band-t">Read</span></div>
@@ -131,10 +134,10 @@ inline VaFloatX4 VaArg_reg_save_area_fp&lt;VaFloatX4, 32&gt;(VaList* l) {
     ...
 }</pre>
 
-  <p>The takeaway: a template is not a function, it is a factory of functions. If the compiler cannot instantiate it for a given argument, the error lands at the <em>call site</em> — which is why template errors read backwards.</p>
+  <p>A function template describes a family of functions; a class template describes a family of types. Arguments select a specialization. Instantiation errors often include a chain of call sites: start at the first relevant diagnostic and follow that chain to the unsupported operation, rather than assuming every template error is located at the caller.</p>
 
   <h4 id="move-semantics-and-perfect-forwarding">Move semantics and perfect forwarding</h4>
-  <p>The single best example in the tree is <code>src/common/uniqueFunction.h</code>, a move-only, type-erased callable. Read it once and three language features click into place:</p>
+  <p>After you understand the B3 owner transfer, read <code>src/common/uniqueFunction.h</code>, a move-only, type-erased callable. Type erasure stores different callable types behind one interface. Read the constructor, owned implementation object and invocation path separately:</p>
 
   <div class="filename">src/common/uniqueFunction.h — the interesting half</div>
 <pre>template &lt;typename Result, typename... Args&gt;            <i>// variadic template</i>
@@ -156,7 +159,7 @@ class UniqueFunction {
     <li><strong><code>std::forward</code></strong> re-applies the argument's original value category — lvalue stays an lvalue, rvalue stays an rvalue — so nothing is copied unnecessarily. <code>std::move</code> is the "I am done with this" cast; <code>std::forward</code> is the "pass it along as it came" cast.</li>
   </ul>
 
-  <p>The same trio appears wherever a <code>UniqueFunction</code> is handed off — <code>GuestGpu::SendCommand(UniqueFunction&lt;void&gt;&amp;&amp; command)</code> and <code>CommandScheduler::DeferOperation(…&amp;&amp; operation)</code> take the closure by <code>&amp;&amp;</code> so the queue can steal it instead of copying. You do not need to write these yourself yet — you need to <em>read</em> them, and the rule that makes reading easy is: <code>&amp;&amp;</code> in a parameter means "accept an rvalue and allow moving from it".</p>
+  <p>Distinguish two meanings of <code>&amp;&amp;</code>. A parameter such as <code>UniqueFunction&lt;void&gt;&amp;&amp;</code> is an ordinary rvalue reference: it accepts an rvalue, and the function may move from it. In a deduced function template, <code>T&amp;&amp;</code> with a cv-unqualified template parameter is a <strong>forwarding reference</strong>: it accepts lvalues as well as rvalues. The constructor above uses that second form. A named variable is an lvalue expression even if its type is an rvalue reference; <code>std::forward&lt;T&gt;</code> restores the caller's value category. Neither <code>&amp;&amp;</code> nor <code>std::move</code> alone performs an ownership transfer. See the <a href="https://eel.is/c++draft/temp.deduct.call">language rules for forwarding-reference deduction</a> and the runnable example below.</p>
 
   <h4 id="raii-and-smart-pointers">RAII — the object owns the resource</h4>
   <p>There is no garbage collector. A resource (memory, a Vulkan handle, a file) is owned by an object whose destructor releases it. <code>std::unique_ptr</code> is the default owner; <code>std::shared_ptr</code> is used when ownership genuinely must be shared.</p>
@@ -173,7 +176,7 @@ if (bucket == nullptr) {
 <pre>using KernelEqueueRef = std::shared_ptr&lt;KernelEqueuePrivate&gt;;
 [[nodiscard]] KernelEqueueRef KernelPinEqueue(KernelEqueue eq);</pre>
 
-  <p>The mental model: every resource has exactly one owner, and the owner is a stack object whose lifetime you can trace by closing braces. When a function returns a <code>unique_ptr</code> or <code>shared_ptr</code>, the ownership is being <em>transferred</em> to the caller.</p>
+  <p>RAII ties cleanup to an owning object's lifetime. That owner can be a local variable, a member or a dynamically allocated object. <code>unique_ptr</code> expresses exclusive ownership; several <code>shared_ptr</code> handles can share ownership until the final strong owner releases the managed object. Returning a unique_ptr gives the caller an exclusive owning handle; returning a shared_ptr may share ownership with handles that already exist. Follow the actual handle lifetimes, including deferred work and ownership cycles, rather than assuming closing one stack scope releases every resource.</p>
 
   <h4 id="casts-four-kinds">Casts — four kinds, one habit</h4>
   <p>These cast spellings recur in this tree:</p>
@@ -246,7 +249,7 @@ struct VaList {
 
 static_assert(sizeof(VirtualQueryInfo) == 72, "VirtualQueryInfo struct size is incorrect");</pre>
 
-  <p>Bitfields are fine <em>inside</em> the emulator where host and guest are the same compiler — but the layout rules are implementation-defined, so you never rely on them across the ABI boundary. Where the guest's layout must match byte-for-byte, the tree uses <code>static_assert</code> to prove it.</p>
+  <p>C++ bitfield allocation and ordering depend on the implementation. Guest and host code need not use the same compiler or ABI. An internal host representation can use bitfields under the project's compiler assumptions; guest-visible layouts must be checked against their actual binary contract. <code>static_assert(sizeof(T) == N)</code> proves only total size, not field offsets, bit positions or endianness. Use explicit masks/shifts when decoding format words, and verify required offsets and behavior separately.</p>
 
   <p><strong>3. Anonymous unions</strong> — several views of the same bytes, selected by a tag. The memory-pool batch entry is one 32-byte record whose meaning depends on <code>op</code>:</p>
 
@@ -317,7 +320,7 @@ public:                                                                         
 
   <p><strong>3. ABI shims</strong> that must be spelled identically at every call site — <code>VA_ARGS</code> expands to the System V argument list, <code>VA_CONTEXT</code> to the code that captures it into a struct.</p>
 
-  <p>Reading a macro: expand it in your head, pasting the arguments into the body. The <code>\</code> at line ends just means "this macro continues on the next line". <code>__func__</code>, seen inside <code>PRINT_NAME()</code>, is a built-in that is always the current function's name — the macro-compatible alternative to a template <code>__FUNCTION__</code>.</p>
+  <p>Reading a macro: expand it in your head, pasting the arguments into the body. The <code>\</code> at line ends just means "this macro continues on the next line". <code>__func__</code>, used by <code>PRINT_NAME()</code>, names a predefined local character array containing the current function name. <code>__FUNCTION__</code> is a compiler extension, not a template.</p>
 
   <p>And the <code>thread_local</code> in <code>LIB_NAME</code> is worth calling out: each translation unit gets its <em>own</em> per-thread flag, which is how <code>PRINT_NAME_ENABLE(true)</code> can turn on tracing for one module on one thread without flooding the log from everywhere else.</p>
 
@@ -353,22 +356,22 @@ public:                                                                         
         <tr><td><code>.map()</code> / <code>.filter()</code></td><td><code>std::transform</code> and friends — or just a loop. STL is verbose; loops are idiomatic here too.</td></tr>
         <tr><td><code>any</code></td><td>type erasure (as in <code>UniqueFunction</code>), or an integer + tag (as in the packed unions)</td></tr>
         <tr><td>exceptions</td><td>largely avoided; results are return codes, <code>EXIT_IF</code> asserts, or log lines</td></tr>
-        <tr><td>garbage collector</td><td>RAII: <code>unique_ptr</code>/<code>shared_ptr</code>. You own every allocation.</td></tr>
+        <tr><td>garbage collector</td><td>RAII and explicit ownership policies; borrows do not keep objects alive.</td></tr>
       </tbody>
     </table>
   </div>
 
   <div class="callout k">
     <span class="lbl">One habit to break</span>
-    <p>In JS, <code>const obj = { ... }</code> gives you a mutable reference — the word <code>const</code> lies. In C++, <code>const</code> is enforced: <code>const T&amp;</code> cannot be modified, and the compiler will not let you forget it. When C++ code seems to be fighting you about <code>const</code>, it is usually telling the truth about an ownership question you should stop and think about.</p>
+    <p>In JavaScript, <code>const</code> prevents rebinding a variable; it does not freeze the referenced object. In C++, <code>const T&amp;</code> restricts mutation through that reference, with qualifications such as mutable members and separately referenced objects. Other valid aliases may still modify a non-const object. Constness does not establish ownership, extend lifetime or provide synchronization.</p>
   </div>
 
   <div class="learn">
     <div class="lh">Learn more · C++ for this codebase</div>
     <ul>
       <li><span class="kind spec">Reference</span><div><a href="https://en.cppreference.com/w/">cppreference.com</a><span class="d">The dictionary. For the constructs above, start with the pages on <code>constexpr</code>, templates, move constructors, and the <code>static_assert</code> declaration. Better for looking things up than for learning.</span></div></li>
-      <li><span class="kind">Course</span><div><a href="https://www.learncpp.com/">Learn C++</a><span class="d">A free, genuinely sequential course. Chapter 15 onward (move semantics), chapter 21 (templates) and chapter 20 (classes) map directly onto what this topic covered.</span></div></li>
-      <li><span class="kind code">Book</span><div><a href="https://www.oreilly.com/library/view/effective-modern-c/9781491908419/">Effective Modern C++</a><span class="d">Scott Meyers. Items 7, 11 and 21 are precisely the move/forward/decay machinery in <code>UniqueFunction</code>; item 12 explains the <code>&amp;&amp;</code>-parameter habit.</span></div></li>
+      <li><span class="kind">Course</span><div><a href="https://www.learncpp.com/">Learn C++</a><span class="d">A sequential language course. Use the named lessons on <a href="https://www.learncpp.com/cpp-tutorial/introduction-to-pointers/">pointers</a> and <a href="https://www.learncpp.com/cpp-tutorial/introduction-to-smart-pointers-move-semantics/">smart pointers and move semantics</a>; these links were checked on 7 October 2026.</span></div></li>
+      <li><span class="kind code">Book</span><div><a href="https://www.oreilly.com/library/view/effective-modern-c/9781491908419/">Effective Modern C++</a><span class="d">Scott Meyers. Use its discussions of move semantics, forwarding references and smart pointers as deeper reading after the runnable example. The book targets C++11/14; this project also uses later language features.</span></div></li>
       <li><span class="kind code">Tool</span><div><a href="https://cppinsights.io/">C++ Insights</a><span class="d">Paste a snippet and watch templates, <code>auto</code> and <code>if constexpr</code> expand into the code the compiler really sees. The fastest way to make the "factory of functions" idea concrete.</span></div></li>
       <li><span class="kind spec">Spec</span><div><a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines">C++ Core Guidelines</a><span class="d">The why behind the conventions this tree follows, including the RAII and smart-pointer rules that make lifetimes traceable.</span></div></li>
     </ul>
@@ -384,20 +387,57 @@ public:                                                                         
     <div data-viz="cppmacros"></div>
   </section>
   <section class="band band-try">
-    <div class="band-h"><span class="band-t">Try</span></div>
-    <p class="band-why">
-      The best way to make all of this concrete is to watch the compiler. Take any snippet from the Read band and put it in Compiler Explorer — you will see the template instantiate, the <code>constexpr</code> fold away, and the <code>reinterpret_cast</code> become nothing at all, because it is only a promise.
-    </p>
+    <div class="band-h"><span class="band-t">Try</span></div><div class="prose">
+    <h2 id="runnable-idioms">A complete forwarding and ownership example</h2>
+    <p>A named integer is an lvalue; the literal 7 is an rvalue. Predict which overload category() selects after the forwarding wrapper. Then follow the shared object after one handle resets. The final operation copies a float representation with <code>std::bit_cast</code>; it does not dereference an incompatible pointer.</p>
+    <p class="filename">Runnable teaching program · <a href="labs/beginner/cpp_idioms.cpp">cpp_idioms.cpp</a></p>
+    <!-- code:labs/beginner/cpp_idioms.cpp -->
+<pre><code>#include &lt;bit&gt;
+#include &lt;cstdint&gt;
+#include &lt;iostream&gt;
+#include &lt;memory&gt;
+#include &lt;utility&gt;
 
-    <div class="callout k">
-      <span class="lbl">A ten-minute lab</span>
-      <p>Open <a href="https://godbolt.org/">godbolt.org</a>, set the language to C++ and the compiler to an x86-64 Clang build with C++20 enabled. Type <code>constexpr int N = 72; static_assert(N == 72);</code> — then add <code>reinterpret_cast</code> to a pointer and see the generated assembly contain nothing at all. Then paste the <code>UniqueFunction</code> constructor and watch the moves appear.</p>
+const char* category(int&amp;) { return &quot;lvalue&quot;; }
+const char* category(int&amp;&amp;) { return &quot;rvalue&quot;; }
+
+template&lt;class T&gt;
+const char* forward_category(T&amp;&amp; value) {
+    return category(std::forward&lt;T&gt;(value));
+}
+
+int main() {
+    int number = 7;
+    std::cout &lt;&lt; forward_category(number) &lt;&lt; '\n';
+    std::cout &lt;&lt; forward_category(7) &lt;&lt; '\n';
+    auto first = std::make_shared&lt;int&gt;(number);
+    auto second = first;
+    first.reset();
+    if (!second || *second != 7) return 1;
+    std::cout &lt;&lt; &quot;shared value=&quot; &lt;&lt; *second &lt;&lt; '\n';
+    static_assert(sizeof(float) == sizeof(std::uint32_t));
+    const float value = 1.0f;
+    const auto bits = std::bit_cast&lt;std::uint32_t&gt;(value);
+    if (std::bit_cast&lt;float&gt;(bits) != value) return 1;
+    std::cout &lt;&lt; &quot;bit pattern round trip preserved\n&quot;;
+}</code></pre>
+<!-- /code -->
+    <p>Configure once using <a href="b-first-program.html#setup">B1</a>, then run:</p>
+    <pre>cmake --build _Build/curriculum/beginner --target cpp_idioms
+ctest --test-dir _Build/curriculum/beginner -R '^beginner_cpp_idioms$' --output-on-failure</pre>
+    <p>Expected output:</p><!-- output:labs/beginner/cpp_idioms.txt -->
+<pre>lvalue
+rvalue
+shared value=7
+bit pattern round trip preserved</pre>
+<!-- /output -->
+    <details><summary>Exercise and worked answer</summary><p>Replace <code>std::forward&lt;T&gt;(value)</code> with <code>value</code>. Predict the change before rebuilding: both calls select the lvalue overload because value is a named expression. The output test should fail on its second line. Restore forwarding and verify the original output. Explain separately why resetting first does not destroy the shared integer while second owns it.</p></details>
     </div>
   </section>
   <section class="band band-do">
     <div class="band-h"><span class="band-t">Do</span></div>
     <p class="band-why">
-      These checkpoints all end in "and then read the source" — because the source is the only textbook that matches this tree exactly.
+      These checkpoints all end in "and then read the source" — so you can verify each explanation against the selected checkout and its callers.
     </p>
 
     <div class="check">
@@ -433,9 +473,9 @@ public:                                                                         
 
 </main>
 
-<script src="assets/topics.js?v=20261007" defer></script>
-<script src="assets/search-index.js?v=20261007-d2413fc2" defer></script>
-<script src="assets/app.js?v=20261007-4" defer></script>
+<script src="assets/topics.js?v=20261007-5" defer></script>
+<script src="assets/search-index.js?v=20261007-5" defer></script>
+<script src="assets/app.js?v=20261007-5" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>

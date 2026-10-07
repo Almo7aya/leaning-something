@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-4">
+<link rel="stylesheet" href="assets/app.css?v=20261007-5">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
@@ -20,6 +20,9 @@
   <p class="topic-deck">
     This is the bulk of the emulator by volume: reimplementations of the system libraries a game expects to call. Each is ordinary C++ with two unusual obligations — the right ABI annotation, and registration against the NID the guest imports by.
   </p>
+<!-- prerequisites:hle -->
+<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="t-nids.html">NIDs and the runtime linker</a>. <a href="start.html">View the learning route</a>.</p>
+<!-- /prerequisites -->
 
   <section class="band band-read">
     <div class="band-h"><span class="band-t">Read</span></div>
@@ -111,14 +114,14 @@ static int <b>KYTY_SYSV_ABI</b> ContentExportInit2(const ContentExportInitParam2
         }                                                                \
     }</pre>
 
-  <p>The flag is <code>thread_local</code> and per translation unit, so you can enable tracing for one module on one thread without drowning in output from everything else. Set <code>PRINT_NAME_ENABLE(true)</code> anywhere inside the module.</p>
+  <p data-shared="excerpt-105">The flag is <code>thread_local</code> and per translation unit, so you can enable tracing for one module on one thread without drowning in output from everything else. Set <code>PRINT_NAME_ENABLE(true)</code> anywhere inside the module.</p>
 
   <h4 id="the-pragmatic-pattern">The pragmatic pattern</h4>
-  <p>A great many functions here validate arguments, log them, set a flag and return <code>OK</code>. That is not laziness. For a large fraction of console APIs the observable contract really is "accept this configuration and do not fail" — the game calls <code>Init</code>, checks for a non-negative return, and moves on. The engineering work is in knowing <em>which</em> functions need real behaviour, and that knowledge comes from watching games fail.</p>
+  <p data-shared="excerpt-106">A great many functions here validate arguments, log them, set a flag and return <code>OK</code>. That is not laziness. For a large fraction of console APIs the observable contract really is "accept this configuration and do not fail" — the game calls <code>Init</code>, checks for a non-negative return, and moves on. The engineering work is in knowing <em>which</em> functions need real behaviour, and that knowledge comes from watching games fail.</p>
 
   <div class="callout k">
     <span class="lbl">Error codes are not arbitrary</span>
-    <p><code>src/libs/errno.h</code> is console error constants. Returning the <em>right</em> negative value matters: games branch on specific codes, and returning a generic failure where the game expected <code>ERROR_NOT_FOUND</code> can send it down a completely different path.</p>
+    <p data-shared="excerpt-107"><code>src/libs/errno.h</code> is console error constants. Returning the <em>right</em> negative value matters: games branch on specific codes, and returning a generic failure where the game expected <code>ERROR_NOT_FOUND</code> can send it down a completely different path.</p>
   </div>
 
 <p class="deck">What is implemented, how big each area is, and what is genuinely hard about it.</p>
@@ -237,15 +240,15 @@ struct KernelEvent {
     void*     udata;    <i>// the game's opaque cookie</i>
 };</pre>
 
-  <p>The two graphics filters are the interesting ones. The video-out driver's flip and vertical-blank notifications, and the GPU's end-of-pipe interrupts, are delivered as events into these queues — which is how a game learns that a frame finished.</p>
+  <p data-shared="excerpt-098">The two graphics filters are the interesting ones. The video-out driver's flip and vertical-blank notifications, and the GPU's end-of-pipe interrupts, are delivered as events into these queues — which is how a game learns that a frame finished.</p>
 
   <h4 id="why-lifetime-is-the-hard-part">Why lifetime is the hard part</h4>
-  <p>A queue can be destroyed while another thread is blocked in <code>KernelWaitEqueue</code>, or while the graphics thread is part-way through delivering an event into it. Kyty pins queues with a shared pointer for the duration of any operation:</p>
+  <p data-shared="excerpt-099">A queue can be destroyed while another thread is blocked in <code>KernelWaitEqueue</code>, or while the graphics thread is part-way through delivering an event into it. Kyty pins queues with a shared pointer for the duration of any operation:</p>
 <pre>using KernelEqueueRef = std::shared_ptr&lt;KernelEqueuePrivate&gt;;
 [[nodiscard]] KernelEqueueRef <b>KernelPinEqueue</b>(KernelEqueue eq);</pre>
-  <p>Each attached filter also carries a <code>std::shared_ptr&lt;void&gt; owner</code> and a <code>delete_event_func</code>, so a source can keep its own state alive exactly as long as the event exists. <code>tests/EventQueueLifetimeTests.cpp</code> exercises event lifetime and ownership.</p>
+  <p data-shared="excerpt-100">Each attached filter also carries a <code>std::shared_ptr&lt;void&gt; owner</code> and a <code>delete_event_func</code>, so a source can keep its own state alive exactly as long as the event exists. <code>tests/EventQueueLifetimeTests.cpp</code> exercises event lifetime and ownership.</p>
 
-<p><code>KernelAddTimerEvent()</code> registers periodic microsecond timers using <code>KERNEL_EVFILT_TIMER</code> and <code>EV_CLEAR</code>; delivery accumulates elapsed expirations and advances the deadline. High-resolution timers remain a separate one-shot path. Persistent user events are emitted once per wait batch and remain available to a later wait. APR events use their own filter. These semantics matter independently of queue lifetime.</p>
+<p data-shared="excerpt-101"><code>KernelAddTimerEvent()</code> registers periodic microsecond timers using <code>KERNEL_EVFILT_TIMER</code> and <code>EV_CLEAR</code>; delivery accumulates elapsed expirations and advances the deadline. High-resolution timers remain a separate one-shot path. Persistent user events are emitted once per wait batch and remain available to a later wait. APR events use their own filter. These semantics matter independently of queue lifetime.</p>
   <h4 id="the-file-system">The file system</h4>
   <p>The guest sees a console-shaped tree synthesised from host directories:</p>
   <div class="tw">
@@ -279,13 +282,13 @@ struct KernelEvent {
   </ul>
 
 <h4 id="aio-wait-contract">AIO waits: batch state is part of the API</h4>
-<p><code>KernelAioWaitRequests()</code> in <code>src/libs/libKernel.cpp</code> is registered under NID <code>lgK+oIWkJyA</code>. It accepts 1–128 request IDs and writes one state per ID. Mode <code>1</code> waits for all IDs to be terminal; mode <code>2</code> also permits an unnotified completed/aborted request to satisfy the wait. If all IDs are terminal, either mode returns. For one ID, the mode argument is ignored. An invalid ID is reported as <code>KERNEL_ERROR_ESRCH</code> in its state slot rather than necessarily failing the entire call.</p>
-<p><code>usec == nullptr</code> supplies no deadline; a non-null pointer supplies a microsecond budget, including an immediate check for a zero budget. Completion is checked before a timeout is returned, so an already completed request can succeed with zero time available. Success writes the remaining budget. Polls and waits share the atomic <code>KERNEL_AIO_STATE_NOTIFIED</code> bit, and a final notifying scan handles competition between waiters. Null ID/state pointers, invalid counts and invalid multi-ID modes return before modifying output states.</p>
+<p data-shared="excerpt-102"><code>KernelAioWaitRequests()</code> in <code>src/libs/libKernel.cpp</code> is registered under NID <code>lgK+oIWkJyA</code>. It accepts 1–128 request IDs and writes one state per ID. Mode <code>1</code> waits for all IDs to be terminal; mode <code>2</code> also permits an unnotified completed/aborted request to satisfy the wait. If all IDs are terminal, either mode returns. For one ID, the mode argument is ignored. An invalid ID is reported as <code>KERNEL_ERROR_ESRCH</code> in its state slot rather than necessarily failing the entire call.</p>
+<p data-shared="excerpt-103"><code>usec == nullptr</code> supplies no deadline; a non-null pointer supplies a microsecond budget, including an immediate check for a zero budget. Completion is checked before a timeout is returned, so an already completed request can succeed with zero time available. Success writes the remaining budget. Polls and waits share the atomic <code>KERNEL_AIO_STATE_NOTIFIED</code> bit, and a final notifying scan handles competition between waiters. Null ID/state pointers, invalid counts and invalid multi-ID modes return before modifying output states.</p>
 <div class="filename">src/libs/libKernel.cpp — the single-request wrapper</div>
 <pre>int KYTY_SYSV_ABI KernelAioWaitRequest(int32_t id, int32_t* state, uint32_t* usec) {
     return KernelAioWaitRequests(&amp;id, 1, state, KERNEL_AIO_WAIT_AND, usec);
 }</pre>
-<p>The read/write submission functions currently perform their <code>KernelPread</code>/<code>KernelPwrite</code> work inline; an AIO-shaped API does not by itself imply a background I/O worker. <code>TestAioBatches()</code> in <code>tests/KernelFileSystemTests.cpp</code> checks zero-timeout completion, shared notification state, batch validation and per-ID errors. Trace both the call’s return value and each output state when diagnosing a wait.</p>
+<p data-shared="excerpt-104">The read/write submission functions currently perform their <code>KernelPread</code>/<code>KernelPwrite</code> work inline; an AIO-shaped API does not by itself imply a background I/O worker. <code>TestAioBatches()</code> in <code>tests/KernelFileSystemTests.cpp</code> checks zero-timeout completion, shared notification state, batch validation and per-ID errors. Trace both the call’s return value and each output state when diagnosing a wait.</p>
 
   <h4 id="the-remaining-primitives">The remaining primitives</h4>
   <div class="tw">
@@ -352,9 +355,9 @@ struct KernelEvent {
 
 </main>
 
-<script src="assets/topics.js?v=20261007" defer></script>
-<script src="assets/search-index.js?v=20261007-d2413fc2" defer></script>
-<script src="assets/app.js?v=20261007-4" defer></script>
+<script src="assets/topics.js?v=20261007-5" defer></script>
+<script src="assets/search-index.js?v=20261007-5" defer></script>
+<script src="assets/app.js?v=20261007-5" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>

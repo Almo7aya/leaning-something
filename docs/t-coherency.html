@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-4">
+<link rel="stylesheet" href="assets/app.css?v=20261007-5">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
@@ -20,14 +20,22 @@
   <p class="topic-deck">
     CPU and GPU share buffers, and neither announces a write. With no interpreter to instrument, the emulator takes away page permissions and lets the hardware report the access. Faults stop being errors here and become the notification channel.
   </p>
+<!-- prerequisites:coherency -->
+<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="t-virtual-memory.html">Virtual memory, briefly</a> · <a href="t-vulkan.html">The Vulkan backend</a> · <a href="b-completion.html">Submitted is not completed</a>. <a href="start.html">View the learning route</a>.</p>
+<!-- /prerequisites -->
 
-  <section class="band band-read">
-    <div class="band-h"><span class="band-t">Read</span></div>
+  <section class="band band-read"><div class="band-h"><span class="band-t">First pass</span></div><div class="prose">
+<h2 id="core-idea">Who has the current bytes?</h2><p>The CPU and GPU can access different representations of the same guest data. Coherency work ensures a consumer sees the required writes. Protection faults can notify the emulator about an access, but the handler must still find the owner, synchronize and copy or invalidate as needed.</p><p>First connect B5's completion rule to one CPU-write → GPU-read sequence. Page-manager internals, sparse backing and texture-alias cases are implementation reference.</p>
+<details><summary>Does detecting a write make the GPU see its bytes immediately?</summary><p>No. Detection identifies work to do. Visibility still depends on the correct upload or shared-memory path, synchronization and ordering before the GPU reads the data.</p></details>
+<p>Use <a href="start.html#reading-code">the code-example guide</a>: snippets below are source excerpts or labelled schematic sequences, not standalone programs.</p>
+</div></section>
+<section class="band band-read">
+    <div class="band-h"><span class="band-t">Implementation reference</span></div>
     <div class="prose">
 <p class="deck">The single hardest problem in the project, and the source of the bugs that are hardest to reproduce. A console has unified memory; a PC does not.</p>
 
   <h4 id="the-problem-stated-plainly">The problem, stated plainly</h4>
-  <p>On a PS5, CPU and GPU share one pool of physical memory. A game writes vertex data with the CPU, then draws with it. Shared backing avoids a mandatory copy between separate CPU and GPU allocations, but ordering and visibility still require the guest’s synchronization and cache-coherency rules.</p>
+  <p data-shared="excerpt-158">On a PS5, CPU and GPU share one pool of physical memory. A game writes vertex data with the CPU, then draws with it. Shared backing avoids a mandatory copy between separate CPU and GPU allocations, but ordering and visibility still require the guest’s synchronization and cache-coherency rules.</p>
   <p>On a PC, the GPU has its own memory. Kyty's Vulkan resources are <em>copies</em> of guest memory. So the emulator must answer two questions that the game never asks:</p>
   <ul>
     <li>Has the CPU changed this data since I last copied it to the GPU? (→ upload)</li>
@@ -110,12 +118,18 @@ public:
     }</pre>
 
 <h4 id="extended-guest-memory">The separate extended-memory arena</h4>
-  <p>Ordinary guest mappings keep their existing low address bands. Extended allocations use a separate <strong>512 GiB virtual arena at <code>0x080000000000</code></strong>, an 8 TiB base, described by <code>kExtendedMemoryBase</code> and <code>kExtendedMemorySize</code> in <code>kernel/memory.h</code>. Reserving that address range does not allocate 512 GiB of physical RAM. Extended requests and ordinary mapping searches have separate allocation rules.</p>
-  <p>GPU tracking accepts the low 1 TiB region and that explicit extended interval; the space between them is not a valid resource range. Sparse image tracking covers 44-bit addresses. Dense buffer/BDA tables pack the low and extended intervals together through <code>BufferCache::PageIndex()</code> (guest address to packed page index) and <code>GuestAddress()</code> (packed byte offset to guest address), avoiding tables for the entire gap.</p>
-  <p>Automatic backing is recycled through physical-allocation ownership. Reserved mappings are published only after backing commit succeeds, and partial POSIX unmaps preserve still-live mappings. These are allocation/alias invariants tested by <code>VirtualMemoryAllocationTests.cpp</code>. Host primitives are declared directly in <code>common/virtualMemory.h</code> and implemented by <code>sysWindowsVirtual.cpp</code> / <code>sysLinuxVirtual.cpp</code>.</p>
+  <!-- shared:t-address-space.html:excerpt-090 -->
+<p>Ordinary guest mappings keep their existing low address bands. Extended allocations use a separate <strong>512 GiB virtual arena at <code>0x080000000000</code></strong>, an 8 TiB base, described by <code>kExtendedMemoryBase</code> and <code>kExtendedMemorySize</code> in <code>kernel/memory.h</code>. Reserving that address range does not allocate 512 GiB of physical RAM. Extended requests and ordinary mapping searches have separate allocation rules.</p>
+<!-- /shared -->
+  <!-- shared:t-address-space.html:excerpt-091 -->
+<p>GPU tracking accepts the low 1 TiB region and that explicit extended interval; the space between them is not a valid resource range. Sparse image tracking covers 44-bit addresses. Dense buffer/BDA tables pack the low and extended intervals together through <code>BufferCache::PageIndex()</code> (guest address to packed page index) and <code>GuestAddress()</code> (packed byte offset to guest address), avoiding tables for the entire gap.</p>
+<!-- /shared -->
+  <!-- shared:t-address-space.html:excerpt-092 -->
+<p>Automatic backing is recycled through physical-allocation ownership. Reserved mappings are published only after backing commit succeeds, and partial POSIX unmaps preserve still-live mappings. These are allocation/alias invariants tested by <code>VirtualMemoryAllocationTests.cpp</code>. Host primitives are declared directly in <code>common/virtualMemory.h</code> and implemented by <code>sysWindowsVirtual.cpp</code> / <code>sysLinuxVirtual.cpp</code>.</p>
+<!-- /shared -->
 
   <h4 id="the-invariants-enforced-by-hard-failure">The invariants, enforced by hard failure</h4>
-  <p>This code is unusually defensive, and the reason is worth internalising: a coherency bug produces corruption <em>many frames later</em>, with no traceable link to its cause. So Kyty converts each one into an immediate crash at the point of the mistake.</p>
+  <p data-shared="excerpt-159">This code is unusually defensive, and the reason is worth internalising: a coherency bug produces corruption <em>many frames later</em>, with no traceable link to its cause. So Kyty converts each one into an immediate crash at the point of the mistake.</p>
 
 <pre>void <b>CheckNotInUploadCallback</b>() const noexcept {
     if (s_upload_owner == this) {
@@ -146,10 +160,10 @@ void InvalidateRegion(uint64_t vaddr, uint64_t size, Flush&amp;&amp; on_flush) {
 
   <div class="callout k">
     <span class="lbl">Where to start reading</span>
-    <p><code>tests/MemoryTrackerTests.cpp</code>, before the implementation. Each test name is a sentence stating an invariant, and together they specify the model far more clearly than the templates do. <code>tests/PageManagerTests.cpp</code> covers the watch semantics in isolation.</p>
+    <p data-shared="excerpt-160"><code>tests/MemoryTrackerTests.cpp</code>, before the implementation. Each test name is a sentence stating an invariant, and together they specify the model far more clearly than the templates do. <code>tests/PageManagerTests.cpp</code> covers the watch semantics in isolation.</p>
   </div>
 
-<p class="deck">Because guest code normally runs natively, Kyty does not instrument every memory access. The CPU's own fault mechanism becomes the emulator's primary hook — two of the handler's three branches are load-bearing, not diagnostic.</p>
+<p data-shared="excerpt-082" class="deck">Because guest code normally runs natively, Kyty does not instrument every memory access. The CPU's own fault mechanism becomes the emulator's primary hook — two of the handler's three branches are load-bearing, not diagnostic.</p>
 
   <h4 id="the-handler">The handler</h4>
   <div class="filename">src/loader/runtimeLinker.cpp</div>
@@ -185,7 +199,7 @@ void InvalidateRegion(uint64_t vaddr, uint64_t size, Flush&amp;&amp; on_flush) {
   <p>Reservations are committed explicitly. A fault in reserved-but-uncommitted memory is a real bug and falls through to the dump.</p>
 
   <h4 id="branch-1-emulating-missing-instructions">Branch 1 — emulating missing instructions</h4>
-  <p>The PS5's Zen 2 supports instructions your CPU might not, notably the SHA extensions. When one executes, the CPU raises an illegal-instruction fault, and <code>X64InstructionEmulator</code> decodes the bytes at the fault address, performs the operation in software against the saved register context, and advances the instruction pointer past it.</p>
+  <p data-shared="excerpt-083">The PS5's Zen 2 supports instructions your CPU might not, notably the SHA extensions. When one executes, the CPU raises an illegal-instruction fault, and <code>X64InstructionEmulator</code> decodes the bytes at the fault address, performs the operation in software against the saved register context, and advances the instruction pointer past it.</p>
 
   <div class="filename">src/loader/x64InstructionEmulator.cpp — the SHA1 message schedule, in software</div>
 <pre>static void Sha1Msg1(XmmWords&amp; dest, const XmmWords&amp; src2) {
@@ -196,7 +210,7 @@ void InvalidateRegion(uint64_t vaddr, uint64_t size, Flush&amp;&amp; on_flush) {
     dest.w[1] = w4 ^ w2;   dest.w[0] = w5 ^ w3;
 }</pre>
 
-  <p>It is slow — a fault plus a software emulation per instruction — but these appear in checksum and hashing routines rather than in hot loops, and the alternative is not running at all.</p>
+  <p data-shared="excerpt-084">It is slow — a fault plus a software emulation per instruction — but these appear in checksum and hashing routines rather than in hot loops, and the alternative is not running at all.</p>
 
   <h4 id="branch-2-the-gpu-fault-and-why-it-is-the-design">Branch 2 — the GPU fault, and why it is the design</h4>
   <p>This is the most important branch in the emulator. Memory the GPU has cached as a Vulkan image or buffer is deliberately write-protected. When the game writes to it:</p>
@@ -211,7 +225,7 @@ void InvalidateRegion(uint64_t vaddr, uint64_t size, Flush&amp;&amp; on_flush) {
     <div class="layer k"><span class="nm">Next draw re-uploads only those pages</span><span class="chip kyty">kyty</span><span class="ds">The renderer asks the tracker which sub-ranges are dirty and copies just those into the Vulkan image.</span></div>
   </div>
 
-  <p>Page protection provides a notification when native guest code touches tracked memory. Guest GPU commands still carry ordering and cache operations; the emulator combines those commands with fault tracking to keep host CPU and Vulkan resources coherent.</p>
+  <p data-shared="excerpt-085">Page protection provides a notification when native guest code touches tracked memory. Guest GPU commands still carry ordering and cache operations; the emulator combines those commands with fault tracking to keep host CPU and Vulkan resources coherent.</p>
 
   <h4 id="branch-4-the-crash-dump">Branch 3 — the crash dump</h4>
   <p>When nothing handles the fault, the handler prints a <code>--- Guest fault context ---</code> block — everything it can read without faulting again — and then exits through <code>EXIT</code>:</p>
@@ -239,10 +253,12 @@ void InvalidateRegion(uint64_t vaddr, uint64_t size, Flush&amp;&amp; on_flush) {
 
   <div class="callout h">
     <span class="lbl">Reading a crash</span>
-    <p>An <code>address=0x28</code> can arise from a segment-relative access or a null pointer plus an offset. Decode the instruction and inspect the registers before tracing the cause through earlier calls. A PC inside a mapped guest segment tells you where the fault occurred, not whether the guest or emulator caused it. Resolve the loaded module and inspect preceding calls, memory state and generated patches.</p>
+    <p data-shared="excerpt-086">An <code>address=0x28</code> can arise from a segment-relative access or a null pointer plus an offset. Decode the instruction and inspect the registers before tracing the cause through earlier calls. A PC inside a mapped guest segment tells you where the fault occurred, not whether the guest or emulator caused it. Resolve the loaded module and inspect preceding calls, memory state and generated patches.</p>
   </div>
 <h4 id="sparse-texture-uploads">Sparse texture uploads</h4>
-  <p><code>BufferCache::ObtainBufferForImage()</code> reads streamed mip ranges through <code>Memory::TryReadSparseBacking()</code>. The guest address-space owner validates the complete range and rejects private mappings before the backing store copies resident pieces and zero-fills holes. A hole inside an owned sparse reservation is not the same as an arbitrary invalid guest address; do not replace failed reads with unconditional zeroes.</p>
+  <!-- shared:t-address-space.html:excerpt-157 -->
+<p><code>BufferCache::ObtainBufferForImage()</code> reads streamed mip ranges through <code>Memory::TryReadSparseBacking()</code>. The guest address-space owner validates the complete range and rejects private mappings before the backing store copies resident pieces and zero-fills holes. A hole inside an owned sparse reservation is not the same as an arbitrary invalid guest address; do not replace failed reads with unconditional zeroes.</p>
+<!-- /shared -->
 
     </div>
   </section>
@@ -300,9 +316,9 @@ void InvalidateRegion(uint64_t vaddr, uint64_t size, Flush&amp;&amp; on_flush) {
 
 </main>
 
-<script src="assets/topics.js?v=20261007" defer></script>
-<script src="assets/search-index.js?v=20261007-d2413fc2" defer></script>
-<script src="assets/app.js?v=20261007-4" defer></script>
+<script src="assets/topics.js?v=20261007-5" defer></script>
+<script src="assets/search-index.js?v=20261007-5" defer></script>
+<script src="assets/app.js?v=20261007-5" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>

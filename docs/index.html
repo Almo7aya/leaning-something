@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>KytyPS5 — Learning Platform</title>
 <meta name="description" content="Learn how a PlayStation 5 emulator works, from the runtime linker to the shader recompiler — read it, watch it, drive it, then change it.">
-<link rel="stylesheet" href="assets/app.css?v=20261007-4">
+<link rel="stylesheet" href="assets/app.css?v=20261007-5">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
@@ -14,19 +14,20 @@
 
   <h1 class="home-h1" id="how-a-ps5-emulator-works">How a PlayStation&nbsp;5 emulator works</h1>
   <p class="home-lede">
-    KytyPS5 runs PS5 games on a PC. Not by simulating a console — by <em>impersonating</em> one:
-    the game's own code executes natively on your CPU while the emulator forges an operating
-    system and a GPU underneath it. This takes that apart until you could change it yourself.
+    KytyPS5 recreates parts of the PlayStation 5 environment on a PC. Its native execution path runs guest CPU code on the host CPU, supplies console services, and translates GPU work. Learn those boundaries step by step, then practice making a small, verified change.
   </p>
 
-  <div class="callout g" style="margin-top:24px">
-    <span class="lbl">Current-source checkpoint</span>
-    <p>Source-specific paths and explanations were checked against KytyPS5
-      <code>main</code> at commit <code>d2413fc2</code> (7 October 2026). This includes the
-      retained shader resource analysis with temporary IR rebuilt on permutation misses,
-      mesh stages and opt-in tessellation, the 116-byte static pipeline state, sparse backing,
-      SDL3 input, and 29 portable test executables plus macOS SSE4a coverage.</p>
-  </div>
+  <section class="home-sec">
+    <h2 id="start-here">New to C++ or emulation?</h2>
+    <p class="home-body"><a class="resume-btn" href="start.html">Start the learning route →</a></p>
+    <p class="home-body">Begin with five small lessons: build a C++ program, decode bytes, track ownership, step an invented CPU and distinguish submission from completion. Each has runnable code, expected output, hints and worked answers. You can finish these without a game or an emulator build.</p>
+    <p class="home-body">Already know C++? Use the <a href="start.html#readiness">readiness questions</a> to choose your entry point. Follow the core route into loading, HLE, graphics and a verified first contribution.</p>
+  </section>
+  <div id="resume-slot"></div>
+  <details class="home-sec"><summary>Source snapshot and advanced implementation coverage</summary>
+    <p>Checked source: <!-- project:revision -->d2413fc2ebd91d1b7234197c2dd5bd48e1cb6a51 (7 October 2026)<!-- /project -->. Implementation detail belongs in the owning lesson; browser models are simplified teaching tools.</p>
+    <p><a href="t-ray-tracing.html">Ray tracing:</a> <!-- project:rayTracing -->Implemented: full-float BVH32/BVH64 software intersections emitted as SPIR-V. Additional formats and an optional Vulkan ray-query backend remain research; the supported subset does not establish universal game compatibility.<!-- /project --></p>
+  </details>
 
   <section class="home-sec">
     <h2 id="developer-curriculum">Ready to work on the emulator?</h2>
@@ -34,13 +35,10 @@
       end-to-end boot and draw traces, three runnable C++ debugging labs, and evidence-based
       contribution gates. Its <a href="developer-curriculum.html#coverage">coverage map</a>
       distinguishes detailed lessons from introductory and still-missing material.</p>
-    <p class="home-body"><a href="t-ray-tracing.html">C11: Implementing ray tracing</a> is an advanced
-      roadmap covering RDNA 2, game reverse engineering, BVH formats, compiler integration,
-      Vulkan and correctness tests. It documents planned work, not existing RT support.</p>
+
   </section>
 
-  <!-- filled in by app.js: resume where you left off, or start at the beginning -->
-  <div id="resume-slot"></div>
+
 
   <!-- ---------------------------------------------------------- -->
   <section class="home-sec">
@@ -63,12 +61,11 @@
       </div>
     </div>
     <p class="home-body">
-      The GPU half is the harder half. The game writes <b>PM4 command packets</b> into a ring
+      The GPU path has several additional translation stages. The game writes <b>PM4 command packets</b> into a ring
       buffer; a software command processor decodes them, turns accumulated register writes into
       Vulkan pipeline state, and translates compiled RDNA&nbsp;2 shader binaries into SPIR-V. All
       the while CPU and GPU share memory each believes it owns, and coherency is held together by
-      catching host page faults — with the guest convinced pages are 16&nbsp;KB and the host
-      insisting they are 4&nbsp;KB.
+      catching host page faults — with the guest convinced pages are 16&nbsp;KB and the emulator's host tracking using 4&nbsp;KB granularity; actual OS protection granularity is a separate constraint.
     </p>
   </section>
 
@@ -80,8 +77,7 @@
         read it packet by packet — find the draw, and the state that set it up.</span></li>
       <li><span class="oc-n">02</span><span>Open a game module and see exactly what the runtime
         linker sees: the Sony segments, the dynamic tags, the imports it can't resolve.</span></li>
-      <li><span class="oc-n">03</span><span><b>Implement a missing HLE function</b> and watch a
-        title get further than it did before.</span></li>
+      <li><span class="oc-n">03</span><span><b>Verify a bounded HLE behavior</b> with explicit output and error checks before making a compatibility claim.</span></li>
       <li><span class="oc-n">04</span><span>Explain why a shader fell back to the dispatcher, and
         what would have to change for it not to.</span></li>
       <li><span class="oc-n">05</span><span>Read a failing log and tell the difference between a
@@ -93,9 +89,7 @@
   <section class="home-sec">
     <h2 id="how-a-topic-works">How a topic works</h2>
     <p class="home-body" style="margin-bottom:18px">
-      Every topic is one page carrying everything about its subject — the explanation, the
-      animation for that exact idea, an interactive tool you drive yourself, and a checkpoint
-      against the real source. Nothing sends you off to a different document.
+      The beginner lessons pair explanations with runnable programs and worked answers. Many project topics add animations and interactive tools. Source checkpoints and advanced references follow once you understand the core idea; each page makes its prerequisites and code-example scope explicit.
     </p>
     <div class="flow">
       <div class="flow-step"><span class="flow-k" style="color:var(--ink-3)">Read</span>
@@ -119,8 +113,7 @@
   <!-- ---------------------------------------------------------- -->
   <section class="legacy">
     <p>
-      The original long-form documents are still here while their content is ported across
-      topic by topic.
+      Use these as alternate reading views and practice tools. The <a href="start.html">Start here route</a> defines the learning order; the book and tour share generated excerpts with the topic pages.
     </p>
     <div class="legacy-links">
       <a href="tour.html">Tour</a>
@@ -128,16 +121,16 @@
       <a href="lab.html">Lab · 11 tools</a>
       <a href="course.html">Course · 39 chapters</a>
       <a href="examples.html">Examples</a>
-      <a href="path.html">Learning path</a>
+      <a href="path.html">Project practice checklist</a>
     </div>
   </section>
 
 </main>
 
-<script src="assets/topics.js?v=20261007" defer></script>
-<script src="assets/search-index.js?v=20261007-d2413fc2" defer></script>
+<script src="assets/topics.js?v=20261007-5" defer></script>
+<script src="assets/search-index.js?v=20261007-5" defer></script>
 <script src="assets/highlight.js?v=20261007" defer></script>
-<script src="assets/app.js?v=20261007-4" defer></script>
+<script src="assets/app.js?v=20261007-5" defer></script>
 </body>
 </html>
 

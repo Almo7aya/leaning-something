@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-4">
+<link rel="stylesheet" href="assets/app.css?v=20261007-5">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
@@ -20,11 +20,19 @@
   <p class="topic-deck">
     Register-write packets do not draw anything — they accumulate into a shadow copy of the hardware register file. When a draw finally arrives, all of that has to become concrete Vulkan state, and the shader's resources have to be found through a chain of packed descriptors.
   </p>
+<!-- prerequisites:registers -->
+<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="t-pm4.html">PM4 &amp; the command processor</a>. <a href="start.html">View the learning route</a>.</p>
+<!-- /prerequisites -->
 
-  <section class="band band-read">
-    <div class="band-h"><span class="band-t">Read</span></div>
+  <section class="band band-read"><div class="band-h"><span class="band-t">First pass</span></div><div class="prose">
+<h2 id="core-idea">From state to a draw</h2><p>Register-write packets update stored state; a later draw consumes it. A descriptor describes a resource such as a texture or buffer. Think of a draw as combining the current state, a shader program and its resources. A register value that looks like an address is not enough: its format, extent and lifetime also matter.</p><p>First read the register-space table and follow one descriptor in the tools. The resource-plan and specialization sections are reference material for tracing the current implementation.</p>
+<details><summary>Why can a draw packet be short?</summary><p>Earlier packets already established the state. To understand a draw, reconstruct the relevant preceding writes and resources; the draw packet alone is insufficient.</p></details>
+<p>Use <a href="start.html#reading-code">the code-example guide</a>: snippets below are source excerpts or labelled schematic sequences, not standalone programs.</p>
+</div></section>
+<section class="band band-read">
+    <div class="band-h"><span class="band-t">Implementation reference</span></div>
     <div class="prose">
-<p class="deck">A draw packet carries almost no information. Everything that matters — targets, blend modes, shaders, viewports — arrived earlier as register writes. Modelling that register file is a substantial part of the guest GPU code.</p>
+<p data-shared="excerpt-122" class="deck">A draw packet carries almost no information. Everything that matters — targets, blend modes, shaders, viewports — arrived earlier as register writes. Modelling that register file is a substantial part of the guest GPU code.</p>
 
   <h4 id="three-register-spaces">Three register spaces</h4>
   <div class="tw">
@@ -85,11 +93,11 @@ r.polymode_front_ptype = KYTY_PM4_GET(buffer[0], PA_SU_SC_MODE_CNTL, POLYMODE_FR
   <p>The shift and mask constants come from <code>pm4.h</code>, which defines the RDNA 2 fields the PS5 driver writes — including <code>DCC_ENABLE</code> on <code>CB_COLOR0_INFO</code> at bit 28.</p>
 
   <h4 id="why-agcregisterdefaults-inc-is-215-kb">Why <code>agcRegisterDefaults.inc</code> is 213 KB</h4>
-  <p>The largest file in the repository is a table of default register values. It exists because of how the real driver works: at context reset it writes a complete default state, and games then only set what they change. If Kyty's defaults differ anywhere, state leaks between draws in ways that are almost impossible to attribute — a blend mode set by one draw silently applying to the next.</p>
+  <p data-shared="excerpt-123">The largest file in the repository is a table of default register values. It exists because of how the real driver works: at context reset it writes a complete default state, and games then only set what they change. If Kyty's defaults differ anywhere, state leaks between draws in ways that are almost impossible to attribute — a blend mode set by one draw silently applying to the next.</p>
   <p>Games can also ask for these defaults directly, which is why <code>AgcGetRegisterDefaults2</code> is an exported function.</p>
 
 <h4 id="depth-copy-validation">Register decoding versus draw validation</h4>
-<p><code>DecodeRenderControl()</code> in <code>pm4Handlers.cpp</code> records <code>DB_RENDER_CONTROL</code>, including <code>copy_depth_to_color</code> and <code>copy_stencil_to_color</code>, without rejecting those bits immediately. A later state write can replace them before a draw uses them. <code>RenderExecutor::ResolveRenderDepthTarget()</code> in <code>src/graphics/host_gpu/renderer/depthRenderTarget.cpp</code> handles inactive or unbound attachments, then rejects unsupported depth-copy state for a draw with a bound attachment. Accepting a register write does not mean the corresponding rendering operation is implemented.</p>
+<p data-shared="excerpt-124"><code>DecodeRenderControl()</code> in <code>pm4Handlers.cpp</code> records <code>DB_RENDER_CONTROL</code>, including <code>copy_depth_to_color</code> and <code>copy_stencil_to_color</code>, without rejecting those bits immediately. A later state write can replace them before a draw uses them. <code>RenderExecutor::ResolveRenderDepthTarget()</code> in <code>src/graphics/host_gpu/renderer/depthRenderTarget.cpp</code> handles inactive or unbound attachments, then rejects unsupported depth-copy state for a draw with a bound attachment. Accepting a register write does not mean the corresponding rendering operation is implemented.</p>
 
   <h4 id="enumerations-from-the-guest-s-world">Enumerations from the guest's world</h4>
   <p>The register values are console enums, and <code>gpu_defs.h</code> declares them all in a <code>Prospero</code> namespace:</p>
@@ -107,10 +115,10 @@ enum class TileMode : uint32_t {
 enum class BlendFactor : uint32_t { kZero = 0, kOne = 1, kSrcColor = 2, ... };
 enum class BufferFormat : uint32_t { kInvalid = 0, k8UNorm = 1, ..., kBc7Srgb = 182 };</pre>
 
-  <p><code>kRectList</code> is worth noting: a three-vertex primitive describing an axis-aligned rectangle, used constantly for full-screen passes. Vulkan has no direct equivalent; Kyty handles the required pipeline path automatically and can synthesize tessellation-control/evaluation shaders with <code>BuildRectListShaders()</code>.</p>
+  <p data-shared="excerpt-125"><code>kRectList</code> is worth noting: a three-vertex primitive describing an axis-aligned rectangle, used constantly for full-screen passes. Vulkan has no direct equivalent; Kyty handles the required pipeline path automatically and can synthesize tessellation-control/evaluation shaders with <code>BuildRectListShaders()</code>.</p>
 
   <h4 id="colour-component-remapping">Colour component remapping</h4>
-  <p>A neat piece of design worth calling out. The shader exports RGBA, but the render target's channel order may differ. Rather than recompiling for every permutation, Kyty carries a one-byte mapping:</p>
+  <p data-shared="excerpt-126">A neat piece of design worth calling out. The shader exports RGBA, but the render target's channel order may differ. Rather than recompiling for every permutation, Kyty carries a one-byte mapping:</p>
 <pre>struct ColorComponentMapping {
     uint8_t packed = 0xe4u;   <i>// RGBA identity: 0, 1, 2, 3 packed 2 bits each</i>
 
@@ -127,7 +135,7 @@ inline constexpr ColorComponentMapping ColorMappingBgra {0xc6u};   <i>// 2, 1, 0
 <p class="deck">How a shader finds its textures. There is no analogue in any PC graphics API, and it is the reason the shader recompiler needs a dataflow analysis.</p>
 
   <h4 id="user-data-the-only-channel-into-a-shader">User data: the only channel into a shader</h4>
-  <p>A shader stage receives up to 64 dwords in its first scalar registers, written by <code>IT_SET_SH_REG</code> packets. That is the entire parameter-passing mechanism. Inside those dwords a game may place, in any arrangement it chooses:</p>
+  <p data-shared="excerpt-127">A shader stage receives up to 64 dwords in its first scalar registers, written by <code>IT_SET_SH_REG</code> packets. That is the entire parameter-passing mechanism. Inside those dwords a game may place, in any arrangement it chooses:</p>
   <ul>
     <li>An <strong>inline descriptor</strong> — a V#, T# or S# sitting directly in registers.</li>
     <li>A <strong>pointer to a table</strong> in memory containing descriptors, which the shader loads with <code>s_load_dwordx4</code>. Tables may point at further tables, to arbitrary depth. This is the <strong>shader resource table</strong>, or SRT.</li>
@@ -201,7 +209,7 @@ inline constexpr ColorComponentMapping ColorMappingBgra {0xc6u};   <i>// 2, 1, 0
     // Other accessors omitted.
 };</pre>
 
-  <p>Notice how much a T# carries: not just address and size but tiling mode, mip range, array slices, swizzle, and the address of a separate compression-metadata surface. All of that has to be translated into a Vulkan image with a compatible format and layout.</p>
+  <p data-shared="excerpt-128">Notice how much a T# carries: not just address and size but tiling mode, mip range, array slices, swizzle, and the address of a separate compression-metadata surface. All of that has to be translated into a Vulkan image with a compatible format and layout.</p>
 
   <h4 id="the-problem-this-creates">The problem this creates</h4>
   <p>Suppose a pixel shader samples a texture. In the machine code you will see something like:</p>
@@ -209,7 +217,7 @@ inline constexpr ColorComponentMapping ColorMappingBgra {0xc6u};   <i>// 2, 1, 0
 s_load_dwordx8  s[12:19], s[8:9], 0x40     <i>// load a T# from that table + 0x40</i>
 image_sample    v[0:3], v[4:5], s[12:19], s[20:23] dmask:0xf</pre>
 
-  <p>To bind a Vulkan descriptor, Kyty must determine <em>which texture</em> <code>s[12:19]</code> will hold — and that requires evaluating the shader's own address arithmetic before the shader ever runs. Current code does this through three layers:</p>
+  <p data-shared="excerpt-129">To bind a Vulkan descriptor, Kyty must determine <em>which texture</em> <code>s[12:19]</code> will hold — and that requires evaluating the shader's own address arithmetic before the shader ever runs. Current code does this through three layers:</p>
 
   <div class="stack">
     <div class="layer k"><span class="nm">1 · Typed SSA values</span><span class="chip kyty">kyty</span><span class="ds"><code>TranslateProgram</code> creates typed values; <code>RewriteToSsa</code> and simplification expose where descriptor-address inputs came from.</span></div>
@@ -260,8 +268,8 @@ struct ResourceSnapshot {
     UniformFill                  uniform_fill;     <i>// a whole-buffer fill detected from uniform stores</i>
 };</pre>
 
-<p>The retained <code>ResourcePlan</code> owns immutable descriptor/SRT analysis and reusable evaluation scratch. <code>TrackResources(ir, decoded, native_cfg)</code> performs scalar-read and indirect-image planning; there is no separate SRT-plan call in the top-level pipeline. <code>ExtractResourcePlan()</code> derives stable clean-slot and specialization policy once. A shared memoized <code>SrtWalker</code> refreshes descriptors, active branches, flattened reads and specialization in place. Bounded indirect image tables, guarded Phis and GPU-selected raw buffers follow this same value graph.</p>
-  <p><code>ShaderStageRuntime</code> borrows two pointers: compiled program info and the cache entry's current <code>ResourceSnapshot</code>. The renderer consumes them under its serialization contract; keeping that snapshot as an immutable per-draw copy would describe the former implementation.</p>
+<p data-shared="excerpt-130">The retained <code>ResourcePlan</code> owns immutable descriptor/SRT analysis and reusable evaluation scratch. <code>TrackResources(ir, decoded, native_cfg)</code> performs scalar-read and indirect-image planning; there is no separate SRT-plan call in the top-level pipeline. <code>ExtractResourcePlan()</code> derives stable clean-slot and specialization policy once. A shared memoized <code>SrtWalker</code> refreshes descriptors, active branches, flattened reads and specialization in place. Bounded indirect image tables, guarded Phis and GPU-selected raw buffers follow this same value graph.</p>
+  <p data-shared="excerpt-131"><code>ShaderStageRuntime</code> borrows two pointers: compiled program info and the cache entry's current <code>ResourceSnapshot</code>. The renderer consumes them under its serialization contract; keeping that snapshot as an immutable per-draw copy would describe the former implementation.</p>
 
   <h4 id="why-compilation-and-binding-are-separate">Why compilation and binding are separate</h4>
   <p>The consequence is important: <strong>the stable plan analysis is extracted once per source entry, and the cached snapshot is refreshed in place from current user data on each lookup.</strong> The recompiler itself is split the same way — <code>TranslateProgram()</code> produces the plan, <code>CompileProgram()</code> emits SPIR-V for one specialization — and the pipeline cache sits between them:</p>
@@ -277,7 +285,7 @@ auto translated = ShaderRecompiler::TranslateProgram(params.code, options);
 auto result = ShaderRecompiler::CompileProgram(std::move(translated), options,
                                                specialization, push_data_start_dword);</pre>
 
-  <p>The renderer borrows the refreshed snapshot through <code>ShaderStageRuntime { const IR::CompiledShaderInfo* program; const IR::ResourceSnapshot* resources; }</code> in <code>shader.h</code>, and binding preparation writes descriptors from it. A descriptor read that cannot be satisfied is an <code>EXIT_IF</code>.</p>
+  <p data-shared="excerpt-132">The renderer borrows the refreshed snapshot through <code>ShaderStageRuntime { const IR::CompiledShaderInfo* program; const IR::ResourceSnapshot* resources; }</code> in <code>shader.h</code>, and binding preparation writes descriptors from it. A descriptor read that cannot be satisfied is an <code>EXIT_IF</code>.</p>
     </div>
   </section>
 
@@ -330,9 +338,9 @@ auto result = ShaderRecompiler::CompileProgram(std::move(translated), options,
 
 </main>
 
-<script src="assets/topics.js?v=20261007" defer></script>
-<script src="assets/search-index.js?v=20261007-d2413fc2" defer></script>
-<script src="assets/app.js?v=20261007-4" defer></script>
+<script src="assets/topics.js?v=20261007-5" defer></script>
+<script src="assets/search-index.js?v=20261007-5" defer></script>
+<script src="assets/app.js?v=20261007-5" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>

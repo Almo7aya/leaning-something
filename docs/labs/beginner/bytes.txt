@@ -1,0 +1,4 @@
+word=0x12345678
+field=0x56
+last valid offset=1
+truncated, end, huge and empty reads rejected

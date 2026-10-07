@@ -86,5 +86,7 @@ for (const file of ['loadlink.html', 'guest-run.html', 'host-run.html', 't-point
 }
 assert.equal(fs.existsSync(path.join(root, 'docs/upstream-changes.html')), false,
   'main intentionally removed the standalone changelog');
-assert.match(read('docs/assets/topics.js'), /n: "C10"/);
+const navigation = {window: {}};
+vm.runInNewContext(read('docs/assets/topics.js'), navigation);
+assert.equal(navigation.window.KYTY_TOPICS.find(t => t.id === 'pointers-memory')?.n, 'C10');
 console.log('PASS: memory boundaries/tracking, pipeline keys, shader encodings/modifiers, JIT examples, memory maps, simulator cache behavior and retained features.');

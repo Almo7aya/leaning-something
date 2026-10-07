@@ -1,0 +1,2 @@
+pc=4 accumulator=12 memory[2]=12
+out-of-range store and missing halt rejected

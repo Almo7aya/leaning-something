@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-4">
+<link rel="stylesheet" href="assets/app.css?v=20261007-5">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
@@ -20,6 +20,9 @@
   <p class="topic-deck">
     Guest code runs natively, so the boundaries between host and guest are crossed in raw assembly. This page teaches you to read the small number of hand-written asm blocks in the tree — and the odder part: structs whose bytes <em>are</em> x86 instructions, generated at runtime.
   </p>
+<!-- prerequisites:cpp-asm -->
+<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="b-machine.html">Instructions, addresses and the guest</a> · <a href="t-calling-conventions.html">Calling conventions &amp; the ABI wall</a>. <a href="start.html">View the learning route</a>.</p>
+<!-- /prerequisites -->
 
   <section class="band band-read">
     <div class="band-h"><span class="band-t">Read</span></div>
@@ -282,9 +285,9 @@ mov    rsp, rbx                   <i>restore, pop everything back, ret</i></pre>
 
 </main>
 
-<script src="assets/topics.js?v=20261007" defer></script>
-<script src="assets/search-index.js?v=20261007-d2413fc2" defer></script>
-<script src="assets/app.js?v=20261007-4" defer></script>
+<script src="assets/topics.js?v=20261007-5" defer></script>
+<script src="assets/search-index.js?v=20261007-5" defer></script>
+<script src="assets/app.js?v=20261007-5" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>

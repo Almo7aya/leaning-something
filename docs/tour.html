@@ -439,6 +439,7 @@ details[open] summary { border-bottom: 1px solid var(--rule); }
 <header class="hero" id="intro">
   <div class="eyebrow">A guided reading of the source</div>
   <h1 id="anatomy-of-a-playstation-5-emulator">Anatomy of a PlayStation&nbsp;5 emulator</h1>
+<p><a href="start.html">Start here: the core learning route</a>. This is an alternate reference view. If C++ is new, complete B1–B5 before using its project excerpts. Shared passages are generated from their owning topic pages.</p>
   <p class="lede">KytyPS5 takes a program compiled for a games console — a machine with its own operating system, its own graphics API, and its own idea of what memory looks like — and persuades it to run on a Windows, Linux or x86-64 macOS host. This page walks the whole path, from <code>main()</code> to a triangle on screen, and explains why each piece exists.</p>
 
   <div class="tape" id="tape">
@@ -638,9 +639,15 @@ subsystems.Initialize&lt;<b>Graphics::Lifecycle</b>&gt;();</pre>
   <p class="deck">A PS5 executable is an ELF file with Sony's extensions bolted on. The loader in <code>src/loader/</code> is about 6,200 lines but it is where most of the genuinely clever tricks live.</p>
 
 <h4 id="archive-loading">Directories and ZArchive content</h4>
-  <p><code>--game</code> accepts a directory, ELF or <code>.zar</code> ZArchive with <code>eboot.bin</code> at its root. <code>common/archive.cpp</code> exposes virtual paths such as <code>game.zar!/sce_sys/param.json</code> through <code>Common::File</code>. A retained <code>ArchiveReader</code> shares the index and block cache while a mount or launcher scan is active. This is read-only game content; saves and temporary files use writable host locations.</p>
-  <p>Windows starts through <code>wmain</code>, converts arguments to UTF-8 and preserves native <code>std::filesystem::path</code> values through file operations. Guest paths without a matching mount stay outside the host namespace. The launcher uses <code>gameContent.cpp</code> to inspect folders and archives uniformly, including icons, title metadata and game size.</p>
-  <p><code>libSaveData.cpp</code> persists SaveDataMemory2 data and allocation metadata on disk, including search/mount capacity and timestamps. Save-data dialog locking and CP932 conversion have dedicated regression tests. Treat these as observable guest behavior when debugging missing progress or stuck dialogs.</p>
+  <!-- shared:t-elf-and-self.html:excerpt-055 -->
+<p><code>--game</code> accepts a directory, ELF or <code>.zar</code> ZArchive with <code>eboot.bin</code> at its root. <code>common/archive.cpp</code> exposes virtual paths such as <code>game.zar!/sce_sys/param.json</code> through <code>Common::File</code>. A retained <code>ArchiveReader</code> shares the index and block cache while a mount or launcher scan is active. This is read-only game content; saves and temporary files use writable host locations.</p>
+<!-- /shared -->
+  <!-- shared:t-elf-and-self.html:excerpt-056 -->
+<p>Windows starts through <code>wmain</code>, converts arguments to UTF-8 and preserves native <code>std::filesystem::path</code> values through file operations. Guest paths without a matching mount stay outside the host namespace. The launcher uses <code>gameContent.cpp</code> to inspect folders and archives uniformly, including icons, title metadata and game size.</p>
+<!-- /shared -->
+  <!-- shared:t-elf-and-self.html:excerpt-057 -->
+<p><code>libSaveData.cpp</code> persists SaveDataMemory2 data and allocation metadata on disk, including search/mount capacity and timestamps. Save-data dialog locking and CP932 conversion have dedicated regression tests. Treat these as observable guest behavior when debugging missing progress or stuck dialogs.</p>
+<!-- /shared -->
 
   <h3 id="the-file-format">The file format</h3>
   <p>Games ship an <code>eboot.bin</code>, which is a <strong>SELF</strong> — a Signed ELF, a small container header followed by (on retail discs, encrypted) ELF segments. Kyty parses the container, then the ELF inside. The ELF is standard x86-64 ELF64 with FreeBSD's OS/ABI marker, but with Sony-specific type and tag values:</p>
@@ -719,13 +726,21 @@ LIB_DEFINE(InitAgcDriver_1) {
   <div class="srcs"><span class="src">src/libs/libs.h</span><span class="src">src/loader/runtimeLinker.cpp</span><span class="src">src/loader/symbolDatabase.h</span></div>
 
 <h4 id="dynamic-module-lifetimes">Eager relocation and dynamic-module lifetimes</h4>
-  <p><code>RelocateRecord()</code> resolves both relocation tables eagerly. <code>Program::rela_bits</code> records successful bindings, so loading another module retries unresolved imports without overwriting existing guest-modified slots. <code>RelocateProgram()</code> refreshes all loaded importers after a dynamic load. Guest PLT/GOT records still exist, but the emulator's former lazy-PLT setup and <code>DynamicInfo::pltgot_vaddr</code> field have been removed.</p>
-  <p>Explicit module loads increment <code>Program::load_count</code>; the final explicit unload releases the module. Before unmapping, <code>UnloadProgram()</code> identifies imports bound to that module's exact exported address, clears their resolved bits and relocates them again. Matching only a NID could unlink a different provider, so <code>SymbolDatabase::FindByNid()</code> also accepts an address filter.</p>
-  <p>Unresolved function imports still receive diagnostic thunks; unresolved objects point at invalid memory. A thunk is the fallback for an unresolved import, not the ordinary mechanism for deferring all symbol binding until first call.</p>
+  <!-- shared:t-nids.html:excerpt-066 -->
+<p><code>RelocateRecord()</code> resolves both relocation tables eagerly. <code>Program::rela_bits</code> records successful bindings, so loading another module retries unresolved imports without overwriting existing guest-modified slots. <code>RelocateProgram()</code> refreshes all loaded importers after a dynamic load. Guest PLT/GOT records still exist, but the emulator's former lazy-PLT setup and <code>DynamicInfo::pltgot_vaddr</code> field have been removed.</p>
+<!-- /shared -->
+  <!-- shared:t-nids.html:excerpt-067 -->
+<p>Explicit module loads increment <code>Program::load_count</code>; the final explicit unload releases the module. Before unmapping, <code>UnloadProgram()</code> identifies imports bound to that module's exact exported address, clears their resolved bits and relocates them again. Matching only a NID could unlink a different provider, so <code>SymbolDatabase::FindByNid()</code> also accepts an address filter.</p>
+<!-- /shared -->
+  <!-- shared:t-nids.html:excerpt-068 -->
+<p>Unresolved function imports still receive diagnostic thunks; unresolved objects point at invalid memory. A thunk is the fallback for an unresolved import, not the ordinary mechanism for deferring all symbol binding until first call.</p>
+<!-- /shared -->
 
   <h3 id="what-happens-when-a-symbol-is-missing">What happens when a symbol is missing</h3>
   <h4 id="unresolved-diagnostic-thunk">The thunk, byte by byte</h4>
-  <p><code>AllocateUnresolvedImportThunk()</code> emits a 34-byte diagnostic stub. It calls <code>UnresolvedImportStub(record_id)</code>, which logs the missing import (subject to the shared 1,024-call log limit) and returns zero. It does not preserve arguments for a lazy retry or tail-call a newly found target.</p>
+  <!-- shared:t-nids.html:excerpt-078 -->
+<p><code>AllocateUnresolvedImportThunk()</code> emits a 34-byte diagnostic stub. It calls <code>UnresolvedImportStub(record_id)</code>, which logs the missing import (subject to the shared 1,024-call log limit) and returns zero. It does not preserve arguments for a lazy retry or tail-call a newly found target.</p>
+<!-- /shared -->
   <div class="filename">src/loader/runtimeLinker.cpp — AllocateUnresolvedImportThunk</div>
 <pre>48 83 EC 08                sub rsp, 8        <i>// align stack for the SysV call</i>
 48 BF &lt;record_id:8 bytes&gt;  mov rdi, record_id
@@ -734,7 +749,9 @@ FF D0                      call rax          <i>// RAX receives zero</i>
 48 83 C4 08                add rsp, 8
 0F 57 C0                   xorps xmm0, xmm0  <i>// zero floating return register too</i>
 C3                         ret</pre>
-  <p>A later dynamic module load retries unresolved relocation slots eagerly through <code>RelocateAll()</code>. The thunk itself only diagnoses an unresolved call. Returning zero can let a game continue while still hiding missing behavior, so a title that boots with stubs is not evidence that those APIs are implemented.</p>
+  <!-- shared:t-nids.html:excerpt-079 -->
+<p>A later dynamic module load retries unresolved relocation slots eagerly through <code>RelocateAll()</code>. The thunk itself only diagnoses an unresolved call. Returning zero can let a game continue while still hiding missing behavior, so a title that boots with stubs is not evidence that those APIs are implemented.</p>
+<!-- /shared -->
 
   <div class="callout kyty">
     <span class="lbl">Why this design</span>
@@ -807,9 +824,15 @@ while (expanded_size &lt; 768 * 1024) {
   <div class="srcs"><span class="src">src/kernel/memory.h</span><span class="src">src/kernel/memory.cpp</span></div>
 
 <h4 id="extended-guest-memory">The separate extended-memory arena</h4>
-  <p>Ordinary guest mappings keep their existing low address bands. Extended allocations use a separate <strong>512 GiB virtual arena at <code>0x080000000000</code></strong>, an 8 TiB base, described by <code>kExtendedMemoryBase</code> and <code>kExtendedMemorySize</code> in <code>kernel/memory.h</code>. Reserving that address range does not allocate 512 GiB of physical RAM. Extended requests and ordinary mapping searches have separate allocation rules.</p>
-  <p>GPU tracking accepts the low 1 TiB region and that explicit extended interval; the space between them is not a valid resource range. Sparse image tracking covers 44-bit addresses. Dense buffer/BDA tables pack the low and extended intervals together through <code>BufferCache::PageIndex()</code> (guest address to packed page index) and <code>GuestAddress()</code> (packed byte offset to guest address), avoiding tables for the entire gap.</p>
-  <p>Automatic backing is recycled through physical-allocation ownership. Reserved mappings are published only after backing commit succeeds, and partial POSIX unmaps preserve still-live mappings. These are allocation/alias invariants tested by <code>VirtualMemoryAllocationTests.cpp</code>. Host primitives are declared directly in <code>common/virtualMemory.h</code> and implemented by <code>sysWindowsVirtual.cpp</code> / <code>sysLinuxVirtual.cpp</code>.</p>
+  <!-- shared:t-address-space.html:excerpt-090 -->
+<p>Ordinary guest mappings keep their existing low address bands. Extended allocations use a separate <strong>512 GiB virtual arena at <code>0x080000000000</code></strong>, an 8 TiB base, described by <code>kExtendedMemoryBase</code> and <code>kExtendedMemorySize</code> in <code>kernel/memory.h</code>. Reserving that address range does not allocate 512 GiB of physical RAM. Extended requests and ordinary mapping searches have separate allocation rules.</p>
+<!-- /shared -->
+  <!-- shared:t-address-space.html:excerpt-091 -->
+<p>GPU tracking accepts the low 1 TiB region and that explicit extended interval; the space between them is not a valid resource range. Sparse image tracking covers 44-bit addresses. Dense buffer/BDA tables pack the low and extended intervals together through <code>BufferCache::PageIndex()</code> (guest address to packed page index) and <code>GuestAddress()</code> (packed byte offset to guest address), avoiding tables for the entire gap.</p>
+<!-- /shared -->
+  <!-- shared:t-address-space.html:excerpt-092 -->
+<p>Automatic backing is recycled through physical-allocation ownership. Reserved mappings are published only after backing commit succeeds, and partial POSIX unmaps preserve still-live mappings. These are allocation/alias invariants tested by <code>VirtualMemoryAllocationTests.cpp</code>. Host primitives are declared directly in <code>common/virtualMemory.h</code> and implemented by <code>sysWindowsVirtual.cpp</code> / <code>sysLinuxVirtual.cpp</code>.</p>
+<!-- /shared -->
 
   <h3 id="keeping-the-cpu-and-gpu-in-agreement">Keeping the CPU and GPU in agreement</h3>
   <p>This is the subtlest problem in the whole emulator, and it deserves its own explanation.</p>
@@ -1143,12 +1166,22 @@ gpu_tiler_color_transform.comp    gpu_tiler_demote_d16.comp</pre>
   <div class="srcs"><span class="src">src/graphics/presentation/videoOut.cpp</span><span class="src">…/window/swapchain.cpp</span></div>
 
   <h3 id="audio">Audio — ports, graphs and decoders</h3>
-  <p>The implementation is now split by responsibility. <code>audio.cpp</code> owns AudioOut/AudioOut2 and AudioIn; <code>acm.cpp</code> owns ACM; <code>audio3d.cpp</code> owns Audio3D; and <code>ngs2.cpp</code> owns NGS2 systems, racks, voices and sampler graphs. Follow those files rather than looking for every API in the former monolithic audio implementation.</p>
-  <p>AudioOut2 supports 12-channel (7.1.4) data with downmix, user-capability queries, even blocking-write cadence and capture of submitted PCM before shared guest buffers change. NGS2 plays PCM16 and ATRAC9 sampler blocks, preserves stream/loop positions and supports rear low-pass filtering; unsupported custom modules warn and are skipped.</p>
-  <p><code>ajm.cpp</code> parses asynchronous jobs through <code>libs/ajm/decoder.h</code>. ATRAC9 uses LibAtrac9; AAC, MP3 and Opus use FFmpeg. <code>libs/ajm/opus_decoder.h</code> adds Opus decode/control handling, and shared reset logic handles gapless state.</p>
-  <p><code>--mic &lt;name&gt;</code> selects SDL3 microphone capture for AudioIn; omitting it produces paced silence. <code>dualSenseHaptics.cpp</code> routes vibration-audio ports to DualSense haptics and pad-speaker ports to the controller speaker when the host device is available. Audio haptics are a separate path from <code>PadSetVibration()</code> motor rumble.</p>
+  <!-- shared:t-cpp-system.html:excerpt-167 -->
+<p>The implementation is now split by responsibility. <code>audio.cpp</code> owns AudioOut/AudioOut2 and AudioIn; <code>acm.cpp</code> owns ACM; <code>audio3d.cpp</code> owns Audio3D; and <code>ngs2.cpp</code> owns NGS2 systems, racks, voices and sampler graphs. Follow those files rather than looking for every API in the former monolithic audio implementation.</p>
+<!-- /shared -->
+  <!-- shared:t-cpp-system.html:excerpt-168 -->
+<p>AudioOut2 supports 12-channel (7.1.4) data with downmix, user-capability queries, even blocking-write cadence and capture of submitted PCM before shared guest buffers change. NGS2 plays PCM16 and ATRAC9 sampler blocks, preserves stream/loop positions and supports rear low-pass filtering; unsupported custom modules warn and are skipped.</p>
+<!-- /shared -->
+  <!-- shared:t-cpp-system.html:excerpt-169 -->
+<p><code>ajm.cpp</code> parses asynchronous jobs through <code>libs/ajm/decoder.h</code>. ATRAC9 uses LibAtrac9; AAC, MP3 and Opus use FFmpeg. <code>libs/ajm/opus_decoder.h</code> adds Opus decode/control handling, and shared reset logic handles gapless state.</p>
+<!-- /shared -->
+  <!-- shared:t-cpp-system.html:excerpt-170 -->
+<p><code>--mic &lt;name&gt;</code> selects SDL3 microphone capture for AudioIn; omitting it produces paced silence. <code>dualSenseHaptics.cpp</code> routes vibration-audio ports to DualSense haptics and pad-speaker ports to the controller speaker when the host device is available. Audio haptics are a separate path from <code>PadSetVibration()</code> motor rumble.</p>
+<!-- /shared -->
 
+<!-- shared:t-cpp-system.html:excerpt-171 -->
 <p>SDL3 also supplies gyroscope and accelerometer samples for pad motion APIs. The default keyboard mapping uses Z/C for L2/R2. Windows are resizable and recreate the swapchain on resize; Space no longer acts as a pause shortcut. VideoOut supports RGB10A2 PQ buffers and layered presentation. <code>--vr</code> enables a virtual HMD2 model (<code>libHmd2.cpp</code>), including field-of-view/reprojection state, not a physical-headset backend.</p>
+<!-- /shared -->
 
   <h3 id="input">Input</h3>
   <p>SDL3 supplies gamepad, keyboard, and mouse events on the main thread. <code>libs/controller.cpp</code> maps controllers onto the DualSense button mask and analogue axes; <code>presentation/window/hostInput.cpp</code> applies default PC controls or repeatable <code>--keymap Control=Input</code> bindings, including mouse buttons and mouse-to-right-stick mode. <code>libPad.cpp</code> reports the assembled state through <code>scePadReadState</code>, while <code>PadSetVibration()</code> forwards the two motor strengths to <code>SDL_RumbleGamepad()</code>. <code>PadSetLightBar()</code> and <code>PadSetTriggerEffect()</code> drive a real DualSense's light bar and adaptive triggers through <code>SDL_SetGamepadLED()</code> and <code>SDL_SendGamepadEffect()</code>; a DualShock&nbsp;4 takes the same pad path, and the touchpad is emulated with the mouse.</p>

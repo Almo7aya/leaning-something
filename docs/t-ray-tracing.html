@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-4">
+<link rel="stylesheet" href="assets/app.css?v=20261007-5">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
@@ -16,6 +16,9 @@
 <p class="topic-eyebrow">Appendix · C11 · Advanced research and implementation</p>
 <h1 id="ray-tracing">Implementing ray tracing in KytyPS5</h1>
 <p class="topic-deck">Trace the implemented BVH32/BVH64 path from RDNA operands to software intersection on the host GPU, then learn how to investigate unsupported forms and validate complete guest workloads.</p>
+<!-- prerequisites:ray-tracing -->
+<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="t-trace-draw.html">One draw to GPU completion</a> · <a href="t-shaders.html">Shaders: RDNA 2 → SPIR-V</a> · <a href="t-program-cache.html">The program cache</a>. <a href="start.html">View the learning route</a>.</p>
+<!-- /prerequisites -->
 <section class="band band-read"><div class="band-h"><span class="band-t">Research → model → implement → prove</span></div><div class="prose">
 <div class="callout k"><span class="lbl">Implemented software intersections; further coverage needs evidence</span>
 <p>KytyPS5 at <code>d2413fc2ebd91d1b7234197c2dd5bd48e1cb6a51</code> (7 October 2026) implements full-float BVH32 and BVH64 node intersections as ordinary SPIR-V shader work. The decoder, IR, BDA memory path and GPU regression fixtures are present. This appendix separates that implemented subset from research proposals, including an optional Vulkan ray-query backend. Source inspection and synthetic fixtures do not establish every console format, hardware numerical behavior or game compatibility.</p></div>
@@ -507,9 +510,9 @@ ctest --test-dir _Build/windows -R "^(shader_cfg|resource_tracking|shader_recomp
 
 </div></section>
 </main>
-<script src="assets/topics.js?v=20261007" defer></script>
-<script src="assets/search-index.js?v=20261007-d2413fc2" defer></script>
-<script src="assets/app.js?v=20261007-4" defer></script>
+<script src="assets/topics.js?v=20261007-5" defer></script>
+<script src="assets/search-index.js?v=20261007-5" defer></script>
+<script src="assets/app.js?v=20261007-5" defer></script>
 <script src="assets/highlight.js?v=20261007" defer></script>
 </body>
 </html>

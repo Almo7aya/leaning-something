@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-4">
+<link rel="stylesheet" href="assets/app.css?v=20261007-5">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
@@ -20,6 +20,9 @@
   <p class="topic-deck">
     Topics 15–17 describe the split between plan and SPIR-V. This page reads the one function that actually does it on every draw: <code>ProgramCache::Get</code> in <code>pipelineCache.cpp</code>.
   </p>
+<!-- prerequisites:program-cache -->
+<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="t-shaders.html">Shaders: RDNA 2 → SPIR-V</a> · <a href="t-vulkan.html">The Vulkan backend</a>. <a href="start.html">View the learning route</a>.</p>
+<!-- /prerequisites -->
 
   <section class="band band-read">
     <div class="band-h"><span class="band-t">Read</span></div>
@@ -70,8 +73,12 @@ return permutation-&gt;handle;</pre>
 
   <h5 id="libces">libCes — a whole module in one file</h5>
   <p><code>libCes.cpp</code> implements CP932 / Shift-JIS ↔ UTF-8 conversion, registered as <code>LIB_VERSION("Ces", 1, "Ces", 1, 1)</code>. <code>CesDecodeUtf8</code> is a textbook UTF-8 decoder with the replacement character <code>0xfffd</code> on a truncated or invalid sequence. If you want a first HLE file to read that is not inlined inside <code>libs.cpp</code>, start here — then compare it to <code>LibContentExport</code> in <a href="t-hle.html">topic 12</a>.</p>
+<!-- shared:t-shaders.html:excerpt-147 -->
 <p>GPU-selected descriptors require a bounded set of compatible candidates. Resource tracking discovers buffer/image tables and nested selectors, materialization refreshes their current values, and binding/emission maps the selected candidate to native resources. Compatible image views can share a contiguous descriptor array. Unsupported shapes retain explicit guards: deleting a guard does not supply the missing candidate discovery or bindings.</p>
+<!-- /shared -->
+<!-- shared:t-shaders.html:excerpt-148 -->
 <p>Raw scalar/descriptor reads use the buffer backing path (<code>TryReadBufferBacking()</code>); formatted image synchronization is handled by the appropriate resource binding. Compute materialization also receives <code>SrtRuntime::workgroup_counts</code>. During compilation, host evaluation values are discarded while dependencies still used by GPU memory operations are retained.</p>
+<!-- /shared -->
     </div>
   </section>
 
@@ -113,9 +120,9 @@ return permutation-&gt;handle;</pre>
 
 </main>
 
-<script src="assets/topics.js?v=20261007" defer></script>
-<script src="assets/search-index.js?v=20261007-d2413fc2" defer></script>
-<script src="assets/app.js?v=20261007-4" defer></script>
+<script src="assets/topics.js?v=20261007-5" defer></script>
+<script src="assets/search-index.js?v=20261007-5" defer></script>
+<script src="assets/app.js?v=20261007-5" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>

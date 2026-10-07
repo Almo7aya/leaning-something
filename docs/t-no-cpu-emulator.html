@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-4">
+<link rel="stylesheet" href="assets/app.css?v=20261007-5">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
@@ -22,26 +22,29 @@
     neither. This is the single idea that explains the shape of the entire project — get it
     now and most of the rest follows.
   </p>
+<!-- prerequisites:no-cpu-emulator -->
+<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="t-what-an-emulator-is.html">What an emulator is</a>. <a href="start.html">View the learning route</a>.</p>
+<!-- /prerequisites -->
 
   <!-- ---------------------------------------------------------- -->
   <section class="band band-read">
     <div class="band-h"><span class="band-t">Read</span></div>
     <div class="prose">
-<p class="deck">KytyPS5 has no general guest-CPU interpreter or dynamic binary translator. It does generate ABI stubs and instruction trampolines, and it has a separate GPU shader compiler. This chapter explains how native guest-CPU execution fits those pieces together.</p>
+<p data-shared="excerpt-010" class="deck">KytyPS5 has no general guest-CPU interpreter or dynamic binary translator. It does generate ABI stubs and instruction trampolines, and it has a separate GPU shader compiler. This chapter explains how native guest-CPU execution fits those pieces together.</p>
 
   <h4 id="the-instruction-sets-are-the-same">The instruction sets are the same</h4>
-  <p>A PS5 game contains x86-64 machine code. In a compatible x86-64 host environment, most instructions can execute directly. Kyty handles specific instruction-feature gaps separately. The emulator:</p>
+  <p data-shared="excerpt-011">A PS5 game contains x86-64 machine code. In a compatible x86-64 host environment, most instructions can execute directly. Kyty handles specific instruction-feature gaps separately. The emulator:</p>
   <ol>
     <li>Allocates memory at the address the executable wants,</li>
     <li>Copies the code segments into it,</li>
     <li>Marks those pages executable,</li>
     <li>Sets up a stack and jumps to the entry point.</li>
   </ol>
-  <p>From that instruction onwards the CPU executes ordinary game instructions directly. The emulator is not "in the loop" at all — it only regains control when the game calls a function the emulator provides, or when the hardware raises a fault.</p>
+  <p data-shared="excerpt-012">From that instruction onwards the CPU executes ordinary game instructions directly. The emulator is not "in the loop" at all — it only regains control when the game calls a function the emulator provides, or when the hardware raises a fault.</p>
 
   <div class="callout k">
     <span class="lbl">The mental model that matters</span>
-    <p>KytyPS5 is not a simulator that steps through the game. It is a <strong>host environment</strong> that the game runs inside. It is closer in spirit to Wine — which runs Windows programs on Linux — than to an emulator like Dolphin. Everything the emulator does is <em>reactive</em>: it responds to calls, to page faults, and to command buffers.</p>
+    <p data-shared="excerpt-013">KytyPS5 is not a simulator that steps through the game. It is a <strong>host environment</strong> that the game runs inside. It is closer in spirit to Wine — which runs Windows programs on Linux — than to an emulator like Dolphin. Everything the emulator does is <em>reactive</em>: it responds to calls, to page faults, and to command buffers.</p>
   </div>
 
   <h4 id="what-that-buys-and-what-it-costs">What that buys, and what it costs</h4>
@@ -82,15 +85,15 @@
         <div style="display:grid;grid-template-columns:minmax(120px,220px) minmax(0,1fr) 7ch;gap:12px;align-items:center"><div style="font-family:var(--mono);font-size:11.5px">launcher — Qt front end</div><div style="height:16px;background:var(--surface-3);border-radius:0 3px 3px 0"><div style="height:100%;width:11.3%;background:var(--guest);border-radius:0 3px 3px 0"></div></div><div style="font-family:var(--mono);font-size:11.5px;text-align:right;color:var(--muted)">5,880</div></div>
       </div>
     </div>
-    <div class="fig-note"><p>Counts are physical lines in <code>.cpp</code> and <code>.h</code> files under <code>src/</code> at <code>d2413fc2</code>, including blank lines. The total includes the three entry-point files; the bars show the nine subsystem directories. Graphics accounts for 71,266 lines.</p></div>
+    <div class="fig-note"><p data-shared="excerpt-014">Counts are physical lines in <code>.cpp</code> and <code>.h</code> files under <code>src/</code> at <code>d2413fc2</code>, including blank lines. The total includes the three entry-point files; the bars show the nine subsystem directories. Graphics accounts for 71,266 lines.</p></div>
   </div>
     </div>
   </section>
 
   <!-- ---------------------------------------------------------- -->
   <section class="band band-read"><div class="band-h"><span class="band-t">Current compatibility paths</span></div><div class="prose"><h4 id="optional-instruction-emulation">Optional AMD patches and host instruction gaps</h4>
-  <p><code>--amd-cpu</code> enables the shared <code>guestInstructionPatcher.cpp</code> path on Windows, Linux and x86-64 macOS. <code>PatchGuestInstructions(..., protect_memory, emulate_amd, host_features)</code> uses function boundaries from <code>.eh_frame</code> and registered trampoline space. It patches supported <code>VRSQRTPS</code> forms and fills host-feature gaps for <code>EXTRQ</code>, <code>INSERTQ</code>, <code>RDPID</code> and <code>CLWB</code>, preferring native trampolines with safe trap fallbacks. Windows red-zone protection is controlled separately by <code>--redzone</code>.</p>
-  <p>The patch result records per-family counts for reciprocal square root, EXTRQ, INSERTQ, RDPID and CLWB, distinguishing native patches from trap fallback. Host features decide which compatibility path is needed; x86-64 macOS signal handling also preserves the SSE4a context. Native TLS keeps fiber context valid across host-thread migration, and fiber ownership preserves small guest stacks.</p></div></section>
+  <p data-shared="excerpt-075"><code>--amd-cpu</code> enables the shared <code>guestInstructionPatcher.cpp</code> path on Windows, Linux and x86-64 macOS. <code>PatchGuestInstructions(..., protect_memory, emulate_amd, host_features)</code> uses function boundaries from <code>.eh_frame</code> and registered trampoline space. It patches supported <code>VRSQRTPS</code> forms and fills host-feature gaps for <code>EXTRQ</code>, <code>INSERTQ</code>, <code>RDPID</code> and <code>CLWB</code>, preferring native trampolines with safe trap fallbacks. Windows red-zone protection is controlled separately by <code>--redzone</code>.</p>
+  <p data-shared="excerpt-076">The patch result records per-family counts for reciprocal square root, EXTRQ, INSERTQ, RDPID and CLWB, distinguishing native patches from trap fallback. Host features decide which compatibility path is needed; x86-64 macOS signal handling also preserves the SSE4a context. Native TLS keeps fiber context valid across host-thread migration, and fiber ownership preserves small guest stacks.</p></div></section>
 
   <section class="band band-watch">
     <div class="band-h"><span class="band-t">Watch</span></div>
@@ -158,10 +161,10 @@
 
 </main>
 
-<script src="assets/topics.js?v=20261007" defer></script>
-<script src="assets/search-index.js?v=20261007-d2413fc2" defer></script>
+<script src="assets/topics.js?v=20261007-5" defer></script>
+<script src="assets/search-index.js?v=20261007-5" defer></script>
 <script src="assets/highlight.js?v=20261007" defer></script>
-<script src="assets/app.js?v=20261007-4" defer></script>
+<script src="assets/app.js?v=20261007-5" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>

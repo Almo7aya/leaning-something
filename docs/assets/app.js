@@ -24,6 +24,13 @@
   var TOPICS = window.KYTY_TOPICS || [];
   var LIST = TOPICS.filter(function (t) { return !t.part; });
 
+  function coreTopics() {
+    var route = (window.KYTY_ROUTES || {}).core || [];
+    return route.map(function (id) {
+      return LIST.find(function (t) { return t.id === id; });
+    }).filter(Boolean);
+  }
+
   function currentFile() {
     var p = location.pathname.replace(/\/+$/, "");
     return p.slice(p.lastIndexOf("/") + 1) || "index.html";
@@ -72,7 +79,7 @@
   }
   function progress() {
     var d = done(), n = 0;
-    var real = LIST.filter(function (t) { return t.id !== "playground" && t.id !== "lifetime" && t.id !== "machine" && t.id !== "system-explorer" && t.id !== "browser-emulator" && t.id !== "advanced-emulator" && t.id !== "loadlink" && t.id !== "guest-run" && t.id !== "host-run"; });
+    var real = coreTopics();
     real.forEach(function (t) { if (d[t.id]) n++; });
     return { done: n, total: real.length, pct: real.length ? Math.round(n / real.length * 100) : 0 };
   }
@@ -317,9 +324,16 @@
   function addPager(holder) {
     var t = currentTopic();
     if (!t) return;
-    var real = LIST.filter(function (x) { return x.id !== "playground"; });
+    var real = coreTopics();
     var i = real.indexOf(t);
-    if (i < 0) return;
+    if (i < 0) {
+      var back = el("p", "route-return");
+      var link = el("a", null, "Return to the core learning route →");
+      link.href = "start.html";
+      back.appendChild(link);
+      holder.appendChild(back);
+      return;
+    }
 
     // nearest built neighbours
     function nearest(dir) {
@@ -332,7 +346,7 @@
     if (!prev && !next) return;
 
     var p = el("nav", "pager");
-    p.setAttribute("aria-label", "Topic navigation");
+    p.setAttribute("aria-label", "Core learning route");
     if (prev) {
       var a = el("a", "prev");
       a.href = prev.file;
@@ -390,7 +404,7 @@
     if (grid) grid.innerHTML = "";
 
     var d = done();
-    var real = LIST.filter(function (t) { return t.id !== "playground" && t.id !== "lifetime" && t.id !== "machine" && t.id !== "system-explorer" && t.id !== "browser-emulator" && t.id !== "advanced-emulator" && t.id !== "loadlink" && t.id !== "guest-run" && t.id !== "host-run"; });
+    var real = coreTopics();
     var built = real.filter(function (t) { return t.ready; });
 
     // Next thing to do: first built topic not yet finished, else the first built one.
@@ -406,7 +420,7 @@
       var card = el("div", "resume");
       var left = el("div", "resume-l");
       left.appendChild(el("p", "resume-k",
-        allDone ? "Everything written so far is done" : anyDone ? "Pick up where you left off" : "Start here"));
+        allDone ? "Core route checkpoints completed" : anyDone ? "Continue the core route" : "Start here"));
       left.appendChild(el("p", "resume-t", next.n + " · " + next.title));
       if (next.blurb) left.appendChild(el("p", "resume-d", next.blurb));
       card.appendChild(left);

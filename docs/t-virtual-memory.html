@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-4">
+<link rel="stylesheet" href="assets/app.css?v=20261007-5">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
@@ -20,21 +20,24 @@
   <p class="topic-deck">
     Because guest code runs natively, the emulator cannot instrument a memory access. What it can do is take away permission to a page and let the CPU tell it when something touched it. Page protection is not background knowledge here — it is the primary tool.
   </p>
+<!-- prerequisites:virtual-memory -->
+<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="b-memory.html">Objects, owners and borrowed memory</a> · <a href="t-no-cpu-emulator.html">Why there's no CPU emulator</a>. <a href="start.html">View the learning route</a>.</p>
+<!-- /prerequisites -->
 
   <section class="band band-read">
     <div class="band-h"><span class="band-t">Read</span></div>
     <div class="prose">
-<p class="deck">Page protection is not a side topic in this project — it is the mechanism by which the emulator detects that the game has touched something the GPU cares about. You need to understand it properly.</p>
+<p data-shared="excerpt-021" class="deck">Page protection is not a side topic in this project — it is the mechanism by which the emulator detects that the game has touched something the GPU cares about. You need to understand it properly.</p>
 
   <h4 id="addresses-are-lies">Addresses are lies</h4>
-  <p>When a program reads address <code>0x900001000</code>, that is a <strong>virtual address</strong>. The CPU's memory management unit translates it, through page tables the OS maintains, into a physical address in RAM. The translation happens per <strong>page</strong> — a fixed-size block, 4 KB on PC, 16 KB on PS5.</p>
+  <p data-shared="excerpt-022">When a program reads address <code>0x900001000</code>, that is a <strong>virtual address</strong>. The CPU's memory management unit translates it, through page tables the OS maintains, into a physical address in RAM. The translation happens per <strong>page</strong> — a fixed-size block, 4 KB on PC, 16 KB on PS5.</p>
 
-  <p>Each page table entry carries permission bits: readable, writable, executable. If a program accesses a page in a way the bits forbid, the CPU raises a fault. The OS delivers it to the process as an exception (Windows) or a signal (Linux, macOS).</p>
+  <p data-shared="excerpt-023">Each page table entry carries permission bits: readable, writable, executable. If a program accesses a page in a way the bits forbid, the CPU raises a fault. The OS delivers it to the process as an exception (Windows) or a signal (Linux, macOS).</p>
 
   <div class="primer">
     <span class="lbl">Jargon · reserve versus commit</span>
-    <p><strong>Reserving</strong> address space claims a range of virtual addresses so nothing else can use them, without allocating any physical memory. <strong>Committing</strong> backs part of that range with real memory.</p>
-    <p>This split is why an emulator can claim a terabyte of address space up front (see the memory map below) while using only a few gigabytes of RAM. Kyty reserves entire bands and hands out committed pieces from inside them.</p>
+    <p data-shared="excerpt-024"><strong>Reserving</strong> address space claims a range of virtual addresses so nothing else can use them, without allocating any physical memory. <strong>Committing</strong> backs part of that range with real memory.</p>
+    <p data-shared="excerpt-025">This split is why an emulator can claim a terabyte of address space up front (see the memory map below) while using only a few gigabytes of RAM. Kyty reserves entire bands and hands out committed pieces from inside them.</p>
   </div>
 
   <h4 id="the-three-things-kyty-does-with-protection">The three things Kyty does with protection</h4>
@@ -54,7 +57,7 @@
 <pre>constexpr uint64_t GUEST_PAGE_SIZE = <b>0x4000</b>;
 program-&gt;base_size_aligned = AlignUp(program-&gt;base_size, GUEST_PAGE_SIZE);</pre>
 
-  <p>One 16 KB guest page spans four 4 KB host pages. Guest VM alignment and renderer tracking are separate: <code>TRACKER_PAGE_SIZE</code> is 4 KB, so a tracking fault does not inherently dirty the entire 16 KB guest page. Host protection calls accept ranges and can cover several pages in one call.</p>
+  <p data-shared="excerpt-026">One 16 KB guest page spans four 4 KB host pages. Guest VM alignment and renderer tracking are separate: <code>TRACKER_PAGE_SIZE</code> is 4 KB, so a tracking fault does not inherently dirty the entire 16 KB guest page. Host protection calls accept ranges and can cover several pages in one call.</p>
 
   <h4 id="the-address-map-kyty-imposes">The address map Kyty imposes</h4>
   <p>Kyty does not let the host OS choose where things go. It divides the address space into bands and enforces them:</p>
@@ -74,12 +77,12 @@ program-&gt;base_size_aligned = AlignUp(program-&gt;base_size, GUEST_PAGE_SIZE);
         <div id="band-detail"></div>
       </div>
     </div>
-    <div class="fig-note"><p>macOS shifts these ranges and pins them with linker flags — <code>-segaddr SYSTEM_RESERVED,0x7ffffc000 -segaddr USER_AREA,0x7000000000</code> — so the dynamic loader can never place a system library where the guest needs to allocate. <span class="src">CMakeLists.txt</span></p></div>
+    <div class="fig-note"><p data-shared="excerpt-027">macOS shifts these ranges and pins them with linker flags — <code>-segaddr SYSTEM_RESERVED,0x7ffffc000 -segaddr USER_AREA,0x7000000000</code> — so the dynamic loader can never place a system library where the guest needs to allocate. <span class="src">CMakeLists.txt</span></p></div>
   </div>
 
   <div class="callout k">
     <span class="lbl">Why bands, not just "ask the OS"</span>
-    <p>Console software hard-codes addresses and assumes allocations land in particular ranges. It also passes pointers to the GPU, which in Kyty means those pointers must be distinguishable from emulator pointers. Fixing the bands makes both problems tractable: use the actual range bounds and loaded-segment metadata to classify an address. A hexadecimal prefix alone does not prove that a value is guest code, heap data or a host pointer.</p>
+    <p data-shared="excerpt-028">Console software hard-codes addresses and assumes allocations land in particular ranges. It also passes pointers to the GPU, which in Kyty means those pointers must be distinguishable from emulator pointers. Fixing the bands makes both problems tractable: use the actual range bounds and loaded-segment metadata to classify an address. A hexadecimal prefix alone does not prove that a value is guest code, heap data or a host pointer.</p>
   </div>
     </div>
   </section>
@@ -129,9 +132,9 @@ program-&gt;base_size_aligned = AlignUp(program-&gt;base_size, GUEST_PAGE_SIZE);
 
 </main>
 
-<script src="assets/topics.js?v=20261007" defer></script>
-<script src="assets/search-index.js?v=20261007-d2413fc2" defer></script>
-<script src="assets/app.js?v=20261007-4" defer></script>
+<script src="assets/topics.js?v=20261007-5" defer></script>
+<script src="assets/search-index.js?v=20261007-5" defer></script>
+<script src="assets/app.js?v=20261007-5" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>

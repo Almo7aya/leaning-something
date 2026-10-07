@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-4">
+<link rel="stylesheet" href="assets/app.css?v=20261007-5">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
@@ -20,6 +20,9 @@
   <p class="topic-deck">
     The guest allocates from fixed bands and stores raw pointers assuming it got the addresses it asked for. The emulator therefore owns the whole address space up front and hands out pieces — a very different job from calling <code>malloc</code>.
   </p>
+<!-- prerequisites:address-space -->
+<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="t-virtual-memory.html">Virtual memory, briefly</a>. <a href="start.html">View the learning route</a>.</p>
+<!-- /prerequisites -->
 
   <section class="band band-read">
     <div class="band-h"><span class="band-t">Read</span></div>
@@ -74,7 +77,7 @@
 };
 static_assert(sizeof(VirtualQueryInfo) == 72);</pre>
 
-  <p>The <code>static_assert</code> is not decoration. This struct is written into guest memory, so its layout must match the console's byte for byte. Several structs in the kernel headers carry the same guard.</p>
+  <p data-shared="excerpt-087">The <code>static_assert</code> is not decoration. This struct is written into guest memory, so its layout must match the console's byte for byte. Several structs in the kernel headers carry the same guard.</p>
 
   <h4 id="the-internal-interface">The internal interface</h4>
   <p>Four allocation entry points serve different purposes, and choosing the wrong one is a real bug class:</p>
@@ -87,7 +90,7 @@ bool <b>ProtectGuestMemory</b>(uint64_t vaddr, uint64_t size, Mode mode, Mode* o
 <i>// Transient PageManager watch state; does NOT change the mapping's semantic protection.</i>
 bool <b>ProtectGuestHostMemory</b>(uint64_t vaddr, uint64_t size, Mode mode);</pre>
 
-  <p>That last comment is the key distinction. <code>ProtectGuestMemory</code> changes what the guest believes the protection is, and a later <code>sceKernelVirtualQuery</code> will report it. <code>ProtectGuestHostMemory</code> changes only the host page bits so the tracker can catch a write — the guest must never see it.</p>
+  <p data-shared="excerpt-088">That last comment is the key distinction. <code>ProtectGuestMemory</code> changes what the guest believes the protection is, and a later <code>sceKernelVirtualQuery</code> will report it. <code>ProtectGuestHostMemory</code> changes only the host page bits so the tracker can catch a write — the guest must never see it.</p>
 
   <h4 id="the-gpu-facing-hooks">The GPU-facing hooks</h4>
 <pre>void RegisterCallbacks(callback_func_t alloc_func, callback_func_t free_func);
@@ -97,12 +100,12 @@ void InvalidateMemory(uint64_t vaddr, uint64_t size);
 bool TryWriteBacking(uint64_t vaddr, const void* data, uint64_t size);
 bool TryReadBacking(uint64_t vaddr, void* data, uint64_t size);</pre>
 
-  <p>The memory manager notifies the graphics layer whenever guest memory is mapped or unmapped, so caches can drop resources whose backing store has gone away — a common source of use-after-free bugs if it is missed.</p>
+  <p data-shared="excerpt-089">The memory manager notifies the graphics layer whenever guest memory is mapped or unmapped, so caches can drop resources whose backing store has gone away — a common source of use-after-free bugs if it is missed.</p>
 
 <h4 id="extended-guest-memory">The separate extended-memory arena</h4>
-  <p>Ordinary guest mappings keep their existing low address bands. Extended allocations use a separate <strong>512 GiB virtual arena at <code>0x080000000000</code></strong>, an 8 TiB base, described by <code>kExtendedMemoryBase</code> and <code>kExtendedMemorySize</code> in <code>kernel/memory.h</code>. Reserving that address range does not allocate 512 GiB of physical RAM. Extended requests and ordinary mapping searches have separate allocation rules.</p>
-  <p>GPU tracking accepts the low 1 TiB region and that explicit extended interval; the space between them is not a valid resource range. Sparse image tracking covers 44-bit addresses. Dense buffer/BDA tables pack the low and extended intervals together through <code>BufferCache::PageIndex()</code> (guest address to packed page index) and <code>GuestAddress()</code> (packed byte offset to guest address), avoiding tables for the entire gap.</p>
-  <p>Automatic backing is recycled through physical-allocation ownership. Reserved mappings are published only after backing commit succeeds, and partial POSIX unmaps preserve still-live mappings. These are allocation/alias invariants tested by <code>VirtualMemoryAllocationTests.cpp</code>. Host primitives are declared directly in <code>common/virtualMemory.h</code> and implemented by <code>sysWindowsVirtual.cpp</code> / <code>sysLinuxVirtual.cpp</code>.</p>
+  <p data-shared="excerpt-090">Ordinary guest mappings keep their existing low address bands. Extended allocations use a separate <strong>512 GiB virtual arena at <code>0x080000000000</code></strong>, an 8 TiB base, described by <code>kExtendedMemoryBase</code> and <code>kExtendedMemorySize</code> in <code>kernel/memory.h</code>. Reserving that address range does not allocate 512 GiB of physical RAM. Extended requests and ordinary mapping searches have separate allocation rules.</p>
+  <p data-shared="excerpt-091">GPU tracking accepts the low 1 TiB region and that explicit extended interval; the space between them is not a valid resource range. Sparse image tracking covers 44-bit addresses. Dense buffer/BDA tables pack the low and extended intervals together through <code>BufferCache::PageIndex()</code> (guest address to packed page index) and <code>GuestAddress()</code> (packed byte offset to guest address), avoiding tables for the entire gap.</p>
+  <p data-shared="excerpt-092">Automatic backing is recycled through physical-allocation ownership. Reserved mappings are published only after backing commit succeeds, and partial POSIX unmaps preserve still-live mappings. These are allocation/alias invariants tested by <code>VirtualMemoryAllocationTests.cpp</code>. Host primitives are declared directly in <code>common/virtualMemory.h</code> and implemented by <code>sysWindowsVirtual.cpp</code> / <code>sysLinuxVirtual.cpp</code>.</p>
 
   <h4 id="failure-injection">Failure injection</h4>
   <p>Compiled behind a flag, the allocator exposes deliberate failure hooks so its error paths are actually exercised by tests rather than only in the field:</p>
@@ -116,7 +119,7 @@ bool TestGuestAddressRangeIsOwned(uint64_t vaddr, uint64_t size);
 #endif</pre>
   <div class="srcs"><span class="src">src/kernel/memory.h</span><span class="src">tests/VirtualMemoryAllocationTests.cpp</span></div>
 <h4 id="sparse-texture-uploads">Sparse texture uploads</h4>
-  <p><code>BufferCache::ObtainBufferForImage()</code> reads streamed mip ranges through <code>Memory::TryReadSparseBacking()</code>. The guest address-space owner validates the complete range and rejects private mappings before the backing store copies resident pieces and zero-fills holes. A hole inside an owned sparse reservation is not the same as an arbitrary invalid guest address; do not replace failed reads with unconditional zeroes.</p>
+  <p data-shared="excerpt-157"><code>BufferCache::ObtainBufferForImage()</code> reads streamed mip ranges through <code>Memory::TryReadSparseBacking()</code>. The guest address-space owner validates the complete range and rejects private mappings before the backing store copies resident pieces and zero-fills holes. A hole inside an owned sparse reservation is not the same as an arbitrary invalid guest address; do not replace failed reads with unconditional zeroes.</p>
 
     </div>
   </section>
@@ -174,9 +177,9 @@ bool TestGuestAddressRangeIsOwned(uint64_t vaddr, uint64_t size);
 
 </main>
 
-<script src="assets/topics.js?v=20261007" defer></script>
-<script src="assets/search-index.js?v=20261007-d2413fc2" defer></script>
-<script src="assets/app.js?v=20261007-4" defer></script>
+<script src="assets/topics.js?v=20261007-5" defer></script>
+<script src="assets/search-index.js?v=20261007-5" defer></script>
+<script src="assets/app.js?v=20261007-5" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>

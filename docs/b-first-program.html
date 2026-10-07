@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en" class="notranslate" translate="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your first C++ program — KytyPS5</title>
+<meta name="description" content="Turn a source file into a program, follow its values, and diagnose a small build error.">
+<link rel="stylesheet" href="assets/app.css?v=20261007-5">
+<link rel="stylesheet" href="assets/highlight.css?v=20261007">
+</head>
+<body>
+<main class="topic" data-app-content>
+<p class="topic-eyebrow">Beginner · B1</p>
+<h1 id="overview">Your first C++ program</h1>
+<p class="topic-deck">Turn a source file into a program, follow its values, and diagnose a small build error.</p>
+<!-- prerequisites:beginner-cpp -->
+<p class="lesson-prerequisites"><strong>Before this page:</strong> no prior C++ or emulation knowledge required. <a href="start.html">View the learning route</a>.</p>
+<!-- /prerequisites -->
+<section class="band band-read"><div class="band-h"><span class="band-t">Learn, run, explain</span></div><div class="prose">
+
+<h2 id="before">Before you start</h2>
+<p>No C++ or emulation knowledge is required. A <strong>program</strong> is a sequence of instructions. We write C++ source text; a compiler translates it into machine code, and a linker connects that code with the library functions it uses. An executable is the resulting file you can run. A debugger can pause it so you can inspect values.</p>
+<h2 id="setup">Set up once</h2>
+<p>Use a C++20 compiler, CMake 3.20 or newer, and Ninja. On Windows, install Visual Studio C++ Build Tools with the Windows SDK and the C++ Clang tools, then open <strong>x64 Native Tools Command Prompt</strong> or Developer PowerShell. On Linux, use your distribution's C++ compiler, CMake and Ninja packages. On macOS, use the Xcode command-line tools plus CMake and Ninja. Run <code>clang++ --version</code>, <code>cmake --version</code> and <code>ninja --version</code> in that shell before continuing.</p>
+<p>The following commands run from the <strong>learning repository root</strong>, the folder containing <code>docs/</code> and <code>scripts/</code>. They configure and build only these small lessons. They do not build KytyPS5.</p>
+<pre>cmake -S docs/labs/beginner -B _Build/curriculum/beginner -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=clang++
+cmake --build _Build/curriculum/beginner
+ctest --test-dir _Build/curriculum/beginner --output-on-failure</pre>
+<p><code>-S</code> selects source, <code>-B</code> selects generated build files, and <code>Debug</code> asks for a debuggable build. The executable names match the source names. CTest runs them and checks exit status and exact output. A failed command is a reason to inspect the first diagnostic, not to proceed as if the build worked.</p>
+<details><summary>Setup troubleshooting</summary><ul><li><strong>Command not found:</strong> reopen the developer shell after installing the tool and check the version commands.</li><li><strong>Cannot find standard headers or libraries on Windows:</strong> verify the C++ workload and SDK are installed, and use the x64 developer environment.</li><li><strong>A different compiler is cached:</strong> use a fresh build folder such as <code>_Build/curriculum/beginner-clang</code> and use that folder in later commands.</li><li><strong>Executable not found:</strong> check that the build succeeded. These instructions use Ninja; an IDE generator can place executables in a configuration subfolder.</li></ul></details>
+<h2 id="read">Read the language in a small program</h2>
+<p>A <strong>variable</strong> names a value stored in an object. <code>int total = 0;</code> creates an integer initialized to zero. <code>const</code> prevents assigning a new value through that name. A <strong>function</strong> groups operations: <code>pixel_count</code> takes a <code>Frame</code> argument and returns an integer. Braces delimit its body, semicolons finish statements, and <code>return</code> gives its result to the caller.</p>
+<p>A <code>struct</code> groups named members: a frame has width and height. The dot accesses a member. <code>std::array&lt;Frame, 2&gt;</code> stores two frames; the angle brackets supply the element type and count to a library template. You can use this container before learning to write templates. <code>std::</code> identifies names from the standard library; <code>#include</code> makes their declarations available.</p>
+<p>The range <code>for</code> loop visits each frame. Here it makes a small copy called <code>frame</code>. <code>std::cout</code> writes output; <code>&lt;&lt;</code> sends the next value to that stream, and <code>'
+'</code> ends the line. Execution enters our <code>main</code> function. Returning zero reports success to the shell; our explicit nonzero return reports a failed check.</p>
+<h2 id="program">Predict, then run</h2>
+<p>Before running, calculate each product and the final total on paper.</p>
+<p class="filename">Complete runnable teaching program · <a href="labs/beginner/first_program.cpp">first_program.cpp</a></p>
+<!-- code:labs/beginner/first_program.cpp -->
+<pre><code>#include &lt;array&gt;
+#include &lt;iostream&gt;
+
+struct Frame {
+    int width;
+    int height;
+};
+
+int pixel_count(Frame frame) {
+    return frame.width * frame.height;
+}
+
+int main() {
+    const std::array&lt;Frame, 2&gt; frames{{{4, 3}, {2, 2}}};
+    int total = 0;
+    for (Frame frame : frames) {
+        const int pixels = pixel_count(frame);
+        std::cout &lt;&lt; &quot;pixels=&quot; &lt;&lt; pixels &lt;&lt; '\n';
+        total = total + pixels;
+    }
+    std::cout &lt;&lt; &quot;total=&quot; &lt;&lt; total &lt;&lt; '\n';
+    if (total != 16) {
+        return 1;
+    }
+    return 0;
+}</code></pre>
+<!-- /code --><p>Use the <a href="b-first-program.html#setup">B1 setup</a> once. From this learning repository's root:</p>
+<pre>cmake --build _Build/curriculum/beginner --target first_program
+ctest --test-dir _Build/curriculum/beginner -R '^beginner_first_program$' --output-on-failure</pre>
+<p>To see the output directly in PowerShell, run <code>.\_Build\curriculum\beginner\first_program.exe</code>; in a POSIX shell, run <code>./_Build/curriculum/beginner/first_program</code>. Tests compare the full output and require a successful exit.</p><p>Expected output, with exit status <code>0</code>:</p><!-- output:labs/beginner/first_program.txt -->
+<pre>pixels=12
+pixels=4
+total=16</pre>
+<!-- /output -->
+<h2 id="practice">Change one thing and explain it</h2>
+<ol><li>Change the second frame to width 3, height 2. Rebuild and predict the output before running. The old check should fail.</li><li>Confirm that the new total is correct, then update the <code>total != 16</code> check and the expected-output file <code>first_program.txt</code> together. Re-run the focused test.</li><li>Temporarily remove the semicolon after <code>int total = 0</code>. Rebuild, read the first compiler diagnostic, and restore it.</li><li>Open the source and debug executable in your debugger, set a breakpoint inside <code>pixel_count</code>, and inspect <code>frame.width</code> and <code>frame.height</code> on both calls. Step out and inspect <code>total</code> after each addition. If debugger setup is unavailable, keep a hand trace and mark the debugger step pending.</li></ol>
+<details><summary>Hint</summary><p>The total is accumulated across both frames. A passing check requires both the program's internal condition and the expected-output file to describe the behavior you intended.</p></details>
+<details><summary>Worked answer and rubric</summary><p>The new products are 12 and 6, so the total is 18. Update the check to <code>total != 18</code> and the last two expected lines to <code>pixels=6</code> and <code>total=18</code>. The missing semicolon is a compile error; a declared function with no linked definition instead produces a linker error. You are ready when you can explain each output line and locate the input values in a trace or debugger.</p></details>
+<h2 id="project-bridge">Where this appears in KytyPS5</h2>
+<p>Later, read <code>src/main.cpp</code>: its <code>main</code> starts the program and delegates to other functions. <code>src/emulator.h</code> groups run inputs in a struct. Those functions perform much more work, but functions, calls, members and conditions are the same building blocks. You do not need the emulator checkout to finish this lesson.</p>
+<p>For more practice, the optional <a href="https://www.learncpp.com/cpp-tutorial/introduction-to-cplusplus/">LearnCpp introduction to C++</a> begins a longer language course.</p>
+<div class="check"><p class="check-h">Before moving on</p><ul class="check-list"><li class="check-item"><input type="checkbox"><label>I can explain the three output lines and the purpose of main, Frame and pixel_count.</label></li><li class="check-item"><input type="checkbox"><label>I rebuilt after an edit, observed a failed check, and made the intended behavior pass.</label></li><li class="check-item"><input type="checkbox"><label>I can distinguish a compiler error from a linker error and record whether I used a debugger.</label></li></ul></div><p>Ticks record your own assessment. Keep your prediction, actual output and explanation; a tick alone is not evidence of understanding.</p>
+</div></section>
+</main>
+<script src="assets/topics.js?v=20261007-5" defer></script>
+<script src="assets/search-index.js?v=20261007-5" defer></script>
+<script src="assets/app.js?v=20261007-5" defer></script>
+<script src="assets/highlight.js?v=20261007" defer></script>
+</body>
+</html>

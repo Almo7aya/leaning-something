@@ -88,7 +88,7 @@ if (hasSource) {
   const portableTargets = cmake.match(/add_custom_target\(kyty_tests DEPENDS([^]*?)\)/)?.[1].trim().split(/\s+/);
   if (portableTargets?.length !== 29) errors.push('Portable test-target count changed; review the build/test lessons.');
   const {execFileSync} = require('node:child_process');
-  const reviewedRevision = 'd2413fc2ebd91d1b7234197c2dd5bd48e1cb6a51';
+  const reviewedRevision = JSON.parse(read('docs/content/learning.json')).project.revision;
   const head = execFileSync('git', ['-C', path.join(root, 'KytyPS5'), 'rev-parse', 'HEAD'], {encoding: 'utf8'}).trim();
   if (head !== reviewedRevision) errors.push('KytyPS5 HEAD differs from the reviewed revision; review docs before updating the snapshot.');
   for (const [file, symbols] of Object.entries(anchors)) {

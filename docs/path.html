@@ -393,6 +393,7 @@ ctest --test-dir _Build/windows --output-on-failure</pre>
 </section>
 
 <div class="foot">
+  <p><a href="start.html">Start here</a> defines the beginner-to-contributor route. This page is an optional project practice checklist for readers already comfortable with C++.</p>
   <p>Built against KytyPS5 <code>main</code> at <code>d2413fc2</code> (7 October 2026); follow source paths and symbols at that revision. Times are rough and assume you are comfortable with C++ but new to emulation. If a level takes twice as long as stated, that is normal — level 5 in particular is a compiler course wearing a disguise.</p>
 </div>
 
@@ -407,9 +408,9 @@ ctest --test-dir _Build/windows --output-on-failure</pre>
   var MODULES = [
     /* ---------------------------------------------------- L0 */
     {
-      id: "l0", lv: "Level 0", side: null, time: "2–4 hours", pre: "None",
+      id: "l0", lv: "Level 0", side: null, time: "2–4 hours", pre: "Start here readiness questions; C++ toolchain and project build prerequisites",
       title: "Get a build you can step through",
-      goal: "Before any reading: a debug-capable binary, a title that boots far enough to log, and a log file you can grep. Everything after this assumes you can re-run and observe.",
+      goal: "After the beginner route and source orientation, establish a debug-capable emulator build. The game-observation tasks are optional integration practice and need your own suitable content; the standalone labs and static traces do not depend on a game boot.",
       reading: [
         ["README.md", "The build section is authoritative and platform-specific. Read the whole thing once."],
         ["CMakeLists.txt", "Skim the source globs, generated Vulkan 1.3 shaders, emulator target and focused test targets."],
@@ -418,8 +419,8 @@ ctest --test-dir _Build/windows --output-on-failure</pre>
       tasks: [
         ["Build <code>kyty_emulator</code> with clang-cl (Windows) or Clang (Linux/macOS).", "MSVC is rejected at configure time because the project needs <code>__attribute__((sysv_abi))</code>. CMake also recognises GCC on POSIX, but upstream instructions and CI use Clang."],
         ["Run <code>kyty_emulator --help</code> and read every flag.", "Roughly a third of them exist purely for debugging. Knowing they exist is most of the value of this level."],
-        ["Boot a title and capture a log to a file.", "<code>--printf-direction File --printf-output-file _kyty.txt</code>. The current default is Silent."],
-        ["Find these four things in your log: the mount lines, a module's <code>base_vaddr</code>, the <code>--- Execute: Main ---</code> banner, and the first shader compile.", "They mark the four phases of start-up. If your log is missing the banner, the game never reached its entry point."],
+        ["Optional integration: boot a title and capture a log to a file.", "<code>--printf-direction File --printf-output-file _kyty.txt</code>. The current default is Silent."],
+        ["If you ran a title, find these four things in your log: the mount lines, a module's <code>base_vaddr</code>, the <code>--- Execute: Main ---</code> banner, and the first shader compile.", "They mark the four phases of start-up. If your log is missing the banner, the game never reached its entry point."],
         ["Make a trivial source change, rebuild, and confirm it appears.", "A <code>LOGF</code> in <code>Emulator::Run</code> is enough. You want to know the edit-build-run loop works before you need it."]
       ],
       checks: [
@@ -435,9 +436,9 @@ ctest --test-dir _Build/windows --output-on-failure</pre>
       title: "The shape of the whole program",
       goal: "Understand the top level end to end. These are small files and you can genuinely finish them in one sitting — resist every temptation to follow a call into the graphics or loader code.",
       reading: [
-        ["src/main.cpp", "319 lines. Host virtual-memory/thread bootstrap, argument parsing, then <code>Run()</code>."],
-        ["src/emulator.h", "15 lines. <code>RunOptions</code> is the entire input to the emulator."],
-        ["src/emulator.cpp", "175 lines. <code>Init</code>, mounts, <code>LoadElf</code>, <code>Execute</code>. This file is the spine."],
+        ["src/main.cpp", "Host virtual-memory/thread bootstrap, argument parsing, then <code>Run()</code>."],
+        ["src/emulator.h", "<code>RunOptions</code> is the entire input to the emulator."],
+        ["src/emulator.cpp", "<code>Init</code>, mounts, <code>LoadElf</code>, <code>Execute</code>. This file is the spine."],
         ["src/common/subsystems.h", "The lifecycle callback stack: typed initialization plus reverse normal/emergency teardown."],
         ["src/common/emulatorConfig.h", "Every configurable value and its default, in one struct."]
       ],
@@ -468,9 +469,9 @@ ctest --test-dir _Build/windows --output-on-failure</pre>
         ["src/loader/runtimeLinker.cpp", "<code>Resolve()</code> — splitting <code>name#library#module</code> and searching."]
       ],
       tasks: [
-        ["Pick one <code>LIB_FUNC</code> in <code>libAppContent.cpp</code>, breakpoint the C++ function, and catch the guest calling it.", "Look at the call stack. The frames below yours are guest code — addresses in the <code>0x9xxxxxxxx</code> range."],
+        ["Pick one <code>LIB_FUNC</code> in <code>libAppContent.cpp</code>, breakpoint the C++ function, and catch the guest calling it.", "Look at the call stack. Classify caller addresses with the actual loaded-module mapping; a fixed address prefix is not sufficient."],
         ["Enable <code>PRINT_NAME</code> for one module and read the resulting trace.", "Set the module's thread-local flag with <code>PRINT_NAME_ENABLE(true)</code>. You get timestamped, thread-tagged entry logging for free."],
-        ["Find a stubbed NID in your log, then implement it.", "Add a <code>LIB_FUNC</code> pointing at a function that logs its arguments and returns <code>OK</code>. Re-run and confirm the stub message is gone. This is the actual workflow for growing compatibility."],
+        ["Choose one unresolved NID and establish its guest-visible contract before implementing it.", "Record argument, output, lifetime and error behavior from evidence. Register the function only with a justified implementation and focused ordinary, boundary and error tests. Returning OK or removing a stub message alone does not prove correctness; use the first-change lesson and developer capstone."],
         ["Work out what happens when two loaded modules export the same NID.", "Read the search order in <code>Resolve()</code>: HLE database first, then each loaded program's export table in load order."]
       ],
       checks: [
@@ -503,7 +504,7 @@ ctest --test-dir _Build/windows --output-on-failure</pre>
         ["Explain to yourself why executable segments are patched <em>before</em> protection is applied.", "Look at the order in <code>LoadProgramToMemory</code>, and at the <code>FlushInstructionCache</code> call that follows."]
       ],
       checks: [
-        ["Why is the guest page size 0x4000 rather than the host's 0x1000?", "<p>The PS5 uses 16&nbsp;KB pages and games observe this through <code>sceKernelVirtualQuery</code> and alignment requirements. One guest page covers four host pages, so protection changes always apply in groups — which matters a great deal later, in the memory tracker.</p><p><span class=\"src\">src/loader/runtimeLinker.cpp</span></p>"],
+        ["Why is the guest page size 0x4000 rather than the host's 0x1000?", "<p>The PS5 uses 16&nbsp;KB pages and games observe this through <code>sceKernelVirtualQuery</code> and alignment requirements. The emulator tracks 4 KiB units within a 16 KiB guest page; a fault can affect one tracked unit rather than all four. Actual host protection granularity is a separate platform constraint. Follow PageManager and MemoryTracker before inferring which ranges are protected.</p><p><span class=\"src\">src/loader/runtimeLinker.cpp</span></p>"],
         ["Why does the unresolved-import stub log and return zero instead of aborting at load time?", "<p>Games import far more functions than they call. Aborting at load time would make almost everything unbootable. Failing lazily at call time limits the damage to code paths actually taken, and the log records exactly which NID was stubbed — which is the single most useful line in a compatibility report.</p>"],
         ["The exception handler returns <code>true</code> for some access violations. What are they, and why is that not a workaround?", "<p>GPU page faults — <code>Memory::HandleGpuFault()</code>. It is load-bearing design: memory the GPU has cached is deliberately write-protected so a guest write traps and the renderer learns the data is stale. The page fault <em>is</em> the notification mechanism, not an error being swallowed. (The older reserved-range branch is gone; every other access violation falls through to the crash dump.)</p><p><span class=\"src\">src/loader/runtimeLinker.cpp</span></p>"]
       ],
@@ -591,7 +592,7 @@ ctest --test-dir _Build/windows --output-on-failure</pre>
         ["Write down the exact sequence for an upload and for a download.", "<code>ForEachUploadRange</code> and <code>ForEachDownloadRange</code>. Note which locks are held across the callback, and when protection is re-applied."],
         ["Use the failure-injection hooks to exercise an error path.", "<code>TestFailNextPhysicalMemoryUnmap()</code>, <code>TestFailGuestBackingStoreUnmapAfter(n)</code>, behind <code>KYTY_VIRTUAL_MEMORY_ALLOCATION_TESTS</code>. Deliberately introduced so allocator error paths are actually run."],
         ["Work out how two images overlapping the same guest memory are resolved.", "<code>FindImagesInRegion</code>, <code>ResolveOverlap</code>, <code>ExpandImage</code>, <code>AssociateStencil</code>. Aliasing is normal, not exceptional — games reuse memory aggressively."],
-        ["Follow the texture cache's garbage collector.", "<code>RunGarbageCollector</code>, the LRU cache, and the 1.5&nbsp;GB pressure and 3&nbsp;GB critical thresholds. Decide what happens to an image that is evicted while still referenced by an in-flight command buffer."],
+        ["Follow the texture cache's garbage collector.", "<code>RunGarbageCollector</code>, the LRU cache, and the pressure and critical thresholds (header defaults are 1.5 GiB and 3 GiB; inspect constructor adjustments). Decide what happens to an image that is evicted while still referenced by an in-flight command buffer."],
         ["Add a regression test for a scenario you invent.", "The real deliverable of this level. If you can express a coherency scenario as a test, you understand the model."]
       ],
       checks: [

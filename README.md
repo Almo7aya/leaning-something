@@ -14,14 +14,21 @@ you source. Use the link above.
 
 ## The platform
 
-`docs/index.html` is the front door. Every subject is one **topic page** carrying its
-explanation, the animation for that idea, an interactive tool and a checkpoint against the
-real source: 20 numbered topics in six parts (foundations, loading a game, memory, execution,
-graphics, working on it), C++ and implementation appendices (C1–C11 plus a glossary), a set of whole-system
-simulations (one full run, a browser micro-emulator, a system explorer, the machine running),
-and the Playground. The **[developer curriculum](https://almo7aya.dev/leaning-something/developer-curriculum.html)**
-adds D1–D4: a coverage map and contribution gates, ELF-to-entry and PM4-to-completion
-source traces, and three reproducible native C++ debugging labs.
+`docs/index.html` is the front door. **[Start here](docs/start.html)** defines one
+core route: C++ essentials → machine behavior → emulation foundations → graphics
+→ source walkthroughs → a verified first contribution. Existing topic URLs and IDs
+remain stable; Previous/Next and home-page progress follow the core route.
+
+Five beginner lessons (B1–B5) include complete C++20 programs, build commands,
+expected output, boundary/error checks, exercises, hints and worked answers. They
+need no emulator checkout or game. C1 adds a sixth runnable program for forwarding,
+shared ownership and representation conversion.
+
+The project topics retain their source explanations, animations and tools. C++ and
+subsystem references are optional branches. The **[developer curriculum](docs/developer-curriculum.html)**
+adds D1–D4: contribution gates, boot/draw source traces and three debugging labs.
+The coverage map distinguishes introductions, guided traces and executable work;
+completing the route does not imply mastery of every console behavior.
 
 The sidebar can be hidden or shown, remembers that preference on desktop, and keeps
 the active page highlighted and in view. Its scroll position is retained as you move
@@ -41,16 +48,17 @@ fixture coverage do not establish universal game or hardware conformance.
 Run `node docs/labs/raytracing-reference.cjs` to check its 27 illustrative encoding,
 address and geometry cases. These are not hardware or guest-conformance tests.
 
-The five original long-form documents are still served while their content is ported into
-topics, and were updated to the same commit:
+The original long-form documents remain alternate views and tools. The Start here
+route defines prerequisites and learning order; the book and tour reuse generated
+paragraphs from the owning topic pages:
 
 | | Audience | Length |
 |---|---|---|
 | **[The Lab](https://almo7aya.dev/leaning-something/lab.html)** | Learn by experimenting — you drive it | 11 tools, open-ended |
 | **[The Visual Atlas](https://almo7aya.dev/leaning-something/atlas.html)** | Learn by watching — animation-led | 19 animations, ~40 minutes |
-| **[The Complete Book](https://almo7aya.dev/leaning-something/course.html)** | New to emulation — assumes nothing | 39 chapters, ~3–4 hours |
+| **[The Complete Book](https://almo7aya.dev/leaning-something/course.html)** | Project reference after basic C++ | 39 chapters; read alongside the core route |
 | **[Architecture Guide](https://almo7aya.dev/leaning-something/tour.html)** | Already comfortable with systems programming | 15 sections, ~45 minutes |
-| **[Learning Path](https://almo7aya.dev/leaning-something/path.html)** | Want to learn by doing | 7 levels, ~3 weeks part-time |
+| **[Learning Path](https://almo7aya.dev/leaning-something/path.html)** | Project practice after the readiness checks | 7 levels; game observations are optional integration work |
 
 The old `kytyps5-*.html` file names redirect to these.
 
@@ -82,12 +90,13 @@ screen). The explanation lives in the caption, which changes with every step.
 
 ### The Complete Book
 
-Part I teaches the background before any emulator code appears; Parts II–VII walk every
-layer of the emulator with real source excerpts.
+Part I introduces machine and emulation background; Parts II–VII walk selected
+project paths with source excerpts. Start with B1–B5 if C++ is new. Reading-time
+estimates are not mastery deadlines.
 
 | Part | Chapters | Covers |
 |---|---|---|
-| I · Foundations | 1–8 | Background, assuming no prior knowledge |
+| I · Foundations | 1–8 | Emulation background; C++ basics come from B1–B5 |
 | II · The skeleton | 9–12 | Layout, build, subsystems, boot sequence |
 | III · Running guest code | 13–21 | ELF loading, relocation, NIDs, instruction patching, exceptions, memory, threads |
 | IV · HLE libraries | 22–24 | How a console system call gets served, plus a worked example |
@@ -99,8 +108,9 @@ layer of the emulator with real source excerpts.
 
 The guide is a condensed tour: what the emulator does, a map of the codebase, boot, loader,
 memory, kernel layer, HLE libraries, the three graphics layers, presentation, build and
-tooling, a short learning path, and a glossary. The path is seven levels with 32 tickable
-tasks against the real repository; progress is saved in your browser's local storage.
+tooling, a short reading checklist, and a glossary. The separate practice path has seven
+levels against the real repository; progress is saved in browser local storage.
+Use it after the beginner readiness checks, alongside the developer gates.
 
 ---
 
@@ -109,9 +119,13 @@ tasks against the real repository; progress is saved in your browser's local sto
 ```
 docs/                          served by GitHub Pages
 ├─ index.html                  landing page and progress
+├─ start.html                  core route, readiness questions and code-example guide
+├─ b-*.html                    five beginner lessons with generated runnable listings
+├─ content/                    canonical route/status metadata and authoring instructions
 ├─ t-*.html                    the topic pages (20 topics + C1–C11 + D2–D4 + glossary)
 ├─ developer-curriculum.html   D1: developer gates, coverage map and capstone
-├─ labs/                       optional native C++ fixtures and isolated CMake build
+├─ labs/                       source-dependent developer fixtures
+│  └─ beginner/                standalone C++20 fixtures; no emulator dependency
 ├─ lifetime / machine / system-explorer / browser-emulator / advanced-emulator .html   whole-system simulations
 ├─ loadlink / guest-run / host-run .html   step-by-step diagrams: load & link, the guest side, the host side
 ├─ playground.html             decode your own command buffers, modules and logs
@@ -126,9 +140,11 @@ docs/                          served by GitHub Pages
 KytyPS5/                       a plain clone of the emulator (not tracked here) used to check the material
 ```
 
-The website has no build step, no dependencies and no tracking. The optional native
-labs need CMake, a C++20 toolchain and the emulator source checkout. The animations consume the host page's design
-tokens, so they theme themselves — light and dark both follow your system preference.
+The committed website can be served directly and has no runtime dependencies or
+tracking. Authoring uses dependency-free Node.js generators for shared prose,
+navigation, example listings and search. Native labs need CMake and a C++20
+toolchain; only the developer labs need emulator source. Animations follow the
+host page's light/dark design tokens.
 
 To add an animation anywhere, drop in `<figure data-viz="NAME"></figure>` and link
 `assets/viz.css` + `assets/viz.js` (plus the `atlas.*` pair for the deeper set).
@@ -138,11 +154,37 @@ To add an animation anywhere, drop in `<figure data-viz="NAME"></figure>` and li
 
 ## Documentation checks
 
-Run `node scripts/check-docs.cjs`, `node scripts/check-doc-examples.cjs`,
-`node scripts/check-curriculum.cjs` and `node scripts/build-search-index.cjs`.
-These validate local references, selected examples, curriculum anchors and search
-headings; source paths/symbols are checked when the optional clone exists. They
-cannot establish the correctness of every explanatory claim.
+After editing an owning topic or `docs/content/learning.json`, regenerate derived
+content, then run the read-only checks:
+
+```text
+node scripts/build-docs.cjs --write
+node scripts/build-search-index.cjs --write
+node scripts/build-docs.cjs
+node scripts/check-docs.cjs
+node scripts/check-doc-examples.cjs
+node scripts/check-curriculum.cjs
+node scripts/check-beginner.cjs
+node scripts/build-search-index.cjs
+```
+
+These check shared excerpts, route/prerequisite ordering, local references, selected
+examples and search headings. Source paths/symbols are checked when the optional
+clone exists. They cannot establish the correctness of every explanatory claim.
+See [authoring instructions](docs/content/README.md) for ownership of generated
+regions and how to label runnable code, project excerpts and pseudocode.
+
+For the standalone beginner programs:
+
+```text
+cmake -S docs/labs/beginner -B _Build/curriculum/beginner -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=clang++
+cmake --build _Build/curriculum/beginner
+ctest --test-dir _Build/curriculum/beginner --output-on-failure
+```
+
+All six executable checks require successful exit and matching output, with
+additional boundary conditions inside the fixtures. See [beginner setup](docs/labs/beginner/README.md).
+
 The ray-tracing appendix has a separate Node.js fixture check:
 `node docs/labs/raytracing-reference.cjs`.
 

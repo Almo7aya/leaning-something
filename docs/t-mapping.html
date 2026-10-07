@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-4">
+<link rel="stylesheet" href="assets/app.css?v=20261007-5">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
@@ -20,6 +20,9 @@
   <p class="topic-deck">
     The module wants to live at particular addresses and will store raw pointers assuming it got them. So the emulator reserves the guest's whole address space up front and carves it up, rather than letting the host decide where things land.
   </p>
+<!-- prerequisites:mapping -->
+<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="t-elf-and-self.html">ELF, SELF and Sony's format</a>. <a href="start.html">View the learning route</a>.</p>
+<!-- /prerequisites -->
 
   <section class="band band-read">
     <div class="band-h"><span class="band-t">Read</span></div>
@@ -27,7 +30,7 @@
 <p class="deck">One function does the whole job. It is worth reading line by line because almost every design decision in the loader is visible in it.</p>
 
   <h4 id="deciding-how-much-space-to-reserve">Deciding how much space to reserve</h4>
-  <p>The mapped size is the highest address any loadable segment reaches, rounded up to a guest page, plus optional instruction-trampoline space and room for the main module’s generated TLS handler:</p>
+  <p data-shared="excerpt-061">The mapped size is the highest address any loadable segment reaches, rounded up to a guest page, plus optional instruction-trampoline space and room for the main module’s generated TLS handler:</p>
 
   <div class="filename">src/loader/runtimeLinker.cpp</div>
 <pre>static uint64_t CalcBaseSize(const Elf64_Ehdr* ehdr, const Elf64_Phdr* phdr) {
@@ -55,7 +58,7 @@ program-&gt;base_vaddr = Libs::LibKernel::Memory::<b>AllocateProgramMemory</b>(
 
 g_desired_base_addr += CODE_BASE_INCR * (1 + program-&gt;mapped_size / CODE_BASE_INCR);</pre>
 
-  <p>Note that the region is initially mapped <strong>ExecuteReadWrite</strong>. Correct protection is applied per segment afterwards — the loader needs write access to copy data in and to patch instructions, before locking things down.</p>
+  <p data-shared="excerpt-062">Note that the region is initially mapped <strong>ExecuteReadWrite</strong>. Correct protection is applied per segment afterwards — the loader needs write access to copy data in and to patch instructions, before locking things down.</p>
 
   <h4 id="the-layout-constants">The layout constants</h4>
   <div class="filename">src/loader/runtimeLinker.cpp</div>
@@ -65,7 +68,7 @@ constexpr uint64_t CODE_BASE_OFFSET = 0x100000000u;
 
 static uint64_t g_desired_base_addr = SYSTEM_RESERVED + CODE_BASE_OFFSET;   <i>// 0x900000000</i></pre>
 
-  <p>The preferred main-module base is <code>0x900000000</code>. The next preferred base advances by enough 256 MiB steps for the mapped size. Check the actual load log and module segments when resolving a fault address; a numeric address band alone does not identify a caller.</p>
+  <p data-shared="excerpt-063">The preferred main-module base is <code>0x900000000</code>. The next preferred base advances by enough 256 MiB steps for the mapped size. Check the actual load log and module segments when resolving a fault address; a numeric address band alone does not identify a caller.</p>
 
   <div class="fig">
     <div class="fig-head"><span>File on disk → guest memory</span><span>what LoadProgramToMemory does</span></div>
@@ -135,7 +138,7 @@ static uint64_t g_desired_base_addr = SYSTEM_RESERVED + CODE_BASE_OFFSET;   <i>/
         <text x="688" y="132" class="lbl" text-anchor="middle" transform="rotate(90 688 132)">mapped_size</text>
       </svg>
     </div>
-    <div class="fig-note"><p>Solid arrows are direct copies: file bytes land at <code>p_vaddr + base_vaddr</code>. Dashed arrows are recorded rather than copied — the TLS segment is a <em>template</em> each thread copies from later, and the process-parameter block is just an address the runtime reads. The <code>.data</code> segment shows the <code>filesz &lt; memsz</code> case: the difference is zero-filled, which is how <code>.bss</code> arrives.</p></div>
+    <div class="fig-note"><p data-shared="excerpt-064">Solid arrows are direct copies: file bytes land at <code>p_vaddr + base_vaddr</code>. Dashed arrows are recorded rather than copied — the TLS segment is a <em>template</em> each thread copies from later, and the process-parameter block is just an address the runtime reads. The <code>.data</code> segment shows the <code>filesz &lt; memsz</code> case: the difference is zero-filled, which is how <code>.bss</code> arrives.</p></div>
   </div>
 
   <h4 id="the-segment-loop">The segment loop</h4>
@@ -185,7 +188,7 @@ static uint64_t g_desired_base_addr = SYSTEM_RESERVED + CODE_BASE_OFFSET;   <i>/
   </ul>
 
   <h4 id="loading-order-across-modules">Loading order across modules</h4>
-  <p><code>RuntimeLinker::Execute()</code> resolves <code>/app0/sce_module/libc.prx</code> through the mounted filesystem and loads it automatically if present, then calls <code>RelocateAll()</code>. It starts libc’s initializer when available. Other PRXs are loaded and started when the application requests them through the kernel module APIs; there is no directory-wide preload or dependency-sorted startup pass.</p>
+  <p data-shared="excerpt-065"><code>RuntimeLinker::Execute()</code> resolves <code>/app0/sce_module/libc.prx</code> through the mounted filesystem and loads it automatically if present, then calls <code>RelocateAll()</code>. It starts libc’s initializer when available. Other PRXs are loaded and started when the application requests them through the kernel module APIs; there is no directory-wide preload or dependency-sorted startup pass.</p>
   <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp</span><span class="src">src/loader/runtimeLinker.cpp</span></div>
     </div>
   </section>
@@ -235,9 +238,9 @@ static uint64_t g_desired_base_addr = SYSTEM_RESERVED + CODE_BASE_OFFSET;   <i>/
 
 </main>
 
-<script src="assets/topics.js?v=20261007" defer></script>
-<script src="assets/search-index.js?v=20261007-d2413fc2" defer></script>
-<script src="assets/app.js?v=20261007-4" defer></script>
+<script src="assets/topics.js?v=20261007-5" defer></script>
+<script src="assets/search-index.js?v=20261007-5" defer></script>
+<script src="assets/app.js?v=20261007-5" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>
