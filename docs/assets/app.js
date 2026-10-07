@@ -1,7 +1,7 @@
 /* ============================================================
    KytyPS5 Learning Platform — app shell.
-   Renders the single sidebar, progress, palette, prev/next and
-   the Explain-this affordance. One shell for every page.
+   Renders the single sidebar, progress, palette and prev/next.
+   One shell for every page.
    ============================================================ */
 (function () {
   "use strict";
@@ -158,10 +158,6 @@
     searchBtn.addEventListener("click", function () { openPalette(); });
     right.appendChild(searchBtn);
 
-    var ask = el("button", "btn btn-primary", "Ask AI");
-    ask.type = "button";
-    ask.id = "pf-ask";
-    right.appendChild(ask);
     bar.appendChild(right);
     main.appendChild(bar);
 
@@ -359,7 +355,7 @@
     var here = currentFile();
     document.querySelectorAll("h2[id],h3[id],h4[id]").forEach(function (h) {
       idx.push({
-        t: (h.textContent || "").replace(/Explain this/, "").replace(/\s+/g, " ").trim(),
+        t: (h.textContent || "").replace(/\s+/g, " ").trim(),
         f: here, a: h.id, s: "THIS PAGE"
       });
     });
@@ -459,46 +455,13 @@
     if (palEl) { palEl.remove(); palEl = null; resEl = null; inEl = null; }
   }
 
-  /* ---------------- explain this ---------------- */
-
-  function sectionText(h) {
-    var lvl = +h.tagName.slice(1), out = [h.textContent.replace("Explain this", "").trim()];
-    var n = h.nextElementSibling, budget = 2600;
-    while (n && budget > 0) {
-      if (/^H[1-6]$/.test(n.tagName) && +n.tagName.slice(1) <= lvl) break;
-      var t = (n.innerText || n.textContent || "").replace(/\s+/g, " ").trim();
-      if (t) { out.push(t.slice(0, budget)); budget -= t.length; }
-      n = n.nextElementSibling;
-    }
-    return out.join("\n\n");
-  }
-
-  function addExplain() {
-    document.querySelectorAll(".topic h1, .topic h3, .topic h4, .prose h3, .prose h4").forEach(function (h) {
-      if (h.querySelector(".explain")) return;
-      var txt = h.textContent.replace(/\s+/g, " ").trim();
-      if (!txt || txt.length > 140) return;
-      var b = el("button", "explain", "Explain this");
-      b.type = "button";
-      b.setAttribute("aria-label", "Ask the tutor to explain: " + txt);
-      b.addEventListener("click", function (e) {
-        e.preventDefault(); e.stopPropagation();
-        PF.ask({ heading: txt, context: sectionText(h),
-                 question: "Explain this section to me. I'm new to emulation." });
-      });
-      h.appendChild(b);
-    });
-  }
-
   /* ---------------- public ---------------- */
 
-  var PF = window.PF = {
+  window.PF = {
     topics: TOPICS, list: LIST,
     currentFile: currentFile, currentTopic: currentTopic,
     progress: progress, openPalette: openPalette, theme: theme,
     esc: esc, el: el,
-    pageTitle: function () { var t = currentTopic(); return t ? t.title : (document.title || "Home"); },
-    ask: function (p) { PF._pendingAsk = p; },
     renderHome: function () { return renderHome(); }
   };
 
@@ -509,7 +472,7 @@
     buildShell();
     // Each step is independent: one throwing must not take the rest of the
     // shell down with it.
-    [renderHome, addExplain, wireCheckpoints].forEach(function (step) {
+    [renderHome, wireCheckpoints].forEach(function (step) {
       try { step(); }
       catch (err) { if (window.console) console.error("app: " + step.name + " failed", err); }
     });

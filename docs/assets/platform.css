@@ -332,35 +332,6 @@ kbd.pf-kbd {
   flex-wrap: wrap;
 }
 
-/* ---------- "Explain this" heading affordance ---------- */
-
-.pf-explain {
-  font: inherit;
-  font-family: var(--p-sans);
-  font-size: 11px;
-  color: var(--p-ink-3);
-  background: transparent;
-  border: 1px solid var(--p-line);
-  border-radius: 999px;
-  padding: 2px 9px;
-  margin-left: 10px;
-  cursor: pointer;
-  opacity: 0;
-  transform: translateY(1px);
-  transition: opacity 0.14s, color 0.14s, border-color 0.14s;
-  vertical-align: middle;
-  white-space: nowrap;
-}
-h1:hover > .pf-explain,
-h2:hover > .pf-explain,
-h3:hover > .pf-explain,
-.pf-explain:focus-visible { opacity: 1; }
-.pf-explain:hover { color: var(--p-accent); border-color: var(--p-accent); }
-
-@media (hover: none) {
-  .pf-explain { opacity: 0.65; }
-}
-
 /* ---------- reduced motion ---------- */
 @media (prefers-reduced-motion: reduce) {
   .pf-overlay, .pf-palette, .pf-progress-fill { animation: none; transition: none; }

@@ -1,7 +1,7 @@
 /* ============================================================
    KytyPS5 Learning Platform — shell
-   Injects nav, theme, command palette, progress, "Explain this".
-   Exposes window.PF for tutor.js / playground.js / page scripts.
+   Injects nav, theme, command palette and progress.
+   Exposes window.PF for playground.js and page scripts.
    ============================================================ */
 (function () {
   "use strict";
@@ -167,12 +167,6 @@
     right.appendChild(themeBtn);
     updateThemeButton();
 
-    var ask = el("button", "pf-btn pf-primary");
-    ask.type = "button";
-    ask.id = "pf-ask";
-    ask.textContent = "Ask AI";
-    right.appendChild(ask);
-
     nav.appendChild(right);
     document.body.insertBefore(nav, document.body.firstChild);
   }
@@ -328,49 +322,9 @@
     paletteEl = null; resultsEl = null; inputEl = null; hits = []; active = 0;
   }
 
-  /* ---------------- "Explain this" on headings ---------------- */
-
-  function sectionText(h) {
-    // Collect prose following the heading, up to the next heading of same/higher rank.
-    var lvl = +h.tagName.slice(1);
-    var out = [h.textContent.trim()];
-    var n = h.nextElementSibling;
-    var budget = 2600;
-    while (n && budget > 0) {
-      if (/^H[1-6]$/.test(n.tagName) && +n.tagName.slice(1) <= lvl) break;
-      var t = (n.innerText || n.textContent || "").replace(/\s+/g, " ").trim();
-      if (t) { out.push(t.slice(0, budget)); budget -= t.length; }
-      n = n.nextElementSibling;
-    }
-    return out.join("\n\n");
-  }
-
-  function addExplainButtons() {
-    var hs = document.querySelectorAll("h1, h2, h3");
-    hs.forEach(function (h) {
-      if (h.closest(".pf-nav") || h.closest(".pf-palette") || h.closest("#pf-tutor")) return;
-      if (h.querySelector(".pf-explain")) return;
-      var txt = h.textContent.replace(/\s+/g, " ").trim();
-      if (!txt || txt.length > 140) return;
-      var b = el("button", "pf-explain", "Explain this");
-      b.type = "button";
-      b.setAttribute("aria-label", "Ask the AI tutor to explain: " + txt);
-      b.addEventListener("click", function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-        PF.ask({
-          heading: txt,
-          context: sectionText(h),
-          question: "Explain this section to me. I'm new to emulation."
-        });
-      });
-      h.appendChild(b);
-    });
-  }
-
   /* ---------------- public API ---------------- */
 
-  var PF = window.PF = {
+  window.PF = {
     pages: PAGES,
     currentFile: currentFile,
     progress: progress,
@@ -381,18 +335,7 @@
     esc: esc,
     el: el,
     readJSON: readJSON,
-    writeJSON: writeJSON,
-    // Overridden by tutor.js once it loads.
-    ask: function (payload) {
-      PF._pendingAsk = payload;
-      console.warn("[PF] tutor not loaded yet; queued", payload);
-    },
-    // Page title for tutor context.
-    pageTitle: function () {
-      var f = currentFile();
-      for (var i = 0; i < PAGES.length; i++) if (PAGES[i].file === f) return PAGES[i].label;
-      return document.title || f;
-    }
+    writeJSON: writeJSON
   };
 
   /* ---------------- boot ---------------- */
@@ -401,7 +344,6 @@
     if (!document.body) return;
     markSeen();
     buildNav();
-    addExplainButtons();
 
     document.addEventListener("keydown", function (e) {
       var mod = e.metaKey || e.ctrlKey;

@@ -114,7 +114,7 @@ docs/                          served by GitHub Pages
 ├─ lab / atlas / course / tour / path / examples .html            the long-form documents
 ├─ kytyps5-*.html              redirects from the old file names
 └─ assets/
-   ├─ app.js, topics.js, search-index.js, tutor.js   the shell, the topic list, search, the tutor
+   ├─ app.js, topics.js, search-index.js             the shell, the topic list and search
    ├─ viz.js / atlas.js / figs.js / figures.js       the animations
    ├─ lab.js                                          the eleven input-driven tools
    ├─ playground.js, system-explorer.js, browser-emulator.js, lifetime.js, machine.js

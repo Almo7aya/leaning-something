@@ -1181,24 +1181,6 @@ a.resume-btn, a.resume-btn:visited, a.resume-btn:hover { color: var(--accent-ink
 }
 
 /* ============================================================
-   EXPLAIN-THIS
-   ============================================================ */
-
-.explain {
-  font: inherit; font-family: var(--sans); font-size: 11px;
-  color: var(--ink-3); background: transparent;
-  border: 1px solid var(--line); border-radius: 999px;
-  padding: 2px 9px; margin-left: 10px;
-  cursor: pointer; opacity: 0;
-  transition: opacity .14s, color .14s, border-color .14s;
-  vertical-align: middle; white-space: nowrap;
-}
-h1:hover > .explain, h2:hover > .explain, h3:hover > .explain,
-h4:hover > .explain, .explain:focus-visible { opacity: 1; }
-.explain:hover { color: var(--accent); border-color: var(--accent); }
-@media (hover: none) { .explain { opacity: .6; } }
-
-/* ============================================================
    RESPONSIVE
    ============================================================ */
 
