@@ -25,7 +25,7 @@
   <section class="band band-read">
     <div class="band-h"><span class="band-t">Read</span></div>
     <div class="prose">
-  <p class="deck">At <code>main</code> commit <code>7492cb9</code> (7 October 2026), the recompiler lives under <code>src/graphics/shader/recompiler/</code>. It is organised as an explicit compiler pipeline: <code>frontend/decode</code>, <code>frontend/cfg</code>, <code>frontend/translate</code>, a typed value IR and its passes, then <code>backend/spirv</code>.</p>
+  <p class="deck">At <code>main</code> commit <code>d2413fc2</code> (7 October 2026), the recompiler lives under <code>src/graphics/shader/recompiler/</code>. It is organised as an explicit compiler pipeline: <code>frontend/decode</code>, <code>frontend/cfg</code>, <code>frontend/translate</code>, a typed value IR and its passes, then <code>backend/spirv</code>.</p>
 
   <div class="callout k">
     <span class="lbl">How to read the recompiler</span>
@@ -94,6 +94,26 @@ auto spirv = Spirv::EmitProgram(ir, options.input_info);</pre>
 
   <p>The frontend lowers scalar/vector arithmetic, comparisons, buffer/image accesses and atomics, LDS/GDS operations, exports and control flow into typed IR. Examples include FP64 conversions and rounding, packed half operations, DPP/DPP8, CMPX, DS permutation and masked-OR operations. <code>DS_ORDERED_COUNT</code> is lowered to a GDS atomic. Coverage is per opcode and modifier combination: consult the decoder, translator, emitter and focused tests together. MAD and FMA have different rounding behavior, and host floating-point limits still matter.</p>
 
+<h4 id="operand-widths-and-formatted-buffers">Operand widths and formatted buffer access</h4>
+<p><code>V_MIN3_U16</code> uses VOP3 opcode <code>0x353</code>. <code>ApplyNativeVop3B16TernarySelectors()</code> selects the low or high half of each source and the destination; <code>Integer16Ternary()</code> widens those selected unsigned values, emits <code>UMinTri32</code>, then writes one 16-bit half while preserving the other. The same helper uses signed inputs and <code>SMedTri32</code> for <code>V_MED3_I16</code>. Destination/source overlap and inactive EXEC lanes need tests, not just a correct minimum formula.</p>
+<div class="filename">…/frontend/translate/Integer.cpp — shared 16-bit ternary lowering</div>
+<pre>void Translator::Integer16Ternary(const Decoder::Instruction&amp; inst, IR::ValueOpcode opcode,
+                                  bool sign) {
+    const auto result = IR::U32(ir.Emit(
+        opcode, {ReadU16AsU32(inst.src0, sign), ReadU16AsU32(inst.src1, sign),
+                 ReadU16AsU32(inst.src2, sign)}));
+    Write16Bits(DestinationOperand(inst), result);
+}</pre>
+<p><code>BUFFER_LOAD_FORMAT_D16_X</code> and <code>BUFFER_STORE_FORMAT_D16_X</code> are MUBUF opcodes <code>0x80</code> and <code>0x84</code>. The opcode is eight bits, including bit 25 of the first dword. These formatted operations carry a 16-bit value in a VGPR, but the descriptor’s format determines the memory representation. Translation therefore uses a 32-bit IR load/store container while retaining <code>MemoryInfo::data_bits == 16</code> for conversion in <code>spirvEmitterMemory.cpp</code>. This is separate from unsupported D16 BVH intersection encodings.</p>
+<div class="tw"><table><thead><tr><th>Descriptor component type</th><th>D16 load</th><th>D16 store</th></tr></thead><tbody>
+<tr><td>Unsigned integer</td><td>Clamp the formatted value to <code>0xffff</code>.</td><td>Extract the source’s low unsigned 16 bits, then encode the destination format.</td></tr>
+<tr><td>Signed integer</td><td>Clamp to <code>[-32768, 32767]</code>.</td><td>Sign-extend the source’s low 16 bits before destination conversion.</td></tr>
+<tr><td>Float, normalized or scaled</td><td>Convert the formatted float result to half-float bits.</td><td>Interpret the source’s low 16 bits as half-float, widen, then encode the destination format.</td></tr>
+</tbody></table></div>
+<p>The D16 load writes the low destination half and preserves the upper half. Descriptor swizzles, out-of-bounds values and EXEC masking remain part of the contract. Read <code>BufferLoadFormatD16XCases()</code>, <code>BufferStoreFormatD16XCases()</code> and <code>Vop3Min3U16CapturedAndSelectors()</code> in <code>tests/ShaderRecompilerComputeTests.cpp</code>; the formatted cases are included in <code>--buffer-format-store-only</code>, and the U16 minimum case is included in <code>--med3-i16-only</code>.</p>
+<h4 id="integer64-comparisons">64-bit comparisons and EXEC</h4>
+<p>The frontend includes I64/U64 false/true comparisons and selected relational CMPX variants. <code>EmitIntegerCompare()</code> reads full-width register pairs and sign-extends signed 32-bit literals for I64 comparisons, including <code>V_CMPX_EQ_I64</code>. <code>EmitCompareResult()</code> masks the result with the incoming EXEC; CMPX replaces EXEC and its low/high halves without writing VCC. Ordinary comparisons write their mask destination. The compute test switch <code>--integer64-compare-only</code> exercises signed/unsigned edge values, literal extension and wave32/wave64 masks. Check the individual opcode table before claiming another comparison or modifier is supported.</p>
+
   <h4 id="mesh-shaders">Merged geometry stages become mesh shaders</h4>
   <p>RDNA 2 runs a merged ES/GS ("NGG") stage that has no fixed-function equivalent in Vulkan's classic pipeline. Kyty compiles that stage as a <code>VK_EXT_mesh_shader</code> mesh shader: <code>DecodeFusedProgram()</code> joins the front and back stage code into one instruction stream with an ordinary CFG edge between them, <code>ShaderType::Mesh</code> carries it through translation, and <code>backend/spirv/spirvEmitterMesh.cpp</code> emits the mesh entry point. The pipeline cache checks the guest's thread, vertex, primitive and LDS limits against the device's mesh-shader properties and stops with <code>mesh shader exceeds host limits</code> when they do not fit; if the extension is missing, that path is an <code>EXIT_NOT_IMPLEMENTED</code>.</p>
 
@@ -148,7 +168,7 @@ struct Program : ResourcePlan {
   <p><code>AllocateBindings()</code> covers ordinary buffers/images/samplers plus emulator support bindings:</p>
 <pre>enum class DescriptorBindingKind : uint32_t {
     Buffers  = 0u,
-    <i>// … a dense range of typed image bindings (up to 64 images) …</i>
+    <i>// … 48 typed image bindings; a binding can hold an array …</i>
     Samplers = FirstImageBinding + ImageBindingCount,   <i>// 49</i>
     Gds,
     <b>BdaPagetable, FaultBuffer</b>,
@@ -266,10 +286,10 @@ struct Program : ResourcePlan {
 </main>
 
 <script src="assets/topics.js?v=20261007" defer></script>
-<script src="assets/search-index.js?v=20261007" defer></script>
+<script src="assets/search-index.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/app.js?v=20261007" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
-<script src="assets/atlas.js?v=20261007" defer></script>
+<script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>
 <script src="assets/figs.js?v=20261007" defer></script>
 <script src="assets/figures.js?v=20261007" defer></script>

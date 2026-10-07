@@ -376,6 +376,10 @@ public:
 
   <h4 id="the-final-blit">The final blit</h4>
   <p>Only at the very end does the guest's buffer reach the host window. The swapchain path is ordinary Vulkan: acquire an image, blit or resolve the guest buffer into it, present. <code>swapchain.cpp</code> handles format negotiation, present modes and resize.</p>
+<h4 id="window-title-thread">Presentation statistics and the window thread</h4>
+<p><code>Presenter::Impl::Present()</code> increments <code>WindowLoopState::presented_frames</code> after a successful presentation path. <code>WindowContext::Run()</code> samples that atomic counter on the main thread at roughly one-second intervals, computes FPS from the frame-count difference and elapsed SDL milliseconds, and calls <code>UpdateTitle(frame_num, current_fps)</code>. <code>HostInputWaitEvent(event, max_wait_ms)</code> bounds the input wait so title updates also happen when no input arrives.</p>
+<p>Follow <code>src/graphics/presentation/window/swapchain.cpp</code>, <code>window/window.cpp</code> and <code>window/hostInput.cpp</code>. The title uses <code>SDL_SetWindowTitle()</code> directly on the main thread; presentation does not wait for a title callback. The relaxed frame counter supplies display statistics, not a Vulkan completion fence. <a href="t-cpp-concurrency.html#atomics-and-memory-order">C4</a> explains the ordering distinction.</p>
+
 
   <div class="tw">
     <table>
@@ -455,10 +459,10 @@ public:
 </main>
 
 <script src="assets/topics.js?v=20261007" defer></script>
-<script src="assets/search-index.js?v=20261007" defer></script>
+<script src="assets/search-index.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/app.js?v=20261007" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
-<script src="assets/atlas.js?v=20261007" defer></script>
+<script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>
 <script src="assets/figs.js?v=20261007" defer></script>
 <script src="assets/figures.js?v=20261007" defer></script>

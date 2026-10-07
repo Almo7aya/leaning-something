@@ -39,7 +39,14 @@ uint32_t  KYTY_SYSV_ABI AgcCbDispatchGetSize();
 uint32_t* KYTY_SYSV_ABI AgcCbSetShRegistersDirect(CommandBuffer* buf, ...);
 uint32_t* KYTY_SYSV_ABI AgcCbReleaseMem(CommandBuffer* buf, uint8_t action, ...);</pre>
 
-  <p>Note the <code>…GetSize()</code> companions. A game asks how many dwords a command will occupy so it can lay out its buffer in advance, then calls the builder to fill them. This is why Kyty's reimplementations must produce <strong>byte-identical output</strong> to the real driver: the game may compute offsets into the buffer, patch values later, or jump over regions.</p>
+  <p>Note the <code>…GetSize()</code> companions. A game asks for a command’s size in bytes so it can lay out its buffer in advance, then calls the builder to fill its dwords. Keep the return type and size unit attached to each API. This is why Kyty's reimplementations must produce <strong>byte-identical output</strong> to the real driver: the game may compute offsets into the buffer, patch values later, or jump over regions.</p>
+
+<div class="filename">src/libs/agc.cpp — byte size of an indirect shader-register command</div>
+<pre>uint64_t KYTY_SYSV_ABI AgcDcbSetShRegistersIndirectGetSize() {
+    PRINT_NAME();
+    return 5u * sizeof(uint32_t); <i>// 20 bytes, five dwords</i>
+}</pre>
+<p><code>src/libs/libAgcDriver.cpp</code> registers this function as <code>LIB_FUNC("nNlUtdDDvZ0", Gen5::AgcDcbSetShRegistersIndirectGetSize)</code>. Its declaration in <code>agc.h</code>, the returned byte count and the paired command builder are one ABI contract.</p>
 
   <div class="callout g">
     <span class="lbl">Patch functions prove the point</span>
@@ -351,11 +358,11 @@ enum class Pm4ProcessResult { Complete, Blocked };
 </main>
 
 <script src="assets/topics.js?v=20261007" defer></script>
-<script src="assets/search-index.js?v=20261007" defer></script>
+<script src="assets/search-index.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/highlight.js?v=20261007" defer></script>
 <script src="assets/app.js?v=20261007" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
-<script src="assets/atlas.js?v=20261007" defer></script>
+<script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>
 <script src="assets/figs.js?v=20261007" defer></script>
 <script src="assets/figures.js?v=20261007" defer></script>

@@ -575,8 +575,8 @@
       "In the machine code you see the shader loading a pointer out of its own user data, then loading a 256-bit descriptor from that table. Tables may point at further tables, to arbitrary depth.",
       "<b>TranslateProgram + RewriteToSsa</b> create a typed value graph that exposes how descriptor addresses depend on user data, constants, arithmetic and memory reads.",
       "<b>TrackResources</b> walks those values and records the reads needed to recover each descriptor. Constant offsets get flattened slots; genuinely dynamic reads stay explicit.",
-      "<b>MaterializeResources</b> executes the recipe against the <em>current</em> user data and guest memory, producing a <code>ResourceSnapshot</code> of concrete descriptors: this address, this format, these dimensions, this tiling mode.",
-      "Which finally becomes a Vulkan image view. The snapshot also decides the <em>specialization</em> the SPIR-V is compiled against, so one immutable <code>ResourcePlan</code> can serve many draws while <code>CompileProgram</code> runs only when a new specialization appears. A descriptor read that cannot be satisfied is a hard <code>EXIT_IF</code> — the emulator would rather stop than bind garbage."
+      "<b>MaterializeResources</b> executes the recipe against the <em>current</em> user data and guest memory, refreshing a cached <code>ResourceSnapshot</code> of concrete descriptors: this address, this format, these dimensions, this tiling mode.",
+      "Which finally becomes a Vulkan image view. The snapshot also decides the <em>specialization</em> the SPIR-V is compiled against, so one retained <code>ResourcePlan</code> can serve many draws using stable analysis and mutable evaluation scratch while <code>CompileProgram</code> runs only when a new specialization appears. A descriptor read that cannot be satisfied is a hard <code>EXIT_IF</code> — the emulator would rather stop than bind garbage."
     ];
 
     body.insertBefore(s, body.firstChild);

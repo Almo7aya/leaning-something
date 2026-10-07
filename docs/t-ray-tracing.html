@@ -19,7 +19,7 @@
 <p class="topic-deck">Trace the implemented BVH32/BVH64 path from RDNA operands to software intersection on the host GPU, then learn how to investigate unsupported forms and validate complete guest workloads.</p>
 <section class="band band-read"><div class="band-h"><span class="band-t">Research → model → implement → prove</span></div><div class="prose">
 <div class="callout k"><span class="lbl">Implemented software intersections; further coverage needs evidence</span>
-<p>KytyPS5 at <code>7492cb95777b19fbacdf91f999fcc37b0a8b81c5</code> (7 October 2026) implements full-float BVH32 and BVH64 node intersections as ordinary SPIR-V shader work. The decoder, IR, BDA memory path and GPU regression fixtures are present. This appendix separates that implemented subset from research proposals, including an optional Vulkan ray-query backend. Source inspection and synthetic fixtures do not establish every console format, hardware numerical behavior or game compatibility.</p></div>
+<p>KytyPS5 at <code>d2413fc2ebd91d1b7234197c2dd5bd48e1cb6a51</code> (7 October 2026) implements full-float BVH32 and BVH64 node intersections as ordinary SPIR-V shader work. The decoder, IR, BDA memory path and GPU regression fixtures are present. This appendix separates that implemented subset from research proposals, including an optional Vulkan ray-query backend. Source inspection and synthetic fixtures do not establish every console format, hardware numerical behavior or game compatibility.</p></div>
 <p>Read <a href="t-shaders.html">shader translation</a>, <a href="t-program-cache.html">C9: program cache</a>, <a href="t-pointers-memory.html">C10: memory and ownership</a>, <a href="t-trace-draw.html">D3: submission/completion</a> and <a href="t-debugging-labs.html">D4: regression discipline</a> first. This is a multi-stage emulator/compiler project, not a “turn on the Vulkan extension” task. Keep the original raster path working throughout.</p>
 <nav aria-label="Ray-tracing appendix contents"><ol>
 <li><a href="#current-state">Current source and precise scope</a></li>
@@ -497,7 +497,7 @@ ctest --test-dir _Build/windows -R "^(shader_cfg|resource_tracking|shader_recomp
 <tr><td>Tests</td><td><code>tests/ShaderRayTracingTests.inc</code>, <code>tests/ShaderRayTracingGpuTests.inc</code>, <code>tests/shaderCfgTests.cpp</code>, <code>tests/ShaderRecompilerComputeTests.cpp</code>, and root <code>CMakeLists.txt</code>.</td></tr>
 </tbody></table></div>
 <ul>
-<li><a href="https://github.com/KytyPS5/KytyPS5/blob/7492cb95777b19fbacdf91f999fcc37b0a8b81c5/src/graphics/shader/recompiler/ShaderRecompiler.cpp">Pinned KytyPS5 compiler pipeline</a> and <a href="https://github.com/KytyPS5/KytyPS5/blob/7492cb95777b19fbacdf91f999fcc37b0a8b81c5/tests/ShaderRayTracingTests.inc">decode and IR regression fixtures</a>.</li>
+<li><a href="https://github.com/KytyPS5/KytyPS5/blob/d2413fc2ebd91d1b7234197c2dd5bd48e1cb6a51/src/graphics/shader/recompiler/ShaderRecompiler.cpp">Pinned KytyPS5 compiler pipeline</a> and <a href="https://github.com/KytyPS5/KytyPS5/blob/d2413fc2ebd91d1b7234197c2dd5bd48e1cb6a51/tests/ShaderRayTracingTests.inc">decode and IR regression fixtures</a>.</li>
 <li><a href="https://docs.amd.com/v/u/en-US/rdna2-shader-instruction-set-architecture">AMD RDNA 2 ISA, document 70648</a>: consult section 8.2.10 and the associated encoding/register descriptions. Newer ISA generations are not substitutes.</li>
 <li><a href="https://rocmdocs.amd.com/projects/llvm-project/en/latest/LLVM/llvm/html/AMDGPU/AMDGPUAsmGFX1030.html">LLVM GFX1030 syntax</a> (including BVH address operands): an independent assembler-facing cross-check.</li>
 <li><a href="https://github.com/GPUOpen-Drivers/gpurt">AMD GPURT</a>: open implementation research; pin a revision and hardware-generation path, and do not assume console compatibility.</li>
@@ -509,7 +509,7 @@ ctest --test-dir _Build/windows -R "^(shader_cfg|resource_tracking|shader_recomp
 </div></section>
 </main>
 <script src="assets/topics.js?v=20261007" defer></script>
-<script src="assets/search-index.js?v=20261007" defer></script>
+<script src="assets/search-index.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/app.js?v=20261007" defer></script>
 <script src="assets/highlight.js?v=20261007" defer></script>
 <script src="assets/tutor.js?v=20261007" defer></script>

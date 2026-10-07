@@ -2,7 +2,7 @@
 
 Unofficial learning material for the [KytyPS5](https://github.com/KytyPS5/KytyPS5)
 PlayStation 5 emulator. The source-specific material was last checked against
-**`main` at commit `7492cb9` (7 October 2026)**. The material is pinned to a commit,
+**`main` at commit `d2413fc2` (7 October 2026)**. The material is pinned to a commit,
 not a release tag; the CMake project version at that commit is 0.3.0.
 
 **Read it online → [almo7aya.dev/leaning-something](https://almo7aya.dev/leaning-something/)**
@@ -157,14 +157,14 @@ expected-failure test to expect success; see D4 for the red-to-green workflow.
 
 ## Upstream snapshot
 
-Pinned to **`main` at `7492cb9` (7 October 2026)**, CMake project version 0.3.0.
+Pinned to **`main` at `d2413fc2` (7 October 2026)**, CMake project version 0.3.0.
 Use `git -C KytyPS5 rev-parse HEAD` to compare your checkout. The owning
 lessons describe the current implementation; browser simulations remain bounded
 teaching models, not the emulator itself.
 
 ## Caveats
 
-- **Line references drift.** The checked commit is `7492cb9`; treat a reference
+- **Line references drift.** The checked commit is `d2413fc2`; treat a reference
   as "look for this function", not "go to this line". Most pages now cite a function
   or struct name instead of a line.
 - **These are unofficial.** A reading of the source, not maintainer-authored

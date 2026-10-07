@@ -66,7 +66,23 @@ int KYTY_SYSV_ABI SslInit(uint64_t pool_size);
 int KYTY_SYSV_ABI SslTerm(int ssl_ctx_id);
 }</pre>
 
-  <p>The craft is in the <em>return values</em>: a login call must return "signed in as a guest" or "no session", not an error the game treats as fatal.</p>
+  <p>Trace each API’s return code, output fields and completion state together. Offline implementations provide only part of the console service contract; returning success alone does not establish that a login or network operation completed.</p>
+
+<h4 id="notice-screen-preference">Notice-screen preference</h4>
+<p><code>--skip-notice-screen true</code> sets <code>ConfigOptions::skip_notice_screen</code>, which defaults to <code>false</code>. The launcher persists the same option and exposes it as <strong>Skip boot logos</strong>. Follow <code>config.cpp</code> → <code>mainDialog.cpp</code> → <code>src/main.cpp</code> → <code>Config::SkipNoticeScreen()</code> to trace a saved preference into the guest API.</p>
+<div class="filename">src/libs/libSystemService.cpp — the guest query</div>
+<pre>static int KYTY_SYSV_ABI SystemServiceGetNoticeScreenSkipFlag(bool* value) {
+    PRINT_NAME();
+
+    if (value == nullptr) {
+        return SYSTEM_SERVICE_ERROR_PARAMETER;
+    }
+
+    *value = Config::SkipNoticeScreen();
+
+    return OK;
+}</pre>
+<p>The game decides how to use the returned flag. This can skip notices or logos in games that honor the query; it does not remove every game’s intro sequence. The neighboring set/auto-set entry points currently return success without changing this configured value.</p>
 
   <h4 id="input">Input — SDL events become DualSense state</h4>
   <p><code>libPad.cpp</code>, <code>libs/controller.cpp</code>, and <code>presentation/window/hostInput.cpp</code> form a clean mapping example. SDL's event loop runs on the main thread; controller, keyboard, and mouse input become the <code>padData.h</code> state returned to the game. Repeatable <code>--keymap Control=Input</code> arguments customize PC controls, and guest vibration commands travel back to the physical controller through SDL rumble.</p>
@@ -110,6 +126,8 @@ int KYTY_SYSV_ABI SslTerm(int ssl_ctx_id);
 
 <h4 id="local-trophies">Local trophies and notifications</h4>
 <p><code>libTrophy.cpp</code> and <code>common/trophies.cpp</code> implement local trophy registration, unlock/progress state and persistence using title trophy metadata. UDS events can map to trophy progress. The system overlay displays unlock notifications and the launcher provides a trophy viewer. <code>--trophy-notifications false</code> disables the notification presentation; these local paths are not PSN synchronization. Read <code>tests/TrophySystemTests.cpp</code> alongside the implementation.</p>
+<p>Click a trophy in the launcher to open <code>ShowTrophyInspector()</code> in <code>src/launcher/src/trophyViewerDialog.cpp</code>. It shows its grade, locked/unlocked status, local earned time, description and reward when present. A locked hidden trophy initially masks its metadata; <strong>Show Hidden Trophy</strong> reveals the details within that dialog without unlocking it. Labels use plain text, and the callback owns the trophy metadata and unlock snapshot through move captures.</p>
+<p><code>WrapTrophyTitle()</code> in <code>src/graphics/presentation/systemOverlay.cpp</code> wraps notification titles by words and explicit line breaks, then grows the toast height to fit. The icon stays at its base size and is vertically centered; a word wider than the text area remains intact and is clipped. This presentation path is separate from trophy persistence.</p>
 <h4 id="library-contracts">Library contracts worth tracing</h4>
 <p><code>libPngEnc.cpp</code> encodes PNG output using stb_image_write and validates the supplied buffers and parameters. Socket operations in <code>network.cpp</code> translate host errors and timeout units, including microsecond guest timeouts; URI building is covered with parsing in <code>HttpUriParseTests.cpp</code>. Sign-in dialogs remain active until dismissed. Bluetooth HID, DeviceService and USB library entry points include stubs, which must be distinguished from the host controller transport.</p>
 <p>The launcher exposes controller preferences, per-game configuration import/export, cheat browsing and the trophy viewer. For audio timing, follow both SDL stream conversion and guest submission cadence: resampling alone does not establish the correct blocking interval. <code>AudioOutTimingTests.cpp</code> covers that distinction.</p>
@@ -186,10 +204,10 @@ int KYTY_SYSV_ABI SslTerm(int ssl_ctx_id);
 </main>
 
 <script src="assets/topics.js?v=20261007" defer></script>
-<script src="assets/search-index.js?v=20261007" defer></script>
+<script src="assets/search-index.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/app.js?v=20261007" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
-<script src="assets/atlas.js?v=20261007" defer></script>
+<script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>
 <script src="assets/figs.js?v=20261007" defer></script>
 <script src="assets/figures.js?v=20261007" defer></script>

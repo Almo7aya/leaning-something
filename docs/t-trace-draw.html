@@ -21,7 +21,7 @@
 <div class="band-h"><span class="band-t">Read, trace, prove</span></div>
 <div class="prose">
 
-<p>Prerequisites: <a href="t-pm4.html">PM4</a>, <a href="t-registers.html">register state</a>, <a href="t-shaders.html">shader translation</a> and <a href="t-coherency.html">coherency</a>. This source trace at <code>7492cb9</code> follows an ordinary, non-indexed triangle-list draw with a vertex shader, an active pixel shader and a color target. It is not a standalone three-word program or a captured frame.</p>
+<p>Prerequisites: <a href="t-pm4.html">PM4</a>, <a href="t-registers.html">register state</a>, <a href="t-shaders.html">shader translation</a> and <a href="t-coherency.html">coherency</a>. This source trace at <code>d2413fc2</code> follows an ordinary, non-indexed triangle-list draw with a vertex shader, an active pixel shader and a color target. It is not a standalone three-word program or a captured frame.</p>
 <div class="callout k"><span class="lbl">Four different milestones</span>
 <p>Accepting a guest submission, recording a Vulkan draw, completing that submission on the GPU, and displaying an image are different events. A “DrawComplete” CPU log records progress through the host draw function; it is not a GPU fence and does not prove that any pixels were displayed.</p></div>
 
@@ -68,6 +68,7 @@ Count = 3 vertices; flag 0x02 is inside the accepted mask 0x22.</pre>
 <div class="callout k"><span class="lbl">The critical command-buffer boundary</span>
 <p><code>ExecutePreparedDraw</code> fetches the current <code>buffer.Handle()</code> <em>after</em> resource preparation. From that point onward, the commit path must not introduce guest-memory accesses that can finish/restart the scheduler. Holding an earlier Vulkan handle across preparation can target an obsolete command buffer even when the C++ wrapper reference remains valid.</p></div>
 
+<p>Trace depth-copy validation at the point the draw consumes state: <code>DecodeRenderControl()</code> only records the bits, while <code>ResolveRenderDepthTarget()</code> rejects unsupported use after checking attachment state. See <a href="t-registers.html#depth-copy-validation">register decoding versus draw validation</a>.</p>
 <h2 id="caches">4. Distinguish three different cache questions</h2>
 <ul>
 <li><strong>Program/resource analysis:</strong> the program cache retains analysis and resource-plan data, plus mutable scratch/snapshot storage borrowed by runtime stage data. Do not assume borrowed pointers own independent immutable results.</li>
@@ -131,7 +132,7 @@ Image result / presentation evidence (separate):</pre>
 </div></section>
 </main>
 <script src="assets/topics.js?v=20261007" defer></script>
-<script src="assets/search-index.js?v=20261007" defer></script>
+<script src="assets/search-index.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/app.js?v=20261007" defer></script>
 <script src="assets/highlight.js?v=20261007" defer></script>
 <script src="assets/tutor.js?v=20261007" defer></script>

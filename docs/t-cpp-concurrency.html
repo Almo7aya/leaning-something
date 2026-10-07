@@ -89,21 +89,15 @@ std::array&lt;std::deque&lt;Submission&gt;, QueueCount&gt; m_queues;</pre>
   <p>The guest submits to a specific queue the way it would on real hardware; Kyty keeps them separate and round-robins its single worker across them. That is a faithful model of a thing it is not physically reproducing.</p>
 
   <h4 id="atomics-and-memory-order">Atomics and memory order</h4>
-  <p>The tree uses <code>std::atomic</code> with ordering chosen for each role. A simple relaxed example is the log throttling in <code>renderCompute.cpp</code>:</p>
+<p>A useful counting example spans <code>presentation/window/swapchain.cpp</code> and <code>presentation/window/window.cpp</code>. Successful presentation increments a counter; the main window loop samples it to compute the title’s FPS:</p>
+<div class="filename">Presentation and window loop — selected statements from two functions</div>
+<pre><i>// Presenter::Impl::Present()</i>
+window.loop.presented_frames.fetch_add(1, std::memory_order_relaxed);
 
-  <div class="filename">src/graphics/host_gpu/renderer/renderCompute.cpp — log throttling (excerpt)</div>
-<pre>static std::atomic&lt;uint32_t&gt; log_count {0};
-if (log_count.fetch_add(1, std::memory_order_relaxed) &lt; 32) {
-    <i>// print the same warning at most 32 times, from any thread</i>
-}</pre>
-
-  <p>Why <code>relaxed</code> is correct here and scary elsewhere:</p>
-  <ul>
-    <li><strong>Relaxed</strong> guarantees the operation is atomic and won't be reordered around its own other atomics, but gives <em>no ordering</em> against unrelated memory. Fine for "count how many times this happened" — the count can be a few off and nobody cares.</li>
-    <li><strong>Sequential consistency</strong> (the default when you write no order) additionally gives a single global order of all seq-cst operations. That is what you want when a counter <em>signals something</em> — like <code>m_pending_commands</code>, which another thread observes to decide whether the GPU is still busy.</li>
-  </ul>
-
-  <p>The rule to take away: a counter that only <em>counts</em> can be relaxed; a flag or counter that <em>coordinates</em> must not be. When in doubt, write nothing (the default is safe), and only relax after you can say exactly why.</p>
+<i>// WindowContext::Run()</i>
+const auto frames = loop.presented_frames.load(std::memory_order_relaxed);</pre>
+<p>Relaxed operations remain atomic: concurrent increments are not lost, and each atomic object has a modification order. A sampled load need not reflect the latest increment. Relaxed ordering does not publish other memory, so observing this count says nothing about resource lifetime or GPU completion. Here the main thread only needs a statistics sample; it updates the SDL title itself rather than making the presentation thread wait.</p>
+<p>For shared work, read the whole synchronization protocol. <code>SendCommand()</code> above protects the queue with a mutex and increments <code>m_pending_commands</code> with release ordering; completion checks use acquire ordering. Release/acquire can establish visibility when an acquire observes a relevant release. Sequentially consistent atomics additionally share a global order, but neither a stronger atomic order nor an atomic counter alone makes unrelated data accesses or object lifetimes safe.</p>
 
   <h4 id="locks-and-condition-variables">Locks and condition variables</h4>
   <p>Where a structure is actually shared and mutated — an address-space free list, a submission queue — the tree locks. The project wraps <code>std::mutex</code> as <code>Common::Mutex</code> with a <code>Common::LockGuard</code> RAII guard, but also uses <code>std::mutex</code> directly:</p>
@@ -136,7 +130,7 @@ std::mutex m_mutex;   <i>// every allocation path takes this</i></pre>
     return true;   <i>// the fault was a coherency notification, not a bug</i>
 }</pre>
 
-  <p>This is concurrency working <em>through the memory system</em>: the page protection is the lock, the fault is the signal, and no queue or mutex is involved. On Linux and macOS the handler runs on a per-thread 64 KB alternate signal stack (<code>InitializeThreadSignalStack</code>) so the fault can still be delivered when the guest stack page is write-protected. It is the single most distinctive thing about this codebase, and it is why <code>reinterpret_cast</code> and page-granular thinking dominate.</p>
+  <p>Page protection detects guest accesses; the fault handler coordinates with the memory and graphics layers to make those accesses safe. Protection is part of the tracking mechanism, not a replacement for locks or CPU/GPU completion ordering. On Linux and macOS the handler runs on a per-thread 64 KB alternate signal stack (<code>InitializeThreadSignalStack</code>) so the fault can still be delivered when the guest stack page is write-protected. It is the single most distinctive thing about this codebase, and it is why <code>reinterpret_cast</code> and page-granular thinking dominate.</p>
 
   <h4 id="fences-and-timeline-semaphores">The GPU's own clock: fences &amp; timeline semaphores</h4>
   <p>Between the GPU thread and the Vulkan driver, ordering is expressed with semaphores. The renderer submits with <em>wait ticks</em> and <em>signal ticks</em> — a Vulkan <strong>timeline semaphore</strong>, a monotonically increasing counter the GPU advances as work completes:</p>
@@ -241,10 +235,10 @@ n_info.pSignalSemaphoreValues    = submit.signal_ticks.data();</pre>
 </main>
 
 <script src="assets/topics.js?v=20261007" defer></script>
-<script src="assets/search-index.js?v=20261007" defer></script>
+<script src="assets/search-index.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/app.js?v=20261007" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
-<script src="assets/atlas.js?v=20261007" defer></script>
+<script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>
 <script src="assets/figs.js?v=20261007" defer></script>
 <script src="assets/figures.js?v=20261007" defer></script>

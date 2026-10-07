@@ -425,7 +425,7 @@ details[open] summary { border-bottom: 1px solid var(--rule); }
     </nav>
       <div class="xlinks"><b>Also here</b><a href="index.html">Overview</a><a href="lab.html">The lab &mdash; 11 tools</a><a href="atlas.html">Visual atlas &mdash; 19 animations</a><a href="course.html">The complete book</a><a href="tour.html" class="here">Architecture guide</a><a href="path.html">Learning path</a></div>
     <div class="rail-foot">
-      KytyPS5 main @ 7492cb9<br>
+      KytyPS5 main @ d2413fc2<br>
       GPL-2.0-only<br>
       based on Kyty (MIT)<br><br>
       Every claim on this page<br>carries a <span class="src">file:line</span> tag.
@@ -1053,7 +1053,7 @@ gpu_tiler_color_transform.comp    gpu_tiler_demote_d16.comp</pre>
   <div class="srcs"><span class="src">…/ir/passes/SrtWalker.cpp</span><span class="src">…/ir/passes/ResourceMaterialization.cpp</span><span class="src">…/ir/passes/ResourceTracking.cpp</span><span class="src">…/ir/ResourceSnapshot.h</span><span class="src">src/graphics/host_gpu/renderer/pipeline/pipelineCache.cpp</span></div>
 
   <h3 id="when-the-control-flow-cannot-be-structured">When the control flow cannot be structured</h3>
-  <p>Some shaders have genuinely irreducible control flow — loops with multiple entry points, computed jumps through a code table. SPIR-V cannot express these directly. Rather than failing, the recompiler falls back to a <strong>dispatcher</strong>: the whole shader becomes one loop around a switch on a program-counter variable, with each basic block as a case. Slower, but universally correct.</p>
+  <p>Some shaders have genuinely irreducible control flow — loops with multiple entry points, computed jumps through a code table. SPIR-V cannot express these directly. Rather than failing, the recompiler falls back to a <strong>dispatcher</strong>: the whole shader becomes one loop around a switch on a program-counter variable, with each basic block as a case. This handles control-flow shapes that structured emission cannot represent directly; supported instruction and resource semantics still determine correctness.</p>
   <p><code>BuildGraph()</code> selects the fallback for irreducible graphs; a later <code>Structurize()</code> failure also falls back after restoring the unstructured graph. The reason and failing graph facts are logged rather than hidden.</p>
   <div class="srcs"><span class="src">…/ShaderRecompiler.cpp</span><span class="src">…/frontend/cfg/ShaderCFG.cpp</span><span class="src">…/backend/spirv/spirvEmitterFlow.cpp</span></div>
 
@@ -1265,7 +1265,7 @@ cmake --install _Build/windows --prefix _Build/windows/install</pre>
   </div>
 
   <div class="foot">
-    <p>Written from a reading of the KytyPS5 source tree on <code>main</code> at <code>7492cb9</code> (7 October 2026; CMake project version 0.3.0). Source references use file and function names at that revision. The project is GPL-2.0-only, based on <a href="https://github.com/InoriRus/Kyty">InoriRus/Kyty</a> (MIT), and credits <a href="https://github.com/shadps4-emu/shadPS4">shadPS4</a> as a reference for the memory model and AVPlayer. It is not affiliated with Sony Interactive Entertainment.</p>
+    <p>Written from a reading of the KytyPS5 source tree on <code>main</code> at <code>d2413fc2</code> (7 October 2026; CMake project version 0.3.0). Source references use file and function names at that revision. The project is GPL-2.0-only, based on <a href="https://github.com/InoriRus/Kyty">InoriRus/Kyty</a> (MIT), and credits <a href="https://github.com/shadps4-emu/shadPS4">shadPS4</a> as a reference for the memory model and AVPlayer. It is not affiliated with Sony Interactive Entertainment.</p>
   </div>
 </section>
 

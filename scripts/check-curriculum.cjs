@@ -36,6 +36,19 @@ for (const file of ['CMakeLists.txt', 'developer_labs.cpp', 'expect_failure.cmak
   if (!fs.existsSync(path.join(root, 'docs/labs', file))) errors.push('Missing lab artifact: '+file);
 }
 const anchors = {
+  'tests/ShaderRecompilerComputeTests.cpp': ['Vop3Min3U16CapturedAndSelectors', 'BufferLoadFormatD16XCases', 'BufferStoreFormatD16XCases', '--buffer-format-store-only', '--integer64-compare-only', '--med3-i16-only'],
+  'src/launcher/src/trophyViewerDialog.cpp': ['ShowTrophyInspector', 'Show Hidden Trophy'],
+  'src/graphics/presentation/systemOverlay.cpp': ['WrapTrophyTitle'],
+  'src/graphics/presentation/window/window.cpp': ['title_interval_ms = 1000', 'UpdateTitle(uint64_t frame_num, double current_fps)', 'HostInputWaitEvent(&loop.event, wait_ms)'],
+  'src/graphics/presentation/window/swapchain.cpp': ['presented_frames.fetch_add(1, std::memory_order_relaxed)'],
+  'src/graphics/shader/recompiler/frontend/translate/Compare.cpp': ['V_CMPX_EQ_I64', 'std::bit_cast<int32_t>(operand.value)'],
+  'src/graphics/shader/recompiler/frontend/translate/Vector.cpp': ['Integer16Ternary(inst, IR::ValueOpcode::UMinTri32, false)'],
+  'src/graphics/host_gpu/renderer/depthRenderTarget.cpp': ['copy_depth_to_color', 'unsupported depth register state'],
+  'src/libs/agc.cpp': ['AgcDcbSetShRegistersIndirectGetSize', 'return 5u * sizeof(uint32_t)'],
+  'src/libs/libKernel.cpp': ['KernelAioWaitRequests', 'KERNEL_AIO_WAIT_OR', 'kernel_aio_get_state', 'lgK+oIWkJyA'],
+  'src/libs/libSystemService.cpp': ['SystemServiceGetNoticeScreenSkipFlag(bool* value)', '*value = Config::SkipNoticeScreen()'],
+  'src/main.cpp': ['--skip-notice-screen'],
+  'src/common/emulatorConfig.h': ['skip_notice_screen          = false'],
   'src/emulator.cpp': ['LoadElf', 'WindowRun', 'Libs::InitAll'],
   'src/loader/runtimeLinker.cpp': ['RuntimeLinker::LoadProgram', 'RuntimeLinker::LoadProgramToMemory', 'RuntimeLinker::RelocateAll', 'RuntimeLinker::StartModule', 'RuntimeLinker::GetEntry', 'RunEntry'],
   'src/graphics/guest_gpu/graphicsRun.cpp': ['GuestGpu::Submit', 'GuestGpu::Process', 'CommandProcessor::DrawIndexAuto', 'CommandProcessor::BufferFlush'],
@@ -47,10 +60,10 @@ const anchors = {
   'src/common/alignment.h': ['AlignUp', 'AlignDown'],
   'src/graphics/host_gpu/regionDefinitions.h': ['TRACKER_PAGE_SIZE    = 4ull * 1024ull'],
   'src/graphics/host_gpu/renderer/pipeline/pipelineCache.h': ['sizeof(PipelineStaticParameters) == 116'],
-  'src/libs/libAgcDriver.cpp': ['b4fpgH5ZXxQ', 'Gen5Driver::AgcDriverSubmitCommandBuffer'],
-  'src/graphics/shader/recompiler/frontend/decode/VectorAluOps.cpp': ['{0x03u, Opcode::V_ADD_F32', '{0x04u, Opcode::V_CMP_GT_F32', '{0x08u, Opcode::V_MUL_F32'],
+  'src/libs/libAgcDriver.cpp': ['b4fpgH5ZXxQ', 'Gen5Driver::AgcDriverSubmitCommandBuffer', 'nNlUtdDDvZ0'],
+  'src/graphics/shader/recompiler/frontend/decode/VectorAluOps.cpp': ['{0x03u, Opcode::V_ADD_F32', '{0x04u, Opcode::V_CMP_GT_F32', '{0x08u, Opcode::V_MUL_F32', '{0x353u, Opcode::V_MIN3_U16', 'ApplyNativeVop3B16TernarySelectors', 'V_CMPX_EQ_I64'],
   'src/graphics/shader/recompiler/frontend/decode/ScalarAluOps.cpp': ['{0x24u, Opcode::S_AND_SAVEEXEC_B64'],
-  'src/graphics/shader/recompiler/frontend/decode/MemoryOps.cpp': ['{0x0cu, Opcode::BUFFER_LOAD_DWORD'],
+  'src/graphics/shader/recompiler/frontend/decode/MemoryOps.cpp': ['{0x0cu, Opcode::BUFFER_LOAD_DWORD', '{0x80u, Opcode::BUFFER_LOAD_FORMAT_D16_X', '{0x84u, Opcode::BUFFER_STORE_FORMAT_D16_X'],
   'src/common/lruCache.h': ['LeastRecentlyUsedCache', 'ForEachItemBelow'],
   'src/graphics/shader/recompiler/frontend/decode/ImageOps.cpp': ['DecodeMimg', 'nsa_dwords', 'IMAGE_BVH_INTERSECT_RAY', '0xe6', '0xe7'],
   'src/graphics/shader/recompiler/frontend/translate/Memory.cpp': ['IR::ValueOpcode::BvhIntersect', 'ir.GetExec()', 'inst.image_address_components - 10u'],
@@ -67,7 +80,7 @@ const anchors = {
   'tests/ShaderRayTracingGpuTests.inc': ['Bvh', 'Triangle'],
   'tests/LruCacheTests.cpp': ['TestTouchReordersAndSkips'],
   'tests/VirtualMemoryAllocationTests.cpp': ['TestSparseBackingReadPreservesResidency', 'TestSparseReadDuringDirectCommit'],
-  'tests/KernelFileSystemTests.cpp': ['CheckAprPaths']
+  'tests/KernelFileSystemTests.cpp': ['CheckAprPaths', 'TestAioBatches', 'wait_batch']
 };
 const hasSource = fs.existsSync(path.join(root, 'KytyPS5/src'));
 if (hasSource) {
@@ -75,7 +88,7 @@ if (hasSource) {
   const portableTargets = cmake.match(/add_custom_target\(kyty_tests DEPENDS([^]*?)\)/)?.[1].trim().split(/\s+/);
   if (portableTargets?.length !== 29) errors.push('Portable test-target count changed; review the build/test lessons.');
   const {execFileSync} = require('node:child_process');
-  const reviewedRevision = '7492cb95777b19fbacdf91f999fcc37b0a8b81c5';
+  const reviewedRevision = 'd2413fc2ebd91d1b7234197c2dd5bd48e1cb6a51';
   const head = execFileSync('git', ['-C', path.join(root, 'KytyPS5'), 'rev-parse', 'HEAD'], {encoding: 'utf8'}).trim();
   if (head !== reviewedRevision) errors.push('KytyPS5 HEAD differs from the reviewed revision; review docs before updating the snapshot.');
   for (const [file, symbols] of Object.entries(anchors)) {

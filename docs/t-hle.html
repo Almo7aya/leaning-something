@@ -279,6 +279,15 @@ struct KernelEvent {
     <li><strong>Path translation.</strong> Every guest path must be converted to a host path through the mount table. <code>GetRealFilename()</code> does this, and it is why the loader is handed <code>/app0/eboot.bin</code> rather than a host path.</li>
   </ul>
 
+<h4 id="aio-wait-contract">AIO waits: batch state is part of the API</h4>
+<p><code>KernelAioWaitRequests()</code> in <code>src/libs/libKernel.cpp</code> is registered under NID <code>lgK+oIWkJyA</code>. It accepts 1–128 request IDs and writes one state per ID. Mode <code>1</code> waits for all IDs to be terminal; mode <code>2</code> also permits an unnotified completed/aborted request to satisfy the wait. If all IDs are terminal, either mode returns. For one ID, the mode argument is ignored. An invalid ID is reported as <code>KERNEL_ERROR_ESRCH</code> in its state slot rather than necessarily failing the entire call.</p>
+<p><code>usec == nullptr</code> supplies no deadline; a non-null pointer supplies a microsecond budget, including an immediate check for a zero budget. Completion is checked before a timeout is returned, so an already completed request can succeed with zero time available. Success writes the remaining budget. Polls and waits share the atomic <code>KERNEL_AIO_STATE_NOTIFIED</code> bit, and a final notifying scan handles competition between waiters. Null ID/state pointers, invalid counts and invalid multi-ID modes return before modifying output states.</p>
+<div class="filename">src/libs/libKernel.cpp — the single-request wrapper</div>
+<pre>int KYTY_SYSV_ABI KernelAioWaitRequest(int32_t id, int32_t* state, uint32_t* usec) {
+    return KernelAioWaitRequests(&amp;id, 1, state, KERNEL_AIO_WAIT_AND, usec);
+}</pre>
+<p>The read/write submission functions currently perform their <code>KernelPread</code>/<code>KernelPwrite</code> work inline; an AIO-shaped API does not by itself imply a background I/O worker. <code>TestAioBatches()</code> in <code>tests/KernelFileSystemTests.cpp</code> checks zero-timeout completion, shared notification state, batch validation and per-ID errors. Trace both the call’s return value and each output state when diagnosing a wait.</p>
+
   <h4 id="the-remaining-primitives">The remaining primitives</h4>
   <div class="tw">
     <table>
@@ -345,10 +354,10 @@ struct KernelEvent {
 </main>
 
 <script src="assets/topics.js?v=20261007" defer></script>
-<script src="assets/search-index.js?v=20261007" defer></script>
+<script src="assets/search-index.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/app.js?v=20261007" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
-<script src="assets/atlas.js?v=20261007" defer></script>
+<script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>
 <script src="assets/figs.js?v=20261007" defer></script>
 <script src="assets/figures.js?v=20261007" defer></script>

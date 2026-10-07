@@ -43,6 +43,7 @@
 <tr><td><code>--controller-vibration &lt;0-100&gt;</code></td><td>100</td><td>DualSense vibration intensity.</td></tr>
 <tr><td><code>--hide-cursor</code></td><td>off</td><td>Hide the cursor after two seconds without pointer activity.</td></tr>
 <tr><td><code>--trophy-notifications &lt;true|false&gt;</code></td><td>true</td><td>Show trophy unlock notifications and play their sound.</td></tr>
+<tr><td><code>--skip-notice-screen &lt;true|false&gt;</code></td><td>false</td><td>Report the notice-screen skip flag to supported games; the launcher labels it “Skip boot logos”.</td></tr>
 <tr><td><code>--mic</code></td><td>unset</td><td>Capture from the named microphone. Omit it for paced silent AudioIn.</td></tr>
         <tr><td><code>--vr</code></td><td>off</td><td>Enable the virtual HMD2 headset model; this is not physical VR-headset support.</td></tr>
         <tr><td><code>--amd-cpu</code></td><td>off</td><td>Enable AMD CPU instruction patches, including reciprocal-square-root emulation.</td></tr>
@@ -192,7 +193,7 @@ http_uri_parse_tests</pre>
         <tr><td><code>PageManagerTests.cpp</code></td><td>Page protection, fault handling and watch lifetimes.</td></tr>
         <tr><td><code>ImagePageTableTests.cpp</code></td><td>Sparse image-page ownership, including extended guest addresses.</td></tr>
         <tr><td><code>EventQueueLifetimeTests.cpp</code></td><td>Event callbacks, deletion and queue lifetime.</td></tr>
-        <tr><td><code>KernelFileSystemTests.cpp</code></td><td>Mounted paths, directory iteration, Unicode and unmapped-path isolation.</td></tr>
+        <tr><td><code>KernelFileSystemTests.cpp</code></td><td>Mounted paths, directory iteration, Unicode, isolation and AIO batch wait/notification contracts.</td></tr>
         <tr><td><code>SyncOnAddressTests.cpp</code></td><td>Address waits/wakes, timed deadlines and interruptions.</td></tr>
         <tr><td><code>AudioOut2PortTests.cpp</code></td><td>Audio port layouts, submission timing, capabilities and shared-buffer capture.</td></tr>
         <tr><td><code>Ngs2SamplerTests.cpp</code></td><td>PCM/ATRAC9 sampling, looping and graph playback.</td></tr>
@@ -295,10 +296,10 @@ cmake … -DKYTY_ENABLE_CLANG_TIDY=ON            <i># clang-tidy during builds</
 </main>
 
 <script src="assets/topics.js?v=20261007" defer></script>
-<script src="assets/search-index.js?v=20261007" defer></script>
+<script src="assets/search-index.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/app.js?v=20261007" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
-<script src="assets/atlas.js?v=20261007" defer></script>
+<script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>
 <script src="assets/figs.js?v=20261007" defer></script>
 <script src="assets/figures.js?v=20261007" defer></script>

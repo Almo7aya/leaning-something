@@ -89,6 +89,9 @@ r.polymode_front_ptype = KYTY_PM4_GET(buffer[0], PA_SU_SC_MODE_CNTL, POLYMODE_FR
   <p>The largest file in the repository is a table of default register values. It exists because of how the real driver works: at context reset it writes a complete default state, and games then only set what they change. If Kyty's defaults differ anywhere, state leaks between draws in ways that are almost impossible to attribute — a blend mode set by one draw silently applying to the next.</p>
   <p>Games can also ask for these defaults directly, which is why <code>AgcGetRegisterDefaults2</code> is an exported function.</p>
 
+<h4 id="depth-copy-validation">Register decoding versus draw validation</h4>
+<p><code>DecodeRenderControl()</code> in <code>pm4Handlers.cpp</code> records <code>DB_RENDER_CONTROL</code>, including <code>copy_depth_to_color</code> and <code>copy_stencil_to_color</code>, without rejecting those bits immediately. A later state write can replace them before a draw uses them. <code>RenderExecutor::ResolveRenderDepthTarget()</code> in <code>src/graphics/host_gpu/renderer/depthRenderTarget.cpp</code> handles inactive or unbound attachments, then rejects unsupported depth-copy state for a draw with a bound attachment. Accepting a register write does not mean the corresponding rendering operation is implemented.</p>
+
   <h4 id="enumerations-from-the-guest-s-world">Enumerations from the guest's world</h4>
   <p>The register values are console enums, and <code>gpu_defs.h</code> declares them all in a <code>Prospero</code> namespace:</p>
 <pre>enum class PrimitiveType : uint32_t {
@@ -329,10 +332,10 @@ auto result = ShaderRecompiler::CompileProgram(std::move(translated), options,
 </main>
 
 <script src="assets/topics.js?v=20261007" defer></script>
-<script src="assets/search-index.js?v=20261007" defer></script>
+<script src="assets/search-index.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/app.js?v=20261007" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
-<script src="assets/atlas.js?v=20261007" defer></script>
+<script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>
 <script src="assets/figs.js?v=20261007" defer></script>
 <script src="assets/figures.js?v=20261007" defer></script>

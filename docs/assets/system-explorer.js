@@ -64,7 +64,7 @@
       summary: "Consumes PM4 headers and payloads, dispatches opcode handlers, updates the emulated hardware register file and turns draw or dispatch packets into host work.",
       sources: ["src/graphics/guest_gpu/command_processor/pm4Dispatch.cpp", "src/graphics/guest_gpu/command_processor/pm4Handlers.cpp"], topic: ["t-pm4.html", "The command processor"] },
     { id: "shader", title: "Shader recompiler", sub: "RDNA 2 → SPIR-V", kind: "kyty", pos: [3, 4], cats: ["graphics"],
-      summary: "TranslateProgram builds an immutable ResourcePlan (decode, CFG, typed IR). CompileProgram emits SPIR-V per resource specialisation. Materialise happens at draw time in the pipeline cache.",
+      summary: "TranslateProgram builds retained resource analysis through decode, CFG and typed IR. The plan also keeps reusable evaluation scratch. CompileProgram emits SPIR-V per resource specialisation; the pipeline cache refreshes resources at draw time.",
       sources: ["src/graphics/shader/recompiler/ShaderRecompiler.cpp", "src/graphics/shader/shader.cpp"], topic: ["t-shaders.html", "Shaders: RDNA 2 to SPIR-V"] },
     { id: "vulkan", title: "Vulkan renderer", sub: "resources + pipelines", kind: "kyty", pos: [3, 5], cats: ["memory", "graphics"],
       summary: "Resolves guest resources, uploads or tiles memory, creates cached Vulkan pipelines and descriptors, records commands and manages in-flight lifetimes.",
