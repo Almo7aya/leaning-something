@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>NIDs and the runtime linker — KytyPS5</title>
 <meta name="description" content="How an encoded id in a module's import table becomes the address of a C++ function in the emulator.">
-<link rel="stylesheet" href="assets/viz.css?v=20260929">
-<link rel="stylesheet" href="assets/atlas.css?v=20260929">
-<link rel="stylesheet" href="assets/lab.css?v=20260929">
-<link rel="stylesheet" href="assets/tutor.css?v=20260929">
-<link rel="stylesheet" href="assets/app.css?v=20260929">
-<link rel="stylesheet" href="assets/highlight.css?v=20260929">
+<link rel="stylesheet" href="assets/viz.css?v=20261007">
+<link rel="stylesheet" href="assets/atlas.css?v=20261007">
+<link rel="stylesheet" href="assets/lab.css?v=20261007">
+<link rel="stylesheet" href="assets/tutor.css?v=20261007">
+<link rel="stylesheet" href="assets/app.css?v=20261007">
+<link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
@@ -108,9 +108,9 @@
 
 LIB_DEFINE(InitGraphicsDriver_1) {
     LIB_FUNC("23LRUSvYu1M", Gen5::GraphicsInit);
-    LIB_FUNC("f3dg2CSgRKY", Gen5::GraphicsCreateShader);
-    LIB_FUNC("k3GhuSNmBLU", Gen5::GraphicsCbDispatch);
-    LIB_FUNC("wr23dPKyWc0", Gen5::GraphicsCbReleaseMem);
+    LIB_FUNC("f3dg2CSgRKY", Gen5::AgcCreateShader);
+    LIB_FUNC("k3GhuSNmBLU", Gen5::AgcCbDispatch);
+    LIB_FUNC("wr23dPKyWc0", Gen5::AgcCbReleaseMem);
     ...
 }</pre>
 
@@ -244,16 +244,16 @@ Common::VirtualMemory::<b>FlushInstructionCache</b>(code, thunk_size);</pre>
 
 </main>
 
-<script src="assets/topics.js?v=20260929" defer></script>
-<script src="assets/search-index.js?v=20260929" defer></script>
-<script src="assets/app.js?v=20260929" defer></script>
-<script src="assets/viz.js?v=20260929" defer></script>
-<script src="assets/atlas.js?v=20260929" defer></script>
-<script src="assets/lab.js?v=20260929" defer></script>
-<script src="assets/figs.js?v=20260929" defer></script>
-<script src="assets/figures.js?v=20260929" defer></script>
-<script src="assets/highlight.js?v=20260929" defer></script>
-<script src="assets/tutor.js?v=20260929" defer></script>
+<script src="assets/topics.js?v=20261007" defer></script>
+<script src="assets/search-index.js?v=20261007" defer></script>
+<script src="assets/app.js?v=20261007" defer></script>
+<script src="assets/viz.js?v=20261007" defer></script>
+<script src="assets/atlas.js?v=20261007" defer></script>
+<script src="assets/lab.js?v=20261007" defer></script>
+<script src="assets/figs.js?v=20261007" defer></script>
+<script src="assets/figures.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/tutor.js?v=20261007" defer></script>
 </body>
 </html>
 

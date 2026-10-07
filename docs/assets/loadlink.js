@@ -14,7 +14,7 @@
   var IMPORTS = [
     { name: "sceKernelAllocateDirectMemory", lib: "libkernel", addr: "00A1B2C0" },
     { name: "scePthreadCreate", lib: "libkernel", addr: "00A1B310" },
-    { name: "sceAgcDriverSubmitCommandBuffer", lib: "libSceGnmDriver", addr: "00B40120" },
+    { name: "AgcDriverSubmitCommandBuffer", lib: "Graphics5Driver", addr: "00B40120" },
     { name: "sceAudioOutOutput", lib: "libSceAudioOut", addr: "00C21040" },
     { name: "sceVideoOutSubmitFlip", lib: "libSceVideoOut", addr: "00D02080" },
     { name: "sceNpCheckPlus", lib: "libSceNp", addr: null }
@@ -22,11 +22,11 @@
   IMPORTS.forEach(function (im) { im.nid = hash(im.name + "#" + im.lib); });
   var LIBS = [
     { name: "libkernel", file: "libKernel.cpp", exp: ["sceKernelAllocateDirectMemory", "scePthreadCreate", "sceKernelMapDirectMemory"] },
-    { name: "libc", file: "libc.cpp", exp: ["malloc", "memcpy", "printf"] },
-    { name: "libSceGnmDriver", file: "graphics/…/agc.cpp", exp: ["sceAgcDriverSubmitCommandBuffer", "sceGnmDrawIndex"] },
-    { name: "libSceAudioOut", file: "audioOut.cpp", exp: ["sceAudioOutOutput", "sceAudioOutOpen"] },
+    { name: "libc", file: "libC.cpp", exp: ["malloc", "memcpy", "printf"] },
+    { name: "Graphics5Driver", file: "libAgcDriver.cpp", exp: ["AgcDriverSubmitCommandBuffer"] },
+    { name: "libSceAudioOut", file: "audio.cpp", exp: ["sceAudioOutOutput", "sceAudioOutOpen"] },
     { name: "libSceVideoOut", file: "videoOut.cpp", exp: ["sceVideoOutSubmitFlip", "sceVideoOutOpen"] },
-    { name: "libSceNp", file: "libNp.cpp (partial)", exp: ["sceNpGetState"] }
+    { name: "libSceNp", file: "libNet.cpp (partial)", exp: ["sceNpGetState"] }
   ];
 
   var NODES = {
@@ -61,7 +61,7 @@
       k.push(H.row(x, n.y + 146, w, ".rodata", "R", st.mapped ? "seg" : ""));
       k.push(H.row(x, n.y + 170, w, ".data", "R·W", st.mapped ? "seg" : ""));
       k.push(H.row(x, n.y + 194, w, "PT_DYNAMIC", "tags", st.step >= 5 ? "hot" : ""));
-      k.push(H.note(x, n.y + 238, "DT_NEEDED · DT_SYMTAB · DT_JMPREL", "sm"));
+      k.push(H.note(x, n.y + 238, "DT_OS_IMPORT_LIB · SYMTAB · JMPREL", "sm"));
       k.push(H.note(x, n.y + 262, "IMPORTS (.dynsym → NID)", "hd"));
       IMPORTS.forEach(function (im, i) {
         var hot = st.step === 7 && i === 0;
@@ -137,8 +137,8 @@
       cap: "Before copying anything the loader <b>reserves</b> the guest virtual range so the module lands exactly where the game's own addresses expect it — the PS5 program image sits high in the address space." },
     { t: "Map the segments", on: ["file", "space"], w: ["map"], reserved: 1, mapped: 1, op: "map PT_LOAD segments", op2: "copy bytes into pages", op3: "",
       cap: "Each <code>PT_LOAD</code> is mapped into pages and its bytes copied in: <code>.text</code> as R+W+X for now, <code>.rodata</code> R, <code>.data</code> R+W, plus the <code>.got</code>. Nothing is protected yet — the loader still has to write into code and the GOT." },
-    { t: "Read the dynamic section", on: ["file", "linker"], w: ["parse"], reserved: 1, mapped: 1, op: "walk PT_DYNAMIC", op2: "DT_NEEDED / DT_SYMTAB", op3: "DT_JMPREL",
-      cap: "<code>PT_DYNAMIC</code> is a table of tags: <code>DT_NEEDED</code> (which libraries this module imports), <code>DT_SYMTAB</code>/<code>DT_STRTAB</code> (the symbols and their names), and <code>DT_JMPREL</code> (the relocations that target GOT slots)." },
+    { t: "Read the dynamic section", on: ["file", "linker"], w: ["parse"], reserved: 1, mapped: 1, op: "walk PT_DYNAMIC", op2: "DT_OS_IMPORT_LIB / SYMTAB", op3: "DT_OS_JMPREL",
+      cap: "<code>PT_DYNAMIC</code> is a table of tags: Sony <code>DT_OS_NEEDED_MODULE</code>/<code>DT_OS_IMPORT_LIB</code> tags (module and library identity), <code>DT_OS_SYMTAB</code>/<code>DT_OS_STRTAB</code> (symbols and names), and <code>DT_OS_JMPREL</code> (the relocations that target GOT slots)." },
     { t: "Provide the needed libraries", on: ["linker", "libs"], w: ["reg"], reserved: 1, mapped: 1, libsProvided: 1, op: "Libs::InitAll(symbolDB)", op2: "register exports by NID", op3: "symbolDatabase.cpp",
       cap: "<code>Libs::InitAll</code> registers supported native HLE exports before loading the main ELF. Guest modules may also provide exports; not every needed library or symbol is implemented. NID lookup chooses among the available symbol databases." },
     { t: "What a NID is", on: ["file"], w: [], reserved: 1, mapped: 1, libsProvided: 1, op: "hash(functionName + suffix)", op2: "first 8 bytes of SHA-1", op3: "base64 → 11 chars",
@@ -153,14 +153,14 @@
       cap: "The loader applies the ELF segments' permissions; code is normally executable and not writable after patching. Do not assume every GOT is read-only: permissions come from its mapping, and successfully relocated slots may subsequently be changed by the guest. The Intro machine demonstrates a write into an RX code page." },
     { t: "TLS and threads", on: ["linker", "threads"], w: ["create"], reserved: 1, mapped: 1, libsProvided: 1, resolved: 1, stub: 1, patched: 1, protectd: 1, threadsUp: 1, op: "create main thread", op2: "TLS block + stack", op3: "kernel/pthread.cpp",
       cap: "The main guest thread is a real <b>host thread</b> with its own stack and a TLS block initialised from the module's TLS template. The emulator also stands up its own service threads — the GPU submit thread and the audio thread." },
-    { t: "Run the initialisers", on: ["threads", "game"], w: ["entry"], reserved: 1, mapped: 1, libsProvided: 1, resolved: 1, stub: 1, patched: 1, protectd: 1, threadsUp: 1, op: "StartAllModules", op2: "shared-module DT_INIT", op3: "before main()",
-      cap: "<code>StartAllModules()</code> starts loaded shared modules with <code>DT_INIT</code> in dependency order, then the executable entry runs. The guest runtime handles its own startup conventions. Initializers may already call through resolved imports; do not infer complete init-array handling from the ELF tags alone." },
+    { t: "Run the initialisers", on: ["threads", "game"], w: ["entry"], reserved: 1, mapped: 1, libsProvided: 1, resolved: 1, stub: 1, patched: 1, protectd: 1, threadsUp: 1, op: "StartModule(libc)", op2: "libc DT_INIT if present", op3: "before main()",
+      cap: "<code>Execute()</code> automatically loads <code>/app0/sce_module/libc.prx</code> if present and starts its <code>DT_INIT</code> after relocation, then the executable entry runs. Other PRXs are application-requested. The guest runtime handles its own startup conventions. Initializers may already call through resolved imports; do not infer complete init-array handling from the ELF tags alone." },
     { t: "Jump to the entry point", on: ["threads", "game"], w: ["entry"], reserved: 1, mapped: 1, libsProvided: 1, resolved: 1, stub: 1, patched: 1, protectd: 1, threadsUp: 1, entered: 1, op: "jmp e_entry", op2: "_start → main()", op3: "runs natively",
       cap: "The loader jumps to <code>e_entry</code>. The module's <code>_start</code> sets up argc/argv and calls the game's <code>main()</code>. From here the CPU runs the game's <b>own machine code natively</b> — there is no interpreter." },
     { t: "The game calls a library", on: ["game", "got", "libs"], w: ["call", "jump"], reserved: 1, mapped: 1, libsProvided: 1, resolved: 1, stub: 1, patched: 1, protectd: 1, threadsUp: 1, entered: 1, calling: "sceKernelAllocateDirectMemory", op: "game executes", op2: "call [GOT+0]", op3: "→ native HLE fn",
       cap: "When the game calls <code>sceKernelAllocateDirectMemory</code>, its code executes <code>call [GOT+0]</code>. That slot holds the address the linker wrote at load time, so control jumps <b>straight into the native HLE function</b>. There is no name lookup at run time — the GOT slot is the whole indirection." },
-    { t: "Every service, the same way", on: ["game", "got", "libs"], w: ["call", "jump", "ret"], reserved: 1, mapped: 1, libsProvided: 1, resolved: 1, stub: 1, patched: 1, protectd: 1, threadsUp: 1, entered: 1, calling: "sceAgcDriverSubmitCommandBuffer", op: "graphics · audio · files", op2: "call [GOT+n]", op3: "resolved once, called forever",
-      cap: "Every service the game uses is this same pattern: graphics (<code>sceAgcDriverSubmitCommandBuffer</code> → the GPU thread), audio (<code>sceAudioOutOutput</code>), files, threads. One GOT slot per import, <b>bound eagerly, with later module loads and final unloads updating unresolved or unlinked bindings</b>. That indirection is how a game written for a console runs on your PC." }
+    { t: "Every service, the same way", on: ["game", "got", "libs"], w: ["call", "jump", "ret"], reserved: 1, mapped: 1, libsProvided: 1, resolved: 1, stub: 1, patched: 1, protectd: 1, threadsUp: 1, entered: 1, calling: "AgcDriverSubmitCommandBuffer", op: "graphics · audio · files", op2: "call [GOT+n]", op3: "resolved once, called forever",
+      cap: "Every service the game uses is this same pattern: graphics (<code>AgcDriverSubmitCommandBuffer</code> → the GPU thread), audio (<code>sceAudioOutOutput</code>), files, threads. One GOT slot per import, <b>bound eagerly, with later module loads and final unloads updating unresolved or unlinked bindings</b>. That indirection is how a game written for a console runs on your PC." }
   ];
 
   KytyFlow(mount, { viewBox: "0 0 1240 720", aria: "How a game loads and links", nodes: NODES, wires: WIRES, steps: STEPS, body: body });

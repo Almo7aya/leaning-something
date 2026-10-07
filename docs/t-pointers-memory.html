@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pointers, references & memory — KytyPS5</title>
 <meta name="description" content="How KytyPS5 uses pointers, references and memory: why a guest pointer is a host pointer, when the tree reaches for T* vs T& vs unique_ptr, borrowed spans, reading raw bytes, placement new, and who owns what.">
-<link rel="stylesheet" href="assets/viz.css?v=20260929">
-<link rel="stylesheet" href="assets/atlas.css?v=20260929">
-<link rel="stylesheet" href="assets/lab.css?v=20260929">
-<link rel="stylesheet" href="assets/tutor.css?v=20260929">
-<link rel="stylesheet" href="assets/app.css?v=20260929">
-<link rel="stylesheet" href="assets/highlight.css?v=20260929">
+<link rel="stylesheet" href="assets/viz.css?v=20261007">
+<link rel="stylesheet" href="assets/atlas.css?v=20261007">
+<link rel="stylesheet" href="assets/lab.css?v=20261007">
+<link rel="stylesheet" href="assets/tutor.css?v=20261007">
+<link rel="stylesheet" href="assets/app.css?v=20261007">
+<link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
@@ -133,7 +133,7 @@ void SetFunc(Handler func) { *reinterpret_cast&lt;Handler*&gt;(&amp;code[2]) = f
     </p>
     <div class="callout k">
       <span class="lbl">A ten-minute lab</span>
-      <p>Open <a href="https://godbolt.org/">godbolt.org</a>, language C++, compiler <code>x86-64 clang 18</code> (matching the build). Write a function that takes a <code>uint64_t addr</code> and returns <code>*reinterpret_cast&lt;const float*&gt;(addr)</code>; the assembly is a single load — the cast is nothing. Then write one taking <code>std::span&lt;const uint32_t&gt;</code> and returning <code>s[0] + s.size()</code>; note that a span is passed as a pointer and a length, with no copy of the data. Finally give a function a <code>std::unique_ptr&lt;int&gt;</code> by value and try to copy it — the compiler refuses, because ownership is unique.</p>
+      <p>Open <a href="https://godbolt.org/">godbolt.org</a>, language C++, an x86-64 Clang compiler with C++20 enabled. Write a function that takes a <code>uint64_t addr</code> and returns <code>*reinterpret_cast&lt;const float*&gt;(addr)</code>; the assembly is a single load — the cast is nothing. Then write one taking <code>std::span&lt;const uint32_t&gt;</code> and returning <code>s[0] + s.size()</code>; note that a span is passed as a pointer and a length, with no copy of the data. Finally give a function a <code>std::unique_ptr&lt;int&gt;</code> by value and try to copy it — the compiler refuses, because ownership is unique.</p>
     </div>
   </section>
 
@@ -163,15 +163,15 @@ void SetFunc(Handler func) { *reinterpret_cast&lt;Handler*&gt;(&amp;code[2]) = f
 
 </main>
 
-<script src="assets/topics.js?v=20260929" defer></script>
-<script src="assets/search-index.js?v=20260929" defer></script>
-<script src="assets/app.js?v=20260929" defer></script>
-<script src="assets/viz.js?v=20260929" defer></script>
-<script src="assets/atlas.js?v=20260929" defer></script>
-<script src="assets/lab.js?v=20260929" defer></script>
-<script src="assets/figs.js?v=20260929" defer></script>
-<script src="assets/figures.js?v=20260929" defer></script>
-<script src="assets/highlight.js?v=20260929" defer></script>
-<script src="assets/tutor.js?v=20260929" defer></script>
+<script src="assets/topics.js?v=20261007" defer></script>
+<script src="assets/search-index.js?v=20261007" defer></script>
+<script src="assets/app.js?v=20261007" defer></script>
+<script src="assets/viz.js?v=20261007" defer></script>
+<script src="assets/atlas.js?v=20261007" defer></script>
+<script src="assets/lab.js?v=20261007" defer></script>
+<script src="assets/figs.js?v=20261007" defer></script>
+<script src="assets/figures.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/tutor.js?v=20261007" defer></script>
 </body>
 </html>

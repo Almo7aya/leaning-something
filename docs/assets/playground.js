@@ -738,9 +738,9 @@
     "[  0.014] loader: mapping eboot.bin at 0x0000000000080000 (0x21000 bytes, R-X)",
     "[  0.015] loader: mapping segment 1 at 0x00000000000a1000 (0x5000 bytes, RW-)",
     "[  0.021] runtimeLinker: module libkernel needs 4 libraries",
-    "[  0.033] runtimeLinker: unresolved symbol pt2fEBBpEJk#v#v (libSceGnmDriver)",
-    "[  0.033] runtimeLinker: unresolved symbol xeH4Ry1ZfBg#v#v (libSceGnmDriver)",
-    "[  0.034] runtimeLinker: unresolved symbol pt2fEBBpEJk#v#v (libSceGnmDriver)",
+    "[  0.033] runtimeLinker: unresolved symbol pt2fEBBpEJk#v#v (Graphics5Driver)",
+    "[  0.033] runtimeLinker: unresolved symbol xeH4Ry1ZfBg#v#v (Graphics5Driver)",
+    "[  0.034] runtimeLinker: unresolved symbol pt2fEBBpEJk#v#v (Graphics5Driver)",
     "[  0.041] libKernel: sceKernelMapDirectMemory unimplemented, returning 0",
     "[  0.042] libKernel: sceKernelMapDirectMemory unimplemented, returning 0",
     "[  0.055] graphics: pm4 unknown packet 0x00000073 at dword 412",
@@ -1140,7 +1140,7 @@
      Parses the forensic dump written by KytyExceptionHandler
      (src/loader/runtimeLinker.cpp) and annotates each
      block. The faulting address is usually a symptom; the stack
-     trace at the bottom is the cause.
+     trace at the bottom supplies leads for investigating the cause.
      ============================================================ */
 
   var NATIVE_CODES = {
@@ -1229,17 +1229,17 @@
     if (o.summary.fatal) h += '<p class="pg-why pg-warntext">' + esc(o.summary.fatal) + "</p>";
     if (o.unpatched) {
       h += '<div class="callout k" style="margin:10px 0"><span class="lbl">Unpatched object</span>' +
-        "<p>The write landed on the special <code>g_invalid_memory</code> address — a known bug " +
-        "class in the patching layer, not a game bug. The red zone patcher and the game patch " +
-        "are the suspects.</p></div>";
+        "<p>The write landed on the special <code>g_invalid_memory</code> address — a diagnostic address for a failure " +
+        "involving a patched object. The active instruction and patch record " +
+        "need inspection before assigning a cause.</p></div>";
     }
 
     h += '<p class="pg-why"><strong>Cause vs symptom:</strong> the exception happened at ' +
       "<code>" + esc(o.summary.addr || "?") + "</code> because of a " +
       esc(o.summary.av_type || "?") + " to <code>" + esc(o.summary.av_addr || "?") +
-      "</code>. The reason it <em>got there</em> is in the callers — the stack words that fall " +
-      "inside a loaded module are return addresses, and a <code>Stack trace</code> block, where the " +
-      "emulator prints one, resolves them to module and offset. Fix the caller, not the address.</p>";
+      "</code>. To investigate how execution reached it, inspect callers and data flow. Stack words that fall " +
+      "inside a loaded module are only candidate return addresses. A <code>Stack trace</code> block, where the " +
+      "emulator prints one, supplies frame addresses resolved to module and offset; it still does not identify the cause by itself.</p>";
 
     if (o.code.length) {
       h += "<h4>Faulting instruction</h4><p class='pg-big' style='font-size:14px'><code>" +
@@ -1254,7 +1254,7 @@
       h += "<h4>Stack words</h4><p class='pg-big' style='font-size:12px'><code>" +
         o.stack.map(function (v) { return /^0000000[89A-F]/.test(v) ? "<mark>" + esc(v) + "</mark>" : esc(v); }).join(" ") + "</code></p>" +
         '<p class="pg-dim">32 qwords read upward from <code>rsp</code>. Highlighted values sit in the guest module band ' +
-        "(<code>0x8…</code>–<code>0xF…</code>) and are the likely return addresses — the call path, newest first.</p>";
+        "(<code>0x8…</code>–<code>0xF…</code>). This is only a range heuristic: validate candidates against loaded executable segments and call instructions.</p>";
     }
 
     if (o.regs.length) {
@@ -1273,11 +1273,11 @@
       });
       h += "</tbody></table>";
       h += '<p class="pg-dim">Each register was treated as a pointer into a loaded module. "???" ' +
-        "means it points nowhere useful — a strong hint it held data, not an address.</p>";
+        "means it did not resolve to a loaded module; it may still be data or another valid address.</p>";
     }
 
     if (o.trace.length) {
-      h += "<h4>Stack trace <span class='pg-dim'>— the cause</span></h4>" +
+      h += "<h4>Stack trace <span class='pg-dim'>— inspect the callers</span></h4>" +
         "<table class='pg-table'><thead><tr><th>frame</th><th>addr</th><th>offset</th><th>module</th></tr></thead><tbody>";
       o.trace.forEach(function (fr) {
         h += "<tr><td>" + fr.frame + "</td><td><code>" + esc(fr.addr) + "</code></td><td><code>" +

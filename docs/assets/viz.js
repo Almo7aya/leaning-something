@@ -328,7 +328,7 @@
       "<b>The game writes texture data with the CPU.</b> Ordinary stores. Nothing tells the emulator this happened.",
       "<b>The memory tracker records which pages changed.</b> Pages 2 and 3 are marked CPU-dirty. Granularity is the guest's 16 KB page, so a write anywhere in a page dirties all of it.",
       "<b>A draw needs the texture.</b> <code>ForEachUploadRange</code> reports only the dirty sub-ranges, and just those are copied into the Vulkan image — not the whole 4K surface.",
-      "<b>Then the pages are write-protected.</b> <code>ApplyGpuProtection</code> arms the trap. The GPU now owns this data, and any CPU write has to be noticed.",
+      "<b>Then the pages are write-protected.</b> <code>PageManager</code> write watchers arm the trap so a later CPU write is noticed.",
       "<b>Later, the game writes to page 5.</b> The page is protected, so the CPU raises an access violation instead of completing the store.",
       "<b>The fault lands in <code>KytyExceptionHandler</code></b>, which calls <code>Memory::HandleGpuFault</code>. It marks page 5 CPU-dirty, removes the protection, and returns <code>true</code>. Execution resumes and the store completes — the game never knew.",
       "<b>The next draw uploads page 5 only.</b> One page, because the tracker knows precisely which one changed. This is the whole loop, and it runs without a single line of cooperation from the game."
@@ -622,9 +622,9 @@
 
     var FORMS = [
       ["0x0A00_0304  0xD1C2_0008 …", "just bits — no types, no structure, no function boundaries"],
-      ["VOP2 VMulF32  dst v4  src0 v0  src1 v3", "opcode and operands recovered, with every modifier bit"],
+      ["VOP2 V_MUL_F32  dst v4  src0 v0  src1 v3", "opcode and operands recovered, with every modifier bit"],
       ["block 3: preds [2]  succ [4,7]  loop_header", "control flow as a graph — but branching is still mask arithmetic"],
-      ["%r = MulF32 %a, %b     ; pc 0x18", "typed value IR after explicit translation and SSA rewriting"],
+      ["%r = FPMul32 %a, %b     ; pc 0x18", "typed value IR after explicit translation and SSA rewriting"],
       ["%r = OpFMul %float %a %b", "typed, structured, capability-declared — what Vulkan accepts"]
     ];
     var CAPS = [
@@ -632,7 +632,7 @@
       "<b>Decode.</b> Each word is matched to an encoding family (SOP, VOP, SMEM, MUBUF, MIMG, FLAT, DS, EXP) and unpacked into a typed instruction with its operands and its considerable pile of modifier bits.",
       "<b>Build the control-flow graph</b>, then try to <em>structurise</em> it: compute the merge and continue blocks SPIR-V requires. This is the stage most likely to fail, and failure is a supported outcome — the dispatcher fallback emits one loop around a switch on a program counter.",
       "<b>Translate to one typed IR.</b> Explicit opcode-category dispatchers build values, then SSA rewriting, propagation, identity removal and dead-code elimination prepare them for resource analysis and emission.",
-      "<b>Emit SPIR-V.</b> The current backend is about 386 KB across 18 files. It declares types and capabilities, then lowers flow, ALU, memory, image and mesh instructions — including safety work the hardware got for free."
+      "<b>Emit SPIR-V.</b> The backend declares types and capabilities, then lowers flow, ALU, memory, image, mesh and BVH instructions — including safety work the hardware got for free."
     ];
 
     body.insertBefore(s, body.firstChild);

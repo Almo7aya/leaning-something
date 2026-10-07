@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Reading a run — KytyPS5</title>
 <meta name="description" content="How to read the log, the crash dump and the shader phase lines a real KytyPS5 run produces.">
-<link rel="stylesheet" href="assets/viz.css?v=20260929">
-<link rel="stylesheet" href="assets/atlas.css?v=20260929">
-<link rel="stylesheet" href="assets/lab.css?v=20260929">
-<link rel="stylesheet" href="assets/tutor.css?v=20260929">
-<link rel="stylesheet" href="assets/app.css?v=20260929">
-<link rel="stylesheet" href="assets/highlight.css?v=20260929">
+<link rel="stylesheet" href="assets/viz.css?v=20261007">
+<link rel="stylesheet" href="assets/atlas.css?v=20261007">
+<link rel="stylesheet" href="assets/lab.css?v=20261007">
+<link rel="stylesheet" href="assets/tutor.css?v=20261007">
+<link rel="stylesheet" href="assets/app.css?v=20261007">
+<link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
@@ -19,7 +19,7 @@
   <p class="topic-eyebrow">Working on it · 20</p>
   <h1 id="reading-a-run">Reading a run</h1>
   <p class="topic-deck">
-    The rest of the course explains the machine. This page is the field guide: the exact log lines a build at <code>2650478</code> writes, what each field means, and which grep to run first.
+    The rest of the course explains the machine. This page is the field guide: the exact log lines a build at <code>7492cb9</code> writes, what each field means, and which grep to run first.
   </p>
 
   <section class="band band-read">
@@ -44,7 +44,7 @@
   </div>
 
   <h4 id="shader-phase-lines">Shader phase lines</h4>
-  <p><code>TranslateProgram()</code> and <code>CompileProgram()</code> log every expensive phase with the same shape. The label is <code>ShaderRecompiler VS</code>, <code>PS</code>, <code>CS</code> or <code>MS</code> (mesh). A cold vertex shader looks like this:</p>
+  <p><code>TranslateProgram()</code> and <code>CompileProgram()</code> log every expensive phase with the same shape. The label identifies the shader stage (for example <code>ShaderRecompiler VS</code>, <code>PS</code>, <code>CS</code> or <code>MS</code>). A cold vertex shader looks like this:</p>
 <pre>ShaderRecompiler VS phase begin: stage=VS hash=0x… code_words=N decode
 ShaderRecompiler VS phase end:   stage=VS hash=0x… decode instructions=N elapsed_ms=…
 ShaderRecompiler VS phase begin: stage=VS hash=0x… CFG BuildGraph
@@ -53,7 +53,7 @@ ShaderRecompiler VS phase begin: stage=VS hash=0x… CFG Structurize
 ShaderRecompiler VS phase end:   stage=VS hash=0x… CFG Structurize blocks=N loops=N elapsed_ms=…
 ShaderRecompiler VS phase begin: stage=VS hash=0x… IR TranslateProgram
 ShaderRecompiler VS phase end:   stage=VS hash=0x… IR TranslateProgram blocks=N elapsed_ms=…</pre>
-  <p>If <code>elapsed_ms</code> on Structurize or TranslateProgram is hundreds of milliseconds on a shader you hit every frame, that is a cache miss, not a slow draw. The hash is the key: the same hash later in the log with no phase lines is a hit.</p>
+  <p>The frontend <code>elapsed_ms</code> values are cumulative from the start of <code>TranslateProgram()</code>; subtract adjacent phase-end values to estimate the time spent in an individual phase. SPIR-V compilation has its own timer. These lines prove compiler work occurred, but a repeated source hash can have different stage, input or specialization state. Compare the complete cache identity and pipeline creation evidence before diagnosing repeated misses; the absence of phase lines alone does not prove a cache hit.</p>
 
   <h4 id="the-dispatcher-fallback-line">The dispatcher-fallback line</h4>
   <p>When the CFG is irreducible, or <code>Structurize()</code> fails, the recompiler restores the unstructured graph and logs one line — then continues. The SPIR-V backend emits a loop around a switch on a program counter. The line is:</p>
@@ -67,20 +67,20 @@ ShaderRecompiler VS phase end:   stage=VS hash=0x… IR TranslateProgram blocks=
   <h4 id="reading-guest-fault-context">Reading <code>Guest fault context</code></h4>
   <p>The dump is four blocks, then an <code>EXIT</code>. Read them in this order:</p>
   <ol>
-    <li><code>thread:</code> — guest pthread name, <code>(host thread)</code>, or <code>(unnamed guest thread)</code>. Tells you which of the four threads died.</li>
+    <li><code>thread:</code> — guest pthread name, <code>(host thread)</code>, or <code>(unnamed guest thread)</code>. Identifies the thread; use the faulting PC to determine which code it was executing.</li>
     <li>Sixteen registers, <code>%016llx</code>. <code>rsp</code> is the stack you are about to dump; <code>rdi</code>/<code>rsi</code>/… are the System V arguments of the faulting call if you are in a prologue.</li>
     <li><code>code (pc-48 .. pc+48, fault at byte 48)</code> — 96 bytes, 6 lines of 16. Byte 48 is the first byte of the instruction that faulted. Feed from there into a disassembler.</li>
-    <li><code>stack:</code> — 32 qwords from <code>rsp</code>. Values in the <code>0x8…</code>–<code>0xF…</code> guest-module band are return addresses.</li>
+    <li><code>stack:</code> — 32 qwords from <code>rsp</code>. Values inside loaded executable segments are candidate return addresses; arbitrary stack words are not a validated backtrace.</li>
   </ol>
   <p>Then:</p>
 <pre>EXIT("Unhandled host exception: type=%u code=%u pc=0x… access=%u address=0x…")</pre>
   <p><code>type</code> 1 is access violation, 2 is illegal instruction. <code>access</code> 1/2/3 is read/write/execute. <code>address</code> is what was touched:</p>
   <ul>
-    <li><code>0x28</code> — an unpatched stack-canary store through <code>fs:[0x28]</code>.</li>
-    <li>A small address — usually a null pointer downstream of a stub that returned 0.</li>
-    <li>A <code>pc</code> in the <code>0x9…</code> band with plausible return addresses on the stack — a genuine guest bug.</li>
+    <li><code>0x28</code> — inspect the instruction: an unpatched <code>fs:[0x28]</code> access and a null pointer plus an offset are different possible causes.</li>
+    <li>A small address — inspect the base register and call history; a null pointer is one possibility.</li>
+    <li>A PC in a mapped guest segment — a fault while executing guest code; inspect the module and state before attributing its cause.</li>
   </ul>
-  <p>Each range is probed with <code>IsReadableRange</code> before it is printed, so a corrupt <code>rsp</code> does not crash the dumper. Drop the block into the <a href="playground.html#crash-log-reader">crash-log reader</a>.</p>
+  <p>Each range is probed with <code>IsReadableRange</code> before it is printed to avoid dereferencing an already unreadable range. The probe is a diagnostic safeguard, not a guarantee against concurrent mapping changes. Drop the block into the <a href="playground.html#crash-log-reader">crash-log reader</a>.</p>
 
   <h4 id="a-grep-kit">A grep kit</h4>
 <pre>rg "unresolved symbol" _kyty.txt
@@ -131,15 +131,15 @@ rg "mesh shader exceeds host limits" _kyty.txt</pre>
 
 </main>
 
-<script src="assets/topics.js?v=20260929" defer></script>
-<script src="assets/search-index.js?v=20260929" defer></script>
-<script src="assets/app.js?v=20260929" defer></script>
-<script src="assets/viz.js?v=20260929" defer></script>
-<script src="assets/atlas.js?v=20260929" defer></script>
-<script src="assets/lab.js?v=20260929" defer></script>
-<script src="assets/figs.js?v=20260929" defer></script>
-<script src="assets/figures.js?v=20260929" defer></script>
-<script src="assets/highlight.js?v=20260929" defer></script>
-<script src="assets/tutor.js?v=20260929" defer></script>
+<script src="assets/topics.js?v=20261007" defer></script>
+<script src="assets/search-index.js?v=20261007" defer></script>
+<script src="assets/app.js?v=20261007" defer></script>
+<script src="assets/viz.js?v=20261007" defer></script>
+<script src="assets/atlas.js?v=20261007" defer></script>
+<script src="assets/lab.js?v=20261007" defer></script>
+<script src="assets/figs.js?v=20261007" defer></script>
+<script src="assets/figures.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/tutor.js?v=20261007" defer></script>
 </body>
 </html>

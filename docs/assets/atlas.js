@@ -36,7 +36,7 @@
      ============================================================ */
   V.register("nativeexec", function (host) {
     var body = frame(host, "Why there is no CPU emulator", "interpreter vs native, same guest code",
-      "This is the single most important fact about KytyPS5. The PS5's CPU is an 8-core AMD Zen 2 running x86-64 — the same instruction set as your PC. There is nothing to translate, so the emulator maps the code in and jumps to it. Search the repository for an interpreter loop or a JIT and you will find neither.");
+      "This is the single most important fact about KytyPS5. The PS5's CPU is an 8-core AMD Zen 2 running x86-64 — the same instruction set as your PC. Most CPU instructions execute directly after mapping and loader setup. Kyty has no general CPU interpreter or translator; it does generate ABI stubs, patch selected instructions and compile GPU shaders.");
 
     var wrap = el("div", "atl-two");
     wrap.innerHTML =
@@ -62,7 +62,7 @@
     var CAPS = [
       "Four guest instructions to run. Both columns will execute the same ones.",
       "<b>An interpreter</b> must fetch, decode, read operands, execute, write back and advance — roughly 10–50 host instructions for <em>every one</em> guest instruction. A 3.5&nbsp;GHz guest would need a 100&nbsp;GHz host.",
-      "<b>Native execution</b> has no loop at all. The instruction <em>is</em> the host instruction. One for one, at full speed.",
+      "<b>Native execution</b> has no loop at all. The instruction <em>is</em> the host instruction. Ordinary instructions execute directly; compatibility paths and services still have costs.",
       "After four guest instructions: 24 interpreter stages against 4 host instructions — and each of those stages is itself several host instructions, so the real ratio is nearer 10–50×. It compounds for the billions a game executes per second, which is why every PS4/PS5 emulator takes the native route.",
       "<b>So the difficulty moves elsewhere.</b> The calling convention, the memory layout, the thousands of operating-system functions, and above all the GPU. Roughly 70% of this codebase is graphics."
     ];
@@ -309,8 +309,8 @@
      MEMORY · 2 — 16 KB guest pages over 4 KB host pages
      ============================================================ */
   V.register("pagegrain", function (host) {
-    var body = frame(host, "One guest page is four host pages", "why protection is coarser than you would like",
-      "The PS5 uses 16 KB pages and games observe this through <code>sceKernelVirtualQuery</code> and alignment requirements. Your PC uses 4 KB. Kyty's allocator works in <code>0x4000</code> units, so every protection change touches four host pages at once — and a single guest write dirties the whole 16 KB.");
+    var body = frame(host, "One guest page is four host pages", "guest allocation and host tracking are different units",
+      "The guest VM uses 16 KB granularity where required. Kyty’s renderer tracks 4 KB pages through <code>TRACKER_PAGE_SIZE</code>. A guest page spans four tracker pages, but a write fault need not dirty all four.");
 
     var wrap = el("div");
     wrap.innerHTML =
@@ -322,15 +322,15 @@
       "Four guest pages of 16 KB, sitting on sixteen host pages of 4 KB.",
       "The renderer uploads a texture living in guest page 1 and write-protects it. On the host that means <b>four</b> <code>VirtualProtect</code>-equivalent calls, or one call spanning four pages.",
       "The game writes <b>one byte</b> somewhere in guest page 1. One host page faults.",
-      "But the tracker's granularity is the guest page, so <b>the whole 16 KB is marked dirty</b> — and the next upload copies all of it, not the four bytes that changed. Correct, and conservative.",
-      "This is a deliberate trade. Tracking at 4 KB would upload less but multiply the bookkeeping and the fault count; tracking at 16 KB matches what the guest believes about its own memory."
+      "The fault marks the affected <b>4 KB tracker page</b> dirty. Other protected pages in the same 16 KB guest page can remain clean.",
+      "Guest VM granularity and dirty tracking solve different problems. Buffer transfers and texture invalidation then use their own resource ranges; one changed byte is not necessarily one copied byte."
     ];
 
     var drv = driver(body, CAPS, function (i) {
       var gcls = ["", "", "", ""], hcls = new Array(16).fill("");
       if (i >= 1) { gcls[1] = "lock"; for (var k = 4; k < 8; k++) hcls[k] = "lock"; }
       if (i === 2) { hcls[5] = "fault"; }
-      if (i >= 3) { gcls[1] = "dirty"; for (var j = 4; j < 8; j++) hcls[j] = "dirty"; }
+      if (i >= 3) { gcls[1] = "dirty"; hcls[5] = "dirty"; }
       gR.innerHTML = gcls.map(function (c, k) { return '<div class="atl-pgbox ' + c + '">guest page ' + k + '<span>16 KB</span></div>'; }).join("");
       hR.innerHTML = hcls.map(function (c, k) { return '<div class="atl-pgsm ' + c + '">' + k + "</div>"; }).join("");
     }, 3400);
@@ -399,7 +399,7 @@
       "Every import the emulator implements is bound here. Everything it does not gets a generated 34-byte thunk that logs the unresolved call and returns zero — which is why a stubbed function produces odd behaviour rather than a clean crash.");
 
     var ROWS = [
-      { nid: "lUwEK9UwLNo", lib: "libSceGnmDriver", to: "Gen5::GraphicsSubmit", kind: "hle" },
+      { nid: "b4fpgH5ZXxQ", lib: "Graphics5Driver", to: "Gen5Driver::AgcDriverSubmitCommandBuffer", kind: "hle" },
       { nid: "4J2sUJmuHZQ", lib: "libkernel", to: "KernelGetProcessTime", kind: "hle" },
       { nid: "7H0iTOciTLo", lib: "Posix", to: "pthread_mutex_lock", kind: "hle" },
       { nid: "aBcDeFgHiJk", lib: "libSceSomething", to: "diagnostic thunk (unresolved)", kind: "stub" },

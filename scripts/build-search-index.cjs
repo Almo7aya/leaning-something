@@ -1,5 +1,5 @@
 // Regenerate from static headings, never from HTML embedded inside JavaScript.
-// Default: verify. --patch: print an apply_patch-compatible update (no files written).
+// Default: verify. --write: regenerate. --patch: print an apply_patch-compatible update.
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
@@ -30,7 +30,10 @@ if (process.argv.includes('--patch')) {
   const offset = Number(process.argv.find(a => a.startsWith('--offset='))?.split('=')[1] || 0);
   if (process.argv.includes('--length')) console.log(patch.length);
   else process.stdout.write(process.argv.some(a => a.startsWith('--offset=')) ? patch.slice(offset, offset + 40000) : patch);
+} else if (process.argv.includes('--write')) {
+  fs.writeFileSync(path.join(root, target), after);
+  console.log('Wrote '+entries.length+' searchable headings.');
 } else if (before !== after) {
-  console.error('Search index is stale. Generate the update with --patch.');
+  console.error('Search index is stale. Regenerate with --write or review the update with --patch.');
   process.exitCode = 1;
 } else console.log(`PASS: ${entries.length} searchable headings match the current HTML.`);

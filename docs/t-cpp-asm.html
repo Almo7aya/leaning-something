@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Assembly, the ABI &amp; machine code — KytyPS5</title>
-<meta name="description" content="Why the emulator drops to raw assembly, how to read inline asm, explicit register variables, naked functions and the machine-code buffers in jit.h.">
-<link rel="stylesheet" href="assets/viz.css?v=20260929">
-<link rel="stylesheet" href="assets/atlas.css?v=20260929">
-<link rel="stylesheet" href="assets/lab.css?v=20260929">
-<link rel="stylesheet" href="assets/tutor.css?v=20260929">
-<link rel="stylesheet" href="assets/app.css?v=20260929">
-<link rel="stylesheet" href="assets/highlight.css?v=20260929">
+<meta name="description" content="Why the emulator drops to raw assembly, how to read inline asm, explicit register variables, control-flow attributes and the machine-code buffers in jit.h.">
+<link rel="stylesheet" href="assets/viz.css?v=20261007">
+<link rel="stylesheet" href="assets/atlas.css?v=20261007">
+<link rel="stylesheet" href="assets/lab.css?v=20261007">
+<link rel="stylesheet" href="assets/tutor.css?v=20261007">
+<link rel="stylesheet" href="assets/app.css?v=20261007">
+<link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
@@ -25,17 +25,17 @@
   <section class="band band-read">
     <div class="band-h"><span class="band-t">Read</span></div>
     <div class="prose">
-<p class="deck">C++ cannot express "swap the stack pointer to an address in guest memory and jump". When the emulator needs that kind of control it writes assembly by hand. There are exactly four such boundaries in the tree, and together they cover every asm block you will ever see here.</p>
+<p class="deck">C++ cannot express "swap the stack pointer to an address in guest memory and jump". When the emulator needs that kind of control it writes assembly by hand. The examples below cover guest entry, fiber context switching, generated thunks and instruction patches.</p>
 
   <h4 id="where-assembly-appears">Where assembly appears</h4>
-  <p>Four places need exact register and stack control that no compiler construct provides:</p>
+  <p>These paths need explicit control of registers or instruction bytes:</p>
   <div class="tw">
     <table>
       <thead><tr><th>Boundary</th><th>What has to happen</th><th>Where</th></tr></thead>
       <tbody>
         <tr><td>Guest thread entry</td><td>Jump onto a freshly allocated guest stack — swap <code>rsp</code>/<code>rbp</code> to guest memory, call the entry point, swap back</td><td><code>runtimeLinker.cpp</code></td></tr>
         <tr><td>Context save / restore</td><td>Dump the CPU state into a struct, and later restore it — a hand-rolled fiber switch</td><td><code>libKernel.cpp</code> — <code>FiberSaveContext</code> / <code>FiberRestoreContext</code></td></tr>
-        <tr><td>Return-address repair</td><td>An unrecoverable stub returns by <em>adjusting the stack</em> and <code>ret</code> — no C++ body at all</td><td><code>runtimeLinker.cpp</code> — <code>RelocateHandlerReturnStub</code></td></tr>
+        <tr><td>Guest instruction patches</td><td>Decode host-incompatible instructions and emit replacement sequences or trap fallback</td><td><code>guestInstructionPatcher.cpp</code></td></tr>
         <tr><td>Generated thunks</td><td>TLS guards and call bridges emitted as bytes at runtime; diagnostic import stubs live in runtimeLinker.cpp</td><td><code>loader/jit.h</code></td></tr>
       </tbody>
     </table>
@@ -66,7 +66,7 @@ gs                     <i>segment base; on Windows it points at the per-thread T
   <ul>
     <li><code>%%rsp</code> — a real register is written with a doubled <code>%</code>, because a single <code>%</code> starts an operand placeholder. Operands are <code>%0</code>, <code>%1</code>… by position, or <code>%[guest_rsp]</code> by the name given in the constraint.</li>
     <li><strong>Clobbers are a promise to the compiler.</strong> If your asm writes <code>rcx</code>, the compiler must know — it is <em>caller-saved</em>, so it might be holding live data. Writing <code>"memory"</code> tells the compiler the asm can read or write any memory, which also stops it reordering your asm against other memory accesses (a compiler barrier).</li>
-    <li><code>volatile</code> means "never delete or reorder this". A pure computation could be elided as dead code; a stack switch cannot.</li>
+    <li><code>volatile</code> prevents the compiler from treating the assembly as a disposable pure computation. It is not a general memory-ordering barrier: constraints and clobbers still have to describe the actual effects.</li>
   </ul>
 
   <p>Now the real thing. This is the Windows branch of the guest-thread entry from <code>runtimeLinker.cpp</code>, abridged and annotated. The context: <code>guest_rsp</code> points into guest memory, and this block must run the game's entry point <em>on that stack</em>, then come back:</p>
@@ -101,28 +101,29 @@ register uintptr_t    guest_rbp_reg asm("r15") = guest_rbp;</pre>
 
   <p>Why bother? The comment right above it explains the exact bug this prevents: on macOS, Clang can allocate a plain <code>"r"</code> input to <code>r12</code>/<code>r13</code> — registers the asm block itself clobbers before consuming the value. Pinning the inputs to <code>rbx</code>/<code>r14</code>/<code>r15</code> (registers the System V guest preserves) makes the hand-off safe.</p>
 
-  <h4 id="naked-functions-and-friends">`naked` functions and friends</h4>
-  <p>Three attributes in this area appear exactly where you would expect them, and each means something specific:</p>
+  <h4 id="naked-functions-and-friends">Control-flow attributes and generated thunks</h4>
+  <p>These attributes describe control flow to the compiler:</p>
 
   <div class="tw">
     <table>
       <thead><tr><th>Attribute</th><th>Means</th><th>Real use</th></tr></thead>
       <tbody>
-        <tr><td><code>__attribute__((naked))</code></td><td>no prologue or epilogue — the compiler emits only your asm body; you must end in <code>ret</code> yourself</td><td><code>RelocateHandlerReturnStub</code> in <code>runtimeLinker.cpp</code> — the entire function is two instructions</td></tr>
+
         <tr><td><code>__attribute__((noinline, returns_twice))</code></td><td>never inline, and the function may return more than once (like <code>setjmp</code>) — it actually returns a second time when a fiber context is restored</td><td><code>FiberSaveContext</code> in <code>libKernel.cpp</code></td></tr>
         <tr><td><code>__attribute__((noreturn))</code></td><td>"control never reaches the end"</td><td><code>FiberRestoreContext</code> — it ends by jumping into saved code</td></tr>
       </tbody>
     </table>
   </div>
 
-  <p>Here is the naked stub in full — the whole function is its own epilogue, because its job <em>is</em> stack surgery:</p>
-
-  <div class="filename">src/loader/runtimeLinker.cpp</div>
-<pre>__attribute__((naked)) static KYTY_SYSV_ABI void RelocateHandlerReturnStub() {
-    asm volatile("addq $8, %rsp\n\t"   <i>// drop the saved handler return address</i>
-                 "retq\n");            <i>// return to whoever called the stubbed import</i>
-}</pre>
-
+<p><code>AllocateUnresolvedImportThunk()</code> emits a 34-byte diagnostic thunk in <code>runtimeLinker.cpp</code>. It passes a record ID to a System V helper, restores stack alignment, zeros the floating return register and returns. The helper logs and returns integer zero; that is an unresolved-import fallback, not an implementation of the missing API.</p>
+<div class="filename">src/loader/runtimeLinker.cpp — diagnostic thunk, annotated</div>
+<pre data-lang="asm">sub    rsp, 8
+movabs rdi, &lt;record_id&gt;             <i>patched at byte offset 6</i>
+movabs rax, &lt;UnresolvedImportStub&gt;  <i>patched at byte offset 16</i>
+call   rax
+add    rsp, 8
+xorps  xmm0, xmm0
+ret</pre>
   <p>And the fiber save, which is the same idea as a <code>setjmp</code>: capture every callee-saved register and both stack pointers into a struct, then return 0 — later <code>FiberRestoreContext</code> loads them back and <code>jmp</code>s to the saved return address, making <code>FiberSaveContext</code> "return" a second time with a different value:</p>
 
   <div class="filename">src/libs/libKernel.cpp — FiberSaveContext, abridged</div>
@@ -138,7 +139,7 @@ xorl %%eax, %%eax        <i>return 0</i></pre>
   <h4 id="the-abi-attribute-is-the-glue">The ABI attribute is the C++ glue</h4>
   <p>The asm blocks above exist because guest code follows the System V ABI and the host build may follow Microsoft x64. The C++ side of that wall is two macros in <code>src/common/abi.h</code> — an attribute applied <em>per function</em>:</p>
 
-  <div class="filename">src/common/abi.h — in full</div>
+  <div class="filename">src/common/abi.h — ABI macros</div>
 <pre>#define KYTY_MS_ABI   __attribute__((ms_abi))
 #define KYTY_SYSV_ABI __attribute__((sysv_abi))</pre>
 
@@ -198,20 +199,21 @@ mov    rsp, rbx                   <i>restore, pop everything back, ret</i></pre>
 
   <h4 id="the-red-zone">The red zone — a guest promise that breaks on Windows</h4>
   <p>System V grants a leaf function 128 bytes <em>below</em> <code>rsp</code> — the red zone — to use freely without adjusting the stack pointer. Guest code was compiled assuming that promise. Windows never made it: a kernel-delivered exception or signal handler will use that exact space, silently overwriting the guest's data.</p>
-  <p>Kyty's answer is <code>src/loader/redZonePatcher.cpp</code>, which reads <code>.eh_frame</code> to find function boundaries, identifies the functions that touch the red zone, and rewrites their memory instructions to route through a trampoline instead. The result struct is refreshingly honest about what it cannot fix:</p>
+  <p>Kyty's answer is <code>src/loader/guestInstructionPatcher.cpp</code>, which reads <code>.eh_frame</code> to find function boundaries, identifies the functions that touch the red zone, and rewrites their memory instructions to route through a trampoline instead. The same patcher handles selected AMD instruction compatibility. Its result separates patched memory sites from per-family instruction outcomes; this excerpt omits unrelated counters:</p>
 
-  <div class="filename">src/loader/redZonePatcher.h</div>
-<pre>struct RedZonePatchResult {
+  <div class="filename">src/loader/guestInstructionPatcher.h</div>
+<pre>struct GuestInstructionPatchResult {
     uint64_t function_count          = 0;
     uint64_t red_zone_function_count = 0;
     uint64_t patched_memory_instruction_count = 0;
     ...
     uint64_t unrelocatable_memory_instruction_count = 0;
+    InstructionPatchCounts reciprocal_sqrt, extrq, insertq, rdpid, clwb;
 };</pre>
 
   <div class="callout h">
     <span class="lbl">Reading disassembly without a second monitor</span>
-    <p>The fastest way to check "what did this actually compile to" is <a href="https://godbolt.org/">Compiler Explorer</a>: paste a function, pick <code>x86-64 clang 18</code>, and read the output column. For a <code>KYTY_SYSV_ABI</code> function you will see the first four integer arguments arrive in <code>rdi rsi rdx rcx</code>; drop the attribute and watch them move to <code>rcx rdx r8 r9</code> instead. That visual is the whole calling-convention story in five seconds.</p>
+    <p>Use <a href="https://godbolt.org/">Compiler Explorer</a> to compare two otherwise identical functions marked <code>__attribute__((sysv_abi))</code> and <code>__attribute__((ms_abi))</code> with an x86-64 Clang compiler. Pass several integer arguments and inspect the registers at the call site. Define the attributes explicitly for this standalone example: <code>KYTY_SYSV_ABI</code> is a project macro, and removing it on a Linux target still leaves the default System V convention.</p>
   </div>
 
   <div class="learn">
@@ -281,15 +283,15 @@ mov    rsp, rbx                   <i>restore, pop everything back, ret</i></pre>
 
 </main>
 
-<script src="assets/topics.js?v=20260929" defer></script>
-<script src="assets/search-index.js?v=20260929" defer></script>
-<script src="assets/app.js?v=20260929" defer></script>
-<script src="assets/viz.js?v=20260929" defer></script>
-<script src="assets/atlas.js?v=20260929" defer></script>
-<script src="assets/lab.js?v=20260929" defer></script>
-<script src="assets/figs.js?v=20260929" defer></script>
-<script src="assets/figures.js?v=20260929" defer></script>
-<script src="assets/highlight.js?v=20260929" defer></script>
-<script src="assets/tutor.js?v=20260929" defer></script>
+<script src="assets/topics.js?v=20261007" defer></script>
+<script src="assets/search-index.js?v=20261007" defer></script>
+<script src="assets/app.js?v=20261007" defer></script>
+<script src="assets/viz.js?v=20261007" defer></script>
+<script src="assets/atlas.js?v=20261007" defer></script>
+<script src="assets/lab.js?v=20261007" defer></script>
+<script src="assets/figs.js?v=20261007" defer></script>
+<script src="assets/figures.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/tutor.js?v=20261007" defer></script>
 </body>
 </html>

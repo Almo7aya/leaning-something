@@ -6,10 +6,10 @@
 <title>KytyPS5 — The Visual Atlas</title>
 <meta name="description" content="Nineteen animated explainers covering how a PlayStation 5 emulator runs guest code, maps memory, starts a game, schedules threads, and drives a GPU.">
 <meta name="color-scheme" content="light dark">
-<link rel="stylesheet" href="assets/viz.css?v=20260929">
-<link rel="stylesheet" href="assets/atlas.css?v=20260929">
-<script src="assets/viz.js?v=20260929" defer></script>
-<script src="assets/atlas.js?v=20260929" defer></script>
+<link rel="stylesheet" href="assets/viz.css?v=20261007">
+<link rel="stylesheet" href="assets/atlas.css?v=20261007">
+<script src="assets/viz.js?v=20261007" defer></script>
+<script src="assets/atlas.js?v=20261007" defer></script>
 <style>
 :root{
   --ground:#EFF1F2; --surface:#FCFCFB; --surface-2:#F4F6F7; --surface-3:#E9EDEF;
@@ -110,7 +110,7 @@ h3::before{content:"▸ ";color:var(--faint)}
 .xlinks a:hover{color:var(--ink);text-decoration:underline}
 .xlinks a.here{color:var(--ink);font-weight:600}
 </style>
-<link rel="stylesheet" href="assets/highlight.css?v=20260929">
+<link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
@@ -235,7 +235,7 @@ h3::before{content:"▸ ";color:var(--faint)}
 
 <section id="mem-coherency">
   <div class="sh"><span class="sn">02·3</span><h2 id="keeping-cpu-and-gpu-copies-in-step">Keeping CPU and GPU copies in step</h2></div>
-  <p class="deck">The hardest problem in the project. A console has unified memory, so games contain no synchronisation for this at all. On a PC, every shared resource is a copy that can go stale — and nothing tells the emulator when it does.</p>
+  <p class="deck">The hardest problem in the project. A console has unified memory, with guest ordering and cache operations. On a PC, every shared resource is a copy that can go stale — and nothing tells the emulator when it does.</p>
   <figure data-viz="coherency"></figure>
   <p>The code is unusually defensive about this, and the reason is worth internalising: a coherency bug produces corruption <em>many frames after</em> its cause, with no traceable link. So each invariant becomes an immediate crash instead — re-entering the tracker from inside an upload callback is a hard failure, and an invalidation that leaves GPU-owned pages behind aborts on the spot.</p>
   <div class="srcs"><span class="src">src/graphics/host_gpu/pageManager.h</span><span class="src">…/memoryTracker.h</span><span class="src">tests/MemoryTrackerTests.cpp</span></div>
@@ -312,7 +312,7 @@ h3::before{content:"▸ ";color:var(--faint)}
 
 <section id="gpu-tiling">
   <div class="sh"><span class="sn">05·5</span><h2 id="why-textures-are-not-stored-in-rows">Why textures are not stored in rows</h2></div>
-  <p class="deck">Guest memory holds swizzled data; Vulkan wants something else. Converting between them is 59 KB of address arithmetic plus a compute shader per layout family.</p>
+  <p class="deck">Guest memory holds swizzled data; Vulkan wants something else. Converting between them is address arithmetic plus a compute shader per layout family.</p>
   <figure data-viz="tiling"></figure>
   <div class="srcs"><span class="src">src/graphics/guest_gpu/tile.cpp</span><span class="src">…/renderer/image/tiler.cpp</span><span class="src">…/host_gpu/shaders/</span></div>
 </section>
@@ -361,7 +361,7 @@ h3::before{content:"▸ ";color:var(--faint)}
   </div>
 
   <div class="foot">
-    <p>Written by reading the <a href="https://github.com/KytyPS5/KytyPS5">KytyPS5</a> source tree at <code>main</code> commit <code>2650478</code> (29 September 2026); source references use paths and symbols at that revision. These are unofficial — a reading of the source, not maintainer-authored documentation. Where a document and the code disagree, the code is right.</p>
+    <p>Written by reading the <a href="https://github.com/KytyPS5/KytyPS5">KytyPS5</a> source tree at <code>main</code> commit <code>7492cb9</code> (7 October 2026); source references use paths and symbols at that revision. These are unofficial — a reading of the source, not maintainer-authored documentation. Where a document and the code disagree, the code is right.</p>
     <p>Some animations are deliberately simplified and say so in their own notes — the tiling one in particular shows 2×2 Morton ordering to make the idea visible, where the real families vary block size by bytes-per-element, XOR block coordinates across memory channels, and pack small mips into a tail.</p>
     <p>KytyPS5 is GPL-2.0-only and based on <a href="https://github.com/InoriRus/Kyty">InoriRus/Kyty</a> (MIT), and credits <a href="https://github.com/shadps4-emu/shadPS4">shadPS4</a> as a reference for the memory model and AVPlayer. Not affiliated with Sony Interactive Entertainment.</p>
   </div>
@@ -395,7 +395,7 @@ h3::before{content:"▸ ";color:var(--faint)}
   spy();
 })();
 </script>
-<script src="assets/highlight.js?v=20260929" defer></script>
+<script src="assets/highlight.js?v=20261007" defer></script>
 </body>
 </html>
 

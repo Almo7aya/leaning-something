@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>C++ language, by example — KytyPS5</title>
 <meta name="description" content="The C++ you will actually meet in this tree — templates, move semantics, constexpr, casts, packing and the preprocessor — each one shown as it really appears.">
-<link rel="stylesheet" href="assets/viz.css?v=20260929">
-<link rel="stylesheet" href="assets/atlas.css?v=20260929">
-<link rel="stylesheet" href="assets/lab.css?v=20260929">
-<link rel="stylesheet" href="assets/tutor.css?v=20260929">
-<link rel="stylesheet" href="assets/app.css?v=20260929">
-<link rel="stylesheet" href="assets/highlight.css?v=20260929">
+<link rel="stylesheet" href="assets/viz.css?v=20261007">
+<link rel="stylesheet" href="assets/atlas.css?v=20261007">
+<link rel="stylesheet" href="assets/lab.css?v=20261007">
+<link rel="stylesheet" href="assets/tutor.css?v=20261007">
+<link rel="stylesheet" href="assets/app.css?v=20261007">
+<link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
@@ -42,7 +42,7 @@
 <i>//  "callback_func_t" is a pointer to a function that takes</i>
 <i>//   (uintptr_t, size_t) and returns void.</i></pre>
 
-  <p>And a file-local function is spelled <code>static</code> — the pre-C++ way of saying "internal linkage". Almost every HLE implementation in <code>src/libs/</code> is <code>static</code>, so it exists only inside its own translation unit and the linker never exports it. If you see a function without <code>static</code> at file scope and it is not a class member, it is deliberately public.</p>
+  <p>At namespace scope, <code>static</code> gives a function internal linkage; an anonymous namespace can do the same. Internal linkage does not prevent guest access through a registered function pointer. To understand an HLE entry point, check both its linkage and its <code>LIB_FUNC</code> registration. Absence of <code>static</code> alone does not make a function a public API.</p>
 
   <h4 id="auto-the-default-spelling">`auto` — the default spelling</h4>
   <p><code>auto</code> deduces the type from the initialiser. The tree writes <code>const auto</code> for anything read-only, <code>const auto&amp;</code> to avoid copying, and <code>auto*</code> when the initialiser is a pointer. It never deduces a reference unless you write the <code>&amp;</code> yourself:</p>
@@ -94,7 +94,7 @@ static consteval Callback ShutdownCallback() {
     static constexpr auto        shutdown   = Libs::LibKernel::Memory::Shutdown;
 };</pre>
 
-  <p><code>static constexpr auto initialize = SomeFunction;</code> stores a function pointer as a compile-time constant. No virtual dispatch, no runtime registration table — the compiler bakes the pointer in.</p>
+  <p><code>static constexpr auto initialize = SomeFunction;</code> stores a function pointer as a compile-time constant. The pointer is a compile-time constant; the subsystem registry still records successful lifecycle entries at runtime for reverse-order shutdown.</p>
 
   <h4 id="templates-writing-code-that-writes-code">Templates — code that writes code</h4>
   <p>A template is a recipe instantiated at compile time for each combination of arguments. Three shapes appear constantly:</p>
@@ -135,7 +135,7 @@ inline VaFloatX4 VaArg_reg_save_area_fp&lt;VaFloatX4, 32&gt;(VaList* l) {
   <p>The takeaway: a template is not a function, it is a factory of functions. If the compiler cannot instantiate it for a given argument, the error lands at the <em>call site</em> — which is why template errors read backwards.</p>
 
   <h4 id="move-semantics-and-perfect-forwarding">Move semantics and perfect forwarding</h4>
-  <p>The single best example in the tree is <code>src/common/uniqueFunction.h</code>, a move-only, type-erased callable written in 54 lines. Read it once and three language features click into place:</p>
+  <p>The single best example in the tree is <code>src/common/uniqueFunction.h</code>, a move-only, type-erased callable. Read it once and three language features click into place:</p>
 
   <div class="filename">src/common/uniqueFunction.h — the interesting half</div>
 <pre>template &lt;typename Result, typename... Args&gt;            <i>// variadic template</i>
@@ -177,7 +177,7 @@ if (bucket == nullptr) {
   <p>The mental model: every resource has exactly one owner, and the owner is a stack object whose lifetime you can trace by closing braces. When a function returns a <code>unique_ptr</code> or <code>shared_ptr</code>, the ownership is being <em>transferred</em> to the caller.</p>
 
   <h4 id="casts-four-kinds">Casts — four kinds, one habit</h4>
-  <p>Every C++ cast is an explicit conversion, and the four spellings communicate intent:</p>
+  <p>These cast spellings recur in this tree:</p>
 
   <div class="tw">
     <table>
@@ -191,7 +191,7 @@ if (bucket == nullptr) {
     </table>
   </div>
 
-  <p>The one habit to build: <code>reinterpret_cast</code> is a promise with no runtime check. That is why the <code>static_assert(sizeof(...))</code> guards from earlier exist — they are how you make an unchecked cast checked. When you see one, ask: what fixed layout is being relied on, and where is the assert?</p>
+  <p>The one habit to build: <code>reinterpret_cast</code> is a promise with no runtime check. A <code>static_assert(sizeof(...))</code> checks size only. It does not prove alignment, offsets, object lifetime, aliasing validity or that an address is mapped. When you see one, ask: what fixed layout is being relied on, and where is the assert?</p>
 
   <h4 id="guest-addresses-are-just-integers">Guest addresses are just integers</h4>
   <p>This is the single most important mental model for the codebase, and it is not a C++ feature — it is how C++ is <em>used</em> here. The game's memory lives in a 48-bit guest address space that the emulator lays out itself. Through most of the code, a guest address is an ordinary integer:</p>
@@ -208,7 +208,7 @@ uint64_t AllocateProgramMemory(uint64_t search_addr, uint64_t size, ...);</pre>
 const auto aligned_stack_top =
     reinterpret_cast&lt;uintptr_t&gt;(stack_top) &amp; ~static_cast&lt;uintptr_t&gt;(0x0f);</pre>
 
-  <p>So the same eight bytes are a number in one function and a pointer in the next. Read any function that takes a <code>vaddr</code>/<code>uint64_t</code> argument as "this is an address in the guest, not a pointer into my process".</p>
+  <p>So the same eight bytes are a number in one function and a pointer in the next. For each <code>vaddr</code> or <code>uint64_t</code> argument, establish whether it represents a guest virtual address, host address, offset or plain integer. Guest mappings still occupy the host process; the integer type alone does not prove the domain.</p>
 
   <h4 id="raw-memory-and-fixed-layouts">Raw memory and fixed layouts</h4>
   <p>An emulator constantly reinterprets bytes, so the tree is disciplined about layout. Four tools come up over and over:</p>
@@ -270,7 +270,7 @@ static_assert(sizeof(VirtualQueryInfo) == 72, "VirtualQueryInfo struct size is i
 <pre>(ctx).va_list.gp_offset         = offsetof(VaRegSave, gp);
 (ctx).va_list.fp_offset         = offsetof(VaRegSave, fp);</pre>
 
-<p>Cleanup removed the byte-buffer, magic-enum and several string/virtual-memory forwarding wrappers. Follow <code>std::vector</code>, direct <code>magic_enum</code> calls, <code>std::filesystem::path</code> and <code>common/alignment.h</code> in current code. Profiler macros create native <code>tracy::ScopedZone</code> objects; the former manual block-end bookkeeping is gone.</p>
+<p>Follow <code>std::vector</code>, direct <code>magic_enum</code> calls, <code>std::filesystem::path</code> and <code>common/alignment.h</code> in current code. Profiler macros create native <code>tracy::ScopedZone</code> objects.</p>
 
   <h4 id="attributes-messages-to-the-compiler">Attributes — messages to the compiler</h4>
   <p>Attributes are contracts with the compiler, not runtime features. The ones that recur:</p>
@@ -330,8 +330,8 @@ public:                                                                         
       <thead><tr><th>Feature</th><th>What it is</th><th>Seen at</th></tr></thead>
       <tbody>
         <tr><td>Structured bindings</td><td>destructuring a pair/tuple into names — like JS</td><td><code>auto [it, inserted] = m_free.emplace(vaddr, size);</code> in <code>memoryAddressSpace.inc</code></td></tr>
-        <tr><td><code>std::optional&lt;T&gt;</code></td><td>a value that may be absent — like <code>T | null</code></td><td><code>redZonePatcher.cpp</code>, <code>profiler.h</code>; read with <code>.has_value()</code> / <code>.value()</code></td></tr>
-        <tr><td><code>std::span&lt;const T&gt;</code></td><td>a non-owning view of contiguous data — like a typed slice</td><td><code>redZonePatcher.h</code>, <code>shader.h</code></td></tr>
+        <tr><td><code>std::optional&lt;T&gt;</code></td><td>a value that may be absent — like <code>T | null</code></td><td><code>guestInstructionPatcher.cpp</code>, <code>profiler.h</code>; read with <code>.has_value()</code> / <code>.value()</code></td></tr>
+        <tr><td><code>std::span&lt;const T&gt;</code></td><td>a non-owning view of contiguous data — like a typed slice</td><td><code>guestInstructionPatcher.h</code>, <code>shader.h</code></td></tr>
         <tr><td><code>std::from_chars</code></td><td>fast, allocation-free number parsing</td><td><code>main.cpp</code>, <code>gamePatch.cpp</code></td></tr>
         <tr><td>Lambdas</td><td>anonymous functions, passed as comparators/callbacks</td><td><code>std::ranges::find_if</code> in the program cache</td></tr>
         <tr><td><code>&lt;bit&gt;</code> helpers</td><td>bit tricks: <code>std::countr_zero</code>, <code>std::countl_one</code></td><td><code>bitArray.h</code> scanning for set-bit runs</td></tr>
@@ -392,7 +392,7 @@ public:                                                                         
 
     <div class="callout k">
       <span class="lbl">A ten-minute lab</span>
-      <p>Open <a href="https://godbolt.org/">godbolt.org</a>, set the language to C++ and the compiler to <code>x86-64 clang 18</code> (matching the build). Type <code>constexpr int N = 72; static_assert(N == 72);</code> — then add <code>reinterpret_cast</code> to a pointer and see the generated assembly contain nothing at all. Then paste the <code>UniqueFunction</code> constructor and watch the moves appear.</p>
+      <p>Open <a href="https://godbolt.org/">godbolt.org</a>, set the language to C++ and the compiler to an x86-64 Clang build with C++20 enabled. Type <code>constexpr int N = 72; static_assert(N == 72);</code> — then add <code>reinterpret_cast</code> to a pointer and see the generated assembly contain nothing at all. Then paste the <code>UniqueFunction</code> constructor and watch the moves appear.</p>
     </div>
   </section>
   <section class="band band-do">
@@ -434,15 +434,15 @@ public:                                                                         
 
 </main>
 
-<script src="assets/topics.js?v=20260929" defer></script>
-<script src="assets/search-index.js?v=20260929" defer></script>
-<script src="assets/app.js?v=20260929" defer></script>
-<script src="assets/viz.js?v=20260929" defer></script>
-<script src="assets/atlas.js?v=20260929" defer></script>
-<script src="assets/lab.js?v=20260929" defer></script>
-<script src="assets/figs.js?v=20260929" defer></script>
-<script src="assets/figures.js?v=20260929" defer></script>
-<script src="assets/highlight.js?v=20260929" defer></script>
-<script src="assets/tutor.js?v=20260929" defer></script>
+<script src="assets/topics.js?v=20261007" defer></script>
+<script src="assets/search-index.js?v=20261007" defer></script>
+<script src="assets/app.js?v=20261007" defer></script>
+<script src="assets/viz.js?v=20261007" defer></script>
+<script src="assets/atlas.js?v=20261007" defer></script>
+<script src="assets/lab.js?v=20261007" defer></script>
+<script src="assets/figs.js?v=20261007" defer></script>
+<script src="assets/figures.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/tutor.js?v=20261007" defer></script>
 </body>
 </html>

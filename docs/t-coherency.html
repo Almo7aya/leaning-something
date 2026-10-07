@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Page faults &amp; CPU/GPU coherency — KytyPS5</title>
 <meta name="description" content="Guest and host share memory both believe they own. Faults are how the emulator finds out who touched what.">
-<link rel="stylesheet" href="assets/viz.css?v=20260929">
-<link rel="stylesheet" href="assets/atlas.css?v=20260929">
-<link rel="stylesheet" href="assets/lab.css?v=20260929">
-<link rel="stylesheet" href="assets/tutor.css?v=20260929">
-<link rel="stylesheet" href="assets/app.css?v=20260929">
-<link rel="stylesheet" href="assets/highlight.css?v=20260929">
+<link rel="stylesheet" href="assets/viz.css?v=20261007">
+<link rel="stylesheet" href="assets/atlas.css?v=20261007">
+<link rel="stylesheet" href="assets/lab.css?v=20261007">
+<link rel="stylesheet" href="assets/tutor.css?v=20261007">
+<link rel="stylesheet" href="assets/app.css?v=20261007">
+<link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
@@ -28,7 +28,7 @@
 <p class="deck">The single hardest problem in the project, and the source of the bugs that are hardest to reproduce. A console has unified memory; a PC does not.</p>
 
   <h4 id="the-problem-stated-plainly">The problem, stated plainly</h4>
-  <p>On a PS5, CPU and GPU share one pool of physical memory. A game writes vertex data with the CPU, then draws with it. No synchronisation is needed and none is expressed in the code, because the GPU reads exactly the same bytes.</p>
+  <p>On a PS5, CPU and GPU share one pool of physical memory. A game writes vertex data with the CPU, then draws with it. Shared backing avoids a mandatory copy between separate CPU and GPU allocations, but ordering and visibility still require the guest’s synchronization and cache-coherency rules.</p>
   <p>On a PC, the GPU has its own memory. Kyty's Vulkan resources are <em>copies</em> of guest memory. So the emulator must answer two questions that the game never asks:</p>
   <ul>
     <li>Has the CPU changed this data since I last copied it to the GPU? (→ upload)</li>
@@ -40,27 +40,19 @@
 
   <h4 id="two-cooperating-classes">Two cooperating classes</h4>
   <div class="stack">
-    <div class="layer k"><span class="nm">PageManager</span><span class="chip kyty">kyty</span><span class="ds">Owns the actual host protection calls. <code>UpdatePageWatchers(track, vaddr, size, mode)</code> makes a guest range write-protected or read-write-protected. Also handles <code>OnGpuMap</code> / <code>OnGpuUnmap</code>, and hands out <code>BackingWrite</code> scopes for safe direct writes.</span></div>
+    <div class="layer k"><span class="nm">PageManager</span><span class="chip kyty">kyty</span><span class="ds">Tracks per-page write and access watchers. Template methods add or remove watchers; effective permissions become read-only or no-access. Protection goes through <code>Memory::ProtectGuestHostMemory()</code>, which respects guest mapping permissions.</span></div>
     <div class="arrow">↓ faults become dirty bits</div>
     <div class="layer k"><span class="nm">MemoryTracker</span><span class="chip kyty">kyty</span><span class="ds">Divides the address space into fixed-size regions, each with per-page dirty bits tagged by source — <code>DirtySource::Cpu</code> or <code>DirtySource::Gpu</code>. Drives the upload and download loops.</span></div>
   </div>
 
   <div class="filename">src/graphics/host_gpu/pageManager.h</div>
 <pre>enum class PageFaultAccess { Read, Write, Execute, Unknown };
-enum class PageWatchMode   { Write, ReadWrite };
-
 class PageManager final {
 public:
-    class <b>BackingWrite</b> final {        <i>// RAII: unprotect, write, re-protect</i>
-        BackingWrite(PageManager&amp;, uint64_t vaddr, uint64_t size) noexcept;
-        ~BackingWrite();
-    };
-
-    void UpdatePageWatchers(bool track, uint64_t vaddr, uint64_t size,
-                            PageWatchMode mode = PageWatchMode::Write);
-    void OnGpuMap(uint64_t vaddr, uint64_t size);
-    void OnGpuUnmap(uint64_t vaddr, uint64_t size);
-    std::vector&lt;std::unique_ptr&lt;BackingWrite&gt;&gt; ReserveBackingWrites(std::span&lt;const RangeSet::Range&gt;);
+    template &lt;bool track&gt;
+    void UpdatePageWatchers(uint64_t vaddr, uint64_t size);
+    template &lt;bool track, bool is_read = false&gt;
+    void UpdatePageWatchersForRegion(uint64_t base_addr, RegionBits&amp; mask);
 };</pre>
 
   <h4 id="the-upload-path">The upload path</h4>
@@ -68,69 +60,59 @@ public:
 
   <div class="filename">src/graphics/host_gpu/memoryTracker.h</div>
 <pre>template &lt;typename RangeFunc, typename UploadFunc&gt;
-void ForEachUploadRange(uint64_t vaddr, uint64_t size, bool is_written,
-                        RangeFunc&amp;&amp; range_func, UploadFunc&amp;&amp; upload_func) {
-    static_assert(std::is_nothrow_invocable_v&lt;RangeFunc&amp;, uint64_t, uint64_t&gt;);
-    <b>CheckNotInUploadCallback</b>();
-    std::unique_lock access(m_access_mutex);
-
-    Iterate&lt;true&gt;(vaddr, size, [](RegionManager*, uint64_t, uint64_t) {});   <i>// create regions</i>
-    const auto* previous_upload_owner = std::exchange(<b>s_upload_owner</b>, this);
-
-    Iterate&lt;false&gt;(vaddr, size, [&amp;](RegionManager* manager, uint64_t offset, uint64_t bytes) {
-        manager-&gt;lock.lock();
-        manager-&gt;ForEachModifiedRange&lt;<b>DirtySource::Cpu</b>, true&gt;(
-            manager-&gt;GetCpuAddr() + offset, bytes, range_func);     <i>// report dirty sub-ranges</i>
-        if (!is_written) manager-&gt;lock.unlock();
-    });
-
-    <b>upload_func</b>();                                                  <i>// do the actual copy</i>
-
-    if (is_written) {
-        Iterate&lt;false&gt;(vaddr, size, [this](RegionManager* manager, uint64_t offset, uint64_t bytes) {
-            const auto changed = manager-&gt;ChangeState&lt;<b>DirtySource::Gpu</b>, true&gt;(
-                manager-&gt;GetCpuAddr() + offset, bytes);
-            manager-&gt;<b>ApplyGpuProtection</b>(changed, true, m_gpu_watch_mode);   <i>// re-arm the trap</i>
-            manager-&gt;lock.unlock();
+    void ForEachUploadRange(uint64_t vaddr, uint64_t size, bool is_written, RangeFunc&amp;&amp; range_func,
+                            UploadFunc&amp;&amp; upload_func) {
+        static_assert(std::is_nothrow_invocable_v&lt;RangeFunc&amp;, uint64_t, uint64_t&gt;);
+        static_assert(std::is_nothrow_invocable_v&lt;UploadFunc&amp;&gt;);
+        CheckNotInUploadCallback();
+        Iterate&lt;true&gt;(vaddr, size, [](RegionManager*, uint64_t, uint64_t) {});
+        const auto* previous_upload_owner = std::exchange(s_upload_owner, this);
+        Iterate&lt;false&gt;(vaddr, size, [&amp;](RegionManager* manager, uint64_t offset, uint64_t bytes) {
+            manager-&gt;lock.lock();
+            manager-&gt;ForEachModifiedRange&lt;DirtySource::Cpu, true&gt;(manager-&gt;GetCpuAddr() + offset,
+                                                                  bytes, range_func);
+            if (!is_written) {
+                manager-&gt;lock.unlock();
+            }
         });
-    }
-    s_upload_owner = previous_upload_owner;
-}</pre>
+        upload_func();
+        if (is_written) {
+            Iterate&lt;false&gt;(vaddr, size,
+                           [](RegionManager* manager, uint64_t offset, uint64_t bytes) {
+                               manager-&gt;template ChangeState&lt;DirtySource::Gpu, true&gt;(
+                                   manager-&gt;GetCpuAddr() + offset, bytes);
+                               manager-&gt;lock.unlock();
+                           });
+        }
+        s_upload_owner = previous_upload_owner;
+    }</pre>
 
   <p>Three things to notice:</p>
   <ul>
-    <li><strong>Only dirty sub-ranges are copied.</strong> A 4K texture with one changed tile uploads one tile.</li>
+    <li><strong>Only dirty sub-ranges are copied.</strong> The transfer granularity depends on the buffer/image path, tracking pages and tiling; a changed tile does not guarantee a one-tile copy.</li>
     <li><strong>Locks are held across the callback.</strong> The user's <code>range_func</code> runs with region locks held, which is why it is required to be <code>noexcept</code>.</li>
     <li><strong>Protection is re-armed afterwards.</strong> Otherwise the next CPU write would go unnoticed.</li>
   </ul>
 
   <h4 id="the-download-path">The download path</h4>
-  <p>Symmetric, with an extra <code>preflight</code> pass so callers can size a staging buffer before any copying starts:</p>
-<pre>template &lt;bool clear, typename Preflight, typename Func&gt;
-void ForEachDownloadRange(uint64_t vaddr, uint64_t size, Preflight&amp;&amp; preflight, Func&amp;&amp; func) {
-    CheckNotInUploadCallback();
-    std::lock_guard access(m_access_mutex);
-
-    <i>// collect every region, then take all their locks before touching anything</i>
-    std::vector&lt;RegionManager*&gt; managers;
-    Iterate&lt;false&gt;(vaddr, size, [&amp;](RegionManager* m, uint64_t, uint64_t){ managers.push_back(m); });
-    std::vector&lt;std::unique_lock&lt;TrackingSpinLock&gt;&gt; locks;
-    for (auto* manager: managers) locks.emplace_back(manager-&gt;lock);
-
-    <i>// pass 1: measure</i>
-    Iterate&lt;false&gt;(vaddr, size, [&amp;](RegionManager* m, uint64_t off, uint64_t n) {
-        m-&gt;ForEachModifiedRange&lt;DirtySource::Gpu, false&gt;(m-&gt;GetCpuAddr() + off, n, preflight);
-    });
-    <i>// pass 2: copy</i>
-    Iterate&lt;false&gt;(vaddr, size, [&amp;](RegionManager* m, uint64_t off, uint64_t n) {
-        m-&gt;ForEachModifiedRange&lt;DirtySource::Gpu, false&gt;(m-&gt;GetCpuAddr() + off, n, func);
-    });
-    if constexpr (clear) { /* clear GPU-dirty bits and re-apply protection */ }
-}</pre>
+  <p>Download iteration visits the requested GPU-dirty ranges under each region lock. The callback is required to be <code>noexcept</code>; <code>clear</code> controls whether GPU-dirty state is cleared:</p>
+<pre>template &lt;bool clear, typename Func&gt;
+    void ForEachDownloadRange(uint64_t vaddr, uint64_t size, Func&amp;&amp; func) {
+        static_assert(std::is_nothrow_invocable_v&lt;Func&amp;, uint64_t, uint64_t&gt;);
+        CheckNotInUploadCallback();
+        Iterate&lt;false&gt;(vaddr, size, [&amp;](RegionManager* manager, uint64_t offset, uint64_t bytes) {
+            std::scoped_lock lock(manager-&gt;lock);
+            const auto       address = manager-&gt;GetCpuAddr() + offset;
+            manager-&gt;template ForEachModifiedRange&lt;DirtySource::Gpu, false&gt;(address, bytes, func);
+            if constexpr (clear) {
+                manager-&gt;template ChangeState&lt;DirtySource::Gpu, false&gt;(address, bytes);
+            }
+        });
+    }</pre>
 
 <h4 id="extended-guest-memory">The separate extended-memory arena</h4>
   <p>Ordinary guest mappings keep their existing low address bands. Extended allocations use a separate <strong>512 GiB virtual arena at <code>0x080000000000</code></strong>, an 8 TiB base, described by <code>kExtendedMemoryBase</code> and <code>kExtendedMemorySize</code> in <code>kernel/memory.h</code>. Reserving that address range does not allocate 512 GiB of physical RAM. Extended requests and ordinary mapping searches have separate allocation rules.</p>
-  <p>GPU tracking accepts the low 1 TiB region and that explicit extended interval; the space between them is not a valid resource range. Sparse image tracking covers 44-bit addresses. Dense buffer/BDA tables pack the low and extended intervals together through <code>BufferCache::PageIndex()</code> and <code>PageAddress()</code>, avoiding tables for the entire gap.</p>
+  <p>GPU tracking accepts the low 1 TiB region and that explicit extended interval; the space between them is not a valid resource range. Sparse image tracking covers 44-bit addresses. Dense buffer/BDA tables pack the low and extended intervals together through <code>BufferCache::PageIndex()</code> (guest address to packed page index) and <code>GuestAddress()</code> (packed byte offset to guest address), avoiding tables for the entire gap.</p>
   <p>Automatic backing is recycled through physical-allocation ownership. Reserved mappings are published only after backing commit succeeds, and partial POSIX unmaps preserve still-live mappings. These are allocation/alias invariants tested by <code>VirtualMemoryAllocationTests.cpp</code>. Host primitives are declared directly in <code>common/virtualMemory.h</code> and implemented by <code>sysWindowsVirtual.cpp</code> / <code>sysLinuxVirtual.cpp</code>.</p>
 
   <h4 id="the-invariants-enforced-by-hard-failure">The invariants, enforced by hard failure</h4>
@@ -155,10 +137,10 @@ void InvalidateRegion(uint64_t vaddr, uint64_t size, Flush&amp;&amp; on_flush) {
 
   <h4 id="how-a-cpu-write-is-actually-caught-end-to-end">How a CPU write is actually caught, end to end</h4>
   <ol>
-    <li>The renderer uploads a texture and calls <code>ApplyGpuProtection</code>, which write-protects those guest pages.</li>
+    <li>Resource tracking installs write watchers through <code>PageManager</code>, protecting guest pages whose CPU changes need tracking.</li>
     <li>The game later writes to the texture. Ordinary code — <code>mov [rax], rbx</code>.</li>
     <li>The CPU faults. The OS delivers it to <code>KytyExceptionHandler</code> (this topic).</li>
-    <li><code>Memory::HandleGpuFault</code> marks the page CPU-dirty, removes the protection, and returns <code>true</code>.</li>
+    <li><code>Memory::HandleGpuFault</code> coordinates invalidation or readback as required, updates tracking and protection, and returns <code>true</code>.</li>
     <li>Execution resumes; the write completes. The game never knew.</li>
     <li>The next draw that reads the texture calls <code>ForEachUploadRange</code>, which reports exactly that page as dirty and copies it.</li>
   </ol>
@@ -168,7 +150,7 @@ void InvalidateRegion(uint64_t vaddr, uint64_t size, Flush&amp;&amp; on_flush) {
     <p><code>tests/MemoryTrackerTests.cpp</code>, before the implementation. Each test name is a sentence stating an invariant, and together they specify the model far more clearly than the templates do. <code>tests/PageManagerTests.cpp</code> covers the watch semantics in isolation.</p>
   </div>
 
-<p class="deck">Because guest code runs natively, Kyty cannot instrument it. The CPU's own fault mechanism becomes the emulator's primary hook — two of the handler's three branches are load-bearing, not diagnostic.</p>
+<p class="deck">Because guest code normally runs natively, Kyty does not instrument every memory access. The CPU's own fault mechanism becomes the emulator's primary hook — two of the handler's three branches are load-bearing, not diagnostic.</p>
 
   <h4 id="the-handler">The handler</h4>
   <div class="filename">src/loader/runtimeLinker.cpp</div>
@@ -199,7 +181,7 @@ void InvalidateRegion(uint64_t vaddr, uint64_t size, Flush&amp;&amp; on_flush) {
          " access=%u address=0x%016" PRIx64 "\n", ...);
 }</pre>
 
-  <p>Returning <code>true</code> means "handled, resume execution." The guest never learns anything happened. On Linux and macOS the handler runs on a per-thread alternate signal stack (<code>InitializeThreadSignalStack</code>, installed for every guest thread) precisely because branch 2 can fire while the guest's own stack pages are write-protected by the GPU tracker; Windows delivers vectored exceptions on the faulting stack without that problem.</p>
+  <p>Returning <code>true</code> means "handled, resume execution." The guest never learns anything happened. On Linux and macOS the handler runs on a per-thread alternate signal stack (<code>InitializeThreadSignalStack</code>, installed for every guest thread) precisely because branch 2 can fire while the guest's own stack pages are write-protected by the GPU tracker; Windows delivers vectored exceptions on the faulting thread; its red-zone compatibility path is separate.</p>
 
   <p>Reservations are committed explicitly. A fault in reserved-but-uncommitted memory is a real bug and falls through to the dump.</p>
 
@@ -230,19 +212,19 @@ void InvalidateRegion(uint64_t vaddr, uint64_t size, Flush&amp;&amp; on_flush) {
     <div class="layer k"><span class="nm">Next draw re-uploads only those pages</span><span class="chip kyty">kyty</span><span class="ds">The renderer asks the tracker which sub-ranges are dirty and copies just those into the Vulkan image.</span></div>
   </div>
 
-  <p>There is no other way to do this without a recompiler. On a unified-memory console no synchronisation is needed at all, so games contain no hints; the page fault <em>is</em> the notification.</p>
+  <p>Page protection provides a notification when native guest code touches tracked memory. Guest GPU commands still carry ordering and cache operations; the emulator combines those commands with fault tracking to keep host CPU and Vulkan resources coherent.</p>
 
   <h4 id="branch-4-the-crash-dump">Branch 3 — the crash dump</h4>
   <p>When nothing handles the fault, the handler prints a <code>--- Guest fault context ---</code> block — everything it can read without faulting again — and then exits through <code>EXIT</code>:</p>
   <ul>
-    <li>The <strong>guest thread name</strong> from the pthread layer (or <code>(host thread)</code> if the fault was not on a guest thread) — which immediately tells you whether the crash is in the emulator or in guest code.</li>
+    <li>The <strong>guest thread name</strong> from the pthread layer (or <code>(host thread)</code> if the fault was not on a guest thread) — which identifies the thread, not the executing module; use the faulting PC to locate the code.</li>
     <li>All sixteen general-purpose registers, four per line, as <code>rax=…</code>.</li>
     <li>96 bytes of code around the fault address — <code>pc-48 .. pc+48</code>, the faulting byte at offset 48 — probed with <code>IsReadableRange</code> first so the dump does not itself fault.</li>
     <li>32 stack qwords read from <code>rsp</code>, again only if readable.</li>
     <li>The final <code>Unhandled host exception: type=… code=… pc=… access=… address=…</code> line: the exception type, the native code, the program counter, the access kind and the address that was touched.</li>
   </ul>
 
-  <p>A September 2026 change ("port guest fault diagnostics and remove host stack traces") took the host-side stack walker out of this path — a stack of emulator frames told you nothing about the game. The <em>guest</em> frame-pointer walk still exists as <code>RuntimeLinker::StackTrace()</code>, which prints <code>Stack trace [thread = N]:</code> followed by one <code>[i] address, off=…, module</code> line per frame, resolved against the loaded modules; the libc <code>abort</code> path calls it. Accepting a frame only when the return address lands inside a loaded module's segments is precisely what fixing the module layout in <a href="t-mapping.html">topic 06</a> buys.</p>
+  <p>This fault path prints guest context rather than a host stack walk. The guest frame-pointer walker is <code>RuntimeLinker::StackTrace()</code>, which prints <code>Stack trace [thread = N]:</code> followed by one <code>[i] address, off=…, module</code> line per frame, resolved against the loaded modules; the libc <code>abort</code> path calls it. Accepting a frame only when the return address lands inside a loaded module's segments is precisely what fixing the module layout in <a href="t-mapping.html">topic 06</a> buys.</p>
 
 <pre>void RuntimeLinker::StackTrace(uint64_t frame_ptr, uint64_t stack_ptr) {
     void* stack[20];
@@ -258,7 +240,7 @@ void InvalidateRegion(uint64_t vaddr, uint64_t size, Flush&amp;&amp; on_flush) {
 
   <div class="callout h">
     <span class="lbl">Reading a crash</span>
-    <p>An <code>address=0x28</code> means an unpatched <code>fs:[0x28]</code> canary store. A small address generally means a null-pointer dereference in guest code, often downstream of a stubbed import that returned zero. A <code>pc</code> in the <code>0x9…</code> band with sensible-looking return addresses among the stack words is a genuine guest crash worth investigating.</p>
+    <p>An <code>address=0x28</code> can arise from a segment-relative access or a null pointer plus an offset. Decode the instruction and inspect the registers before tracing the cause through earlier calls. A PC inside a mapped guest segment tells you where the fault occurred, not whether the guest or emulator caused it. Resolve the loaded module and inspect preceding calls, memory state and generated patches.</p>
   </div>
 <h4 id="sparse-texture-uploads">Sparse texture uploads</h4>
   <p><code>BufferCache::ObtainBufferForImage()</code> reads streamed mip ranges through <code>Memory::TryReadSparseBacking()</code>. The guest address-space owner validates the complete range and rejects private mappings before the backing store copies resident pieces and zero-fills holes. A hole inside an owned sparse reservation is not the same as an arbitrary invalid guest address; do not replace failed reads with unconditional zeroes.</p>
@@ -319,16 +301,16 @@ void InvalidateRegion(uint64_t vaddr, uint64_t size, Flush&amp;&amp; on_flush) {
 
 </main>
 
-<script src="assets/topics.js?v=20260929" defer></script>
-<script src="assets/search-index.js?v=20260929" defer></script>
-<script src="assets/app.js?v=20260929" defer></script>
-<script src="assets/viz.js?v=20260929" defer></script>
-<script src="assets/atlas.js?v=20260929" defer></script>
-<script src="assets/lab.js?v=20260929" defer></script>
-<script src="assets/figs.js?v=20260929" defer></script>
-<script src="assets/figures.js?v=20260929" defer></script>
-<script src="assets/highlight.js?v=20260929" defer></script>
-<script src="assets/tutor.js?v=20260929" defer></script>
+<script src="assets/topics.js?v=20261007" defer></script>
+<script src="assets/search-index.js?v=20261007" defer></script>
+<script src="assets/app.js?v=20261007" defer></script>
+<script src="assets/viz.js?v=20261007" defer></script>
+<script src="assets/atlas.js?v=20261007" defer></script>
+<script src="assets/lab.js?v=20261007" defer></script>
+<script src="assets/figs.js?v=20261007" defer></script>
+<script src="assets/figures.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/tutor.js?v=20261007" defer></script>
 </body>
 </html>
 

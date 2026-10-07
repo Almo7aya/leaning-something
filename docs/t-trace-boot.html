@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ELF to the first guest instruction — KytyPS5</title>
 <meta name="description" content="Follow one boot path across file offsets, mapped addresses, relocation and the native guest-entry boundary.">
-<link rel="stylesheet" href="assets/viz.css?v=20260929">
-<link rel="stylesheet" href="assets/atlas.css?v=20260929">
-<link rel="stylesheet" href="assets/lab.css?v=20260929">
-<link rel="stylesheet" href="assets/tutor.css?v=20260929">
-<link rel="stylesheet" href="assets/app.css?v=20260929">
-<link rel="stylesheet" href="assets/highlight.css?v=20260929">
+<link rel="stylesheet" href="assets/viz.css?v=20261007">
+<link rel="stylesheet" href="assets/atlas.css?v=20261007">
+<link rel="stylesheet" href="assets/lab.css?v=20261007">
+<link rel="stylesheet" href="assets/tutor.css?v=20261007">
+<link rel="stylesheet" href="assets/app.css?v=20261007">
+<link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 <main class="topic" data-app-content>
@@ -21,7 +21,7 @@
 <div class="band-h"><span class="band-t">Read, trace, prove</span></div>
 <div class="prose">
 
-<p>Prerequisites: <a href="t-elf-and-self.html">ELF/SELF</a>, <a href="t-nids.html">NIDs</a>, <a href="t-calling-conventions.html">the ABI</a> and <a href="t-threads.html">threads</a>. This is a source-reading trace at <code>2650478</code>, with an optional debugger worksheet. It is not a captured run of a particular game.</p>
+<p>Prerequisites: <a href="t-elf-and-self.html">ELF/SELF</a>, <a href="t-nids.html">NIDs</a>, <a href="t-calling-conventions.html">the ABI</a> and <a href="t-threads.html">threads</a>. This is a source-reading trace at <code>7492cb9</code>, with an optional debugger worksheet. It is not a captured run of a particular game.</p>
 <div class="callout k"><span class="lbl">Define the endpoint first</span>
 <p><strong>First guest instruction</strong> may be a shared module initializer called by <code>StartModule</code>. <strong>Main executable entry</strong> is a later transfer through <code>RunEntry</code>. Neither necessarily means the game's C/C++ <code>main()</code>. A failure before the “Execute: Main” log can therefore already be executing guest code.</p></div>
 
@@ -36,8 +36,9 @@
 
 Guest thread: RuntimeLinker::Execute
   initialize main guest thread and allocate its guest stack
-  PreloadAdjacentPrograms -> RelocateAll -> optional GamePatch::Apply
-  StartAllModules -> StartModule -> guest module initializer, if any
+  LoadProgram("/app0/sce_module/libc.prx" resolved through the mount, if present)
+  RelocateAll -> optional GamePatch::Apply
+  StartModule(libc) -> guest libc initializer, if present
   GetEntry -> RunEntry -> guest executable entry -> guest startup code</pre>
 <p>The ordering comes from <code>src/emulator.cpp</code> and <code>src/loader/runtimeLinker.cpp</code>. A source trace tells you where to look; a live run establishes which branches and modules were actually used.</p>
 
@@ -71,12 +72,12 @@ Guest thread: RuntimeLinker::Execute
 <p>Its relative address is <code>0x6100</code>. It is inside the fixture's memory extent <code>[0x4000,0x8000)</code>, but beyond its file-backed extent <code>[0x4000,0x6000)</code>. The formula would produce a number, but not a valid byte of this segment's file payload. First identify the region, then do the subtraction.</p></details>
 
 <h2 id="relocate">3. Resolve before executing</h2>
-<p>On the guest thread, <code>RuntimeLinker::Execute</code> establishes main-thread state and allocates the main guest stack, preloads adjacent programs, then calls <code>RelocateAll</code>. Inspect the relocation kind, target slot, addend, imported identity and resolved destination as a unit. HLE registrations were installed earlier; module exports are another possible resolution source.</p>
+<p>On the guest thread, <code>RuntimeLinker::Execute</code> establishes main-thread state and allocates the main guest stack, loads libc if present, then calls <code>RelocateAll</code>. Inspect the relocation kind, target slot, addend, imported identity and resolved destination as a unit. HLE registrations were installed earlier; module exports are another possible resolution source.</p>
 <p>Dynamic imports are eagerly relocated in this snapshot. Successful dynamic relocation slots retain resolved state; unresolved callable imports can receive a <strong>34-byte diagnostic thunk</strong> that logs and returns zero in RAX/XMM0. This is not lazy binding that retries and forwards on first call, and returning zero does not establish correct guest behavior. Different relocation kinds and resolution-failure policies must be checked in their own code paths.</p>
 <p>At a selected import, record the slot's runtime address, its value after relocation and the owner of that destination: host HLE, guest module, generated diagnostic code, or unresolved failure. Breaking on a thunk proves only that a fallback was reached. For a real implementation, follow <a href="t-first-change.html#step-5-prove-the-contract">the contract checks</a>.</p>
 
 <h2 id="first-transfer">4. Locate the first transfer into guest code</h2>
-<p><code>StartAllModules</code> arranges shared-module startup; <code>StartModule</code> invokes the initializer at <code>program-&gt;base_vaddr + program-&gt;dynamic_info-&gt;init_vaddr</code> through the module initializer function type. If such a module is started, this guest call happens before the executable-entry transfer. Inspect the actual dependency order; do not infer it from directory enumeration.</p>
+<p><code>Execute</code> automatically starts the loaded libc when it has an initializer; other modules are requested by the application. <code>StartModule</code> invokes the initializer at <code>program-&gt;base_vaddr + program-&gt;dynamic_info-&gt;init_vaddr</code> through the module initializer function type. If such a module is started, this guest call happens before the executable-entry transfer. Trace application-requested load/start calls separately from this automatic libc startup.</p>
 <p>After module startup, <code>GetEntry</code> supplies the main ELF entry plus its load base. <code>Execute</code> writes a zero-initialized entry-parameter block near the top of the guest stack, sets <code>argc = 1</code> and <code>argv[0] = "KytyEmu"</code>, then calls <code>RunEntry</code> with an exit handler and a stack top below the parameter block.</p>
 <p><code>RunEntry</code> is the native boundary, not a CPU interpreter loop. Its stack-switch path aligns the supplied stack, places root frame words, sets RSP/RBP and performs a native call with the parameter pointer and exit callback in the required ABI argument registers. Read the platform-specific assembly; Windows also handles host stack-bound metadata. Do not assume that the earlier module-initializer call uses this same stack-switch path.</p>
 <p>For the selected stack-switch path, an aligned top minus two eight-byte root words is still 16-byte aligned before the call; the call pushes an eight-byte return address. Thus the callee sees <code>RSP % 16 == 8</code> at entry. This is an ABI check, not evidence that TLS, imports or the game's own startup logic are correct.</p>
@@ -110,17 +111,17 @@ Last verified boundary / unresolved question:</pre>
 <h2 id="sources">Source anchors and next step</h2>
 <ul>
 <li><code>src/emulator.cpp</code>: <code>Run</code>, <code>LoadElf</code>, <code>Execute</code>.</li>
-<li><code>src/loader/runtimeLinker.cpp</code>: <code>LoadProgram</code>, <code>LoadProgramToMemory</code>, <code>RelocateAll</code>, <code>StartAllModules</code>, <code>StartModule</code>, <code>GetEntry</code>, <code>RunEntry</code>.</li>
+<li><code>src/loader/runtimeLinker.cpp</code>: <code>LoadProgram</code>, <code>LoadProgramToMemory</code>, <code>RelocateAll</code>, <code>StartModule</code>, <code>GetEntry</code>, <code>RunEntry</code>.</li>
 <li><code>src/loader/elf.cpp</code>: file parsing and <code>LoadSegment</code>.</li>
 </ul>
 <p>Continue with <a href="t-trace-draw.html">one draw through the renderer</a>, or return to the <a href="developer-curriculum.html#gates">developer gates</a>. Dynamic loading/unloading, every relocation type and every exception/TLS path are outside this selected trace.</p>
 
 </div></section>
 </main>
-<script src="assets/topics.js?v=20260929" defer></script>
-<script src="assets/search-index.js?v=20260929" defer></script>
-<script src="assets/app.js?v=20260929" defer></script>
-<script src="assets/highlight.js?v=20260929" defer></script>
-<script src="assets/tutor.js?v=20260929" defer></script>
+<script src="assets/topics.js?v=20261007" defer></script>
+<script src="assets/search-index.js?v=20261007" defer></script>
+<script src="assets/app.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/tutor.js?v=20261007" defer></script>
 </body>
 </html>

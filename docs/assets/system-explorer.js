@@ -49,7 +49,7 @@
       sources: ["src/loader/runtimeLinker.cpp", "src/loader/symbolDatabase.cpp"], topic: ["t-nids.html", "NIDs and the runtime linker"] },
     { id: "patcher", title: "Instruction patcher", sub: "TLS + host differences", kind: "kyty", pos: [2, 3], cats: ["boot", "services"],
       summary: "Rewrites the small set of guest instruction patterns that cannot retain their original meaning on the host, including TLS access and platform-specific red-zone handling.",
-      sources: ["src/loader/runtimeLinker.cpp", "src/loader/redZonePatcher.cpp"], topic: ["t-patching.html", "Patching guest instructions"] },
+      sources: ["src/loader/runtimeLinker.cpp", "src/loader/guestInstructionPatcher.cpp"], topic: ["t-patching.html", "Patching guest instructions"] },
     { id: "hle", title: "HLE / ABI bridge", sub: "NID → C++ function", kind: "kyty", pos: [2, 4], cats: ["boot", "services"],
       summary: "High-level emulation replaces console libraries with registered C++ implementations. The call target obeys the guest System V ABI even when host code does not.",
       sources: ["src/libs/libs.cpp", "src/libs/libKernel.cpp"], topic: ["t-hle.html", "HLE libraries"] },

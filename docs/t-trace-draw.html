@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>One draw: PM4 to GPU completion — KytyPS5</title>
 <meta name="description" content="Trace a selected non-indexed draw through state, shader programs, resource bindings, Vulkan recording and completion.">
-<link rel="stylesheet" href="assets/viz.css?v=20260929">
-<link rel="stylesheet" href="assets/atlas.css?v=20260929">
-<link rel="stylesheet" href="assets/lab.css?v=20260929">
-<link rel="stylesheet" href="assets/tutor.css?v=20260929">
-<link rel="stylesheet" href="assets/app.css?v=20260929">
-<link rel="stylesheet" href="assets/highlight.css?v=20260929">
+<link rel="stylesheet" href="assets/viz.css?v=20261007">
+<link rel="stylesheet" href="assets/atlas.css?v=20261007">
+<link rel="stylesheet" href="assets/lab.css?v=20261007">
+<link rel="stylesheet" href="assets/tutor.css?v=20261007">
+<link rel="stylesheet" href="assets/app.css?v=20261007">
+<link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 <main class="topic" data-app-content>
@@ -21,7 +21,7 @@
 <div class="band-h"><span class="band-t">Read, trace, prove</span></div>
 <div class="prose">
 
-<p>Prerequisites: <a href="t-pm4.html">PM4</a>, <a href="t-registers.html">register state</a>, <a href="t-shaders.html">shader translation</a> and <a href="t-coherency.html">coherency</a>. This source trace at <code>2650478</code> follows an ordinary, non-indexed triangle-list draw with a vertex shader, an active pixel shader and a color target. It is not a standalone three-word program or a captured frame.</p>
+<p>Prerequisites: <a href="t-pm4.html">PM4</a>, <a href="t-registers.html">register state</a>, <a href="t-shaders.html">shader translation</a> and <a href="t-coherency.html">coherency</a>. This source trace at <code>7492cb9</code> follows an ordinary, non-indexed triangle-list draw with a vertex shader, an active pixel shader and a color target. It is not a standalone three-word program or a captured frame.</p>
 <div class="callout k"><span class="lbl">Four different milestones</span>
 <p>Accepting a guest submission, recording a Vulkan draw, completing that submission on the GPU, and displaying an image are different events. A “DrawComplete” CPU log records progress through the host draw function; it is not a GPU fence and does not prove that any pixels were displayed.</p></div>
 
@@ -72,7 +72,7 @@ Count = 3 vertices; flag 0x02 is inside the accepted mask 0x22.</pre>
 <ul>
 <li><strong>Program/resource analysis:</strong> the program cache retains analysis and resource-plan data, plus mutable scratch/snapshot storage borrowed by runtime stage data. Do not assume borrowed pointers own independent immutable results.</li>
 <li><strong>Shader permutation:</strong> a new permutation rebuilds temporary translated IR before compilation; a matching compiled permutation can be reused. “Same shader code” does not necessarily mean the same specialization.</li>
-<li><strong>Host graphics pipeline:</strong> the key combines stage identities with packed static state. At this snapshot <code>PipelineStaticParameters</code> is 126 bytes, includes logical-alpha source remapping, and excludes dynamic stencil state. A driver disk-cache hit does not by itself bypass the emulator's RDNA translation.</li>
+<li><strong>Host graphics pipeline:</strong> the key combines stage identities with packed static state. At this snapshot <code>PipelineStaticParameters</code> is 116 bytes, excludes dynamic depth bounds and stencil state, and stores canonical effective blend factors. Logical-alpha remapping also affects the pixel-shader identity. A driver disk-cache hit does not by itself bypass the emulator's RDNA translation.</li>
 </ul>
 <p>Record which layer hit or missed. Do not use a generic “cache hit” log as proof that resources were refreshed correctly or that the pipeline matches today's draw.</p>
 
@@ -130,10 +130,10 @@ Image result / presentation evidence (separate):</pre>
 
 </div></section>
 </main>
-<script src="assets/topics.js?v=20260929" defer></script>
-<script src="assets/search-index.js?v=20260929" defer></script>
-<script src="assets/app.js?v=20260929" defer></script>
-<script src="assets/highlight.js?v=20260929" defer></script>
-<script src="assets/tutor.js?v=20260929" defer></script>
+<script src="assets/topics.js?v=20261007" defer></script>
+<script src="assets/search-index.js?v=20261007" defer></script>
+<script src="assets/app.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/tutor.js?v=20261007" defer></script>
 </body>
 </html>

@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>The Vulkan backend — KytyPS5</title>
 <meta name="description" content="Pipelines, image layout and getting a finished frame onto the screen.">
-<link rel="stylesheet" href="assets/viz.css?v=20260929">
-<link rel="stylesheet" href="assets/atlas.css?v=20260929">
-<link rel="stylesheet" href="assets/lab.css?v=20260929">
-<link rel="stylesheet" href="assets/tutor.css?v=20260929">
-<link rel="stylesheet" href="assets/app.css?v=20260929">
-<link rel="stylesheet" href="assets/highlight.css?v=20260929">
+<link rel="stylesheet" href="assets/viz.css?v=20261007">
+<link rel="stylesheet" href="assets/atlas.css?v=20261007">
+<link rel="stylesheet" href="assets/lab.css?v=20261007">
+<link rel="stylesheet" href="assets/tutor.css?v=20261007">
+<link rel="stylesheet" href="assets/app.css?v=20261007">
+<link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
@@ -85,18 +85,16 @@ struct PipelineStaticParameters {
     vk::PrimitiveTopology topology;
     bool primitive_restart_enable;
     uint32_t samples;
-    bool sample_shading_enable, depth_bounds_test_enable;
-    float depth_min_bounds, depth_max_bounds;
+    bool sample_shading_enable;
     uint32_t color_mask[8];
     bool cull_front, cull_back, face, provoking_vtx_last;
     vk::PolygonMode polygon_mode;
     uint8_t color_srcblend[8], color_comb_fcn[8], color_destblend[8];
     uint8_t alpha_srcblend[8], alpha_comb_fcn[8], alpha_destblend[8];
     bool separate_alpha_blend[8], blend_enable[8];
-    bool blend_alpha_source_remap;
 };
 #pragma pack(pop)
-static_assert(sizeof(PipelineStaticParameters) == 126);
+static_assert(sizeof(PipelineStaticParameters) == 116);
 
 struct GraphicsPipelineKey {
     PipelineRenderingState rendering;
@@ -108,7 +106,7 @@ struct GraphicsPipelineKey {
 
   <p>The packing and the size assertion exist because <code>operator==</code> is a <code>memcmp</code> and the hash uses <code>XXH3_64bits</code> on the packed static state. Padding bytes would be uninitialised, so identical states could hash differently — producing a slow, silent pipeline explosion. The <code>static_assert</code> makes any accidental padding a build error.</p>
 
-  <p>Viewport, scissor, depth test/write/compare, stencil test/operations/masks/reference and blend constants are Vulkan dynamic state set on the command buffer per draw, so they are not in the key. Fewer distinct keys means fewer first-encounter compiles. The packed struct is 126 bytes.</p>
+  <p>Viewport, scissor, depth test/write/compare, depth-bounds enable/range, stencil test/operations/masks/reference and blend constants are Vulkan dynamic state set on the command buffer per draw, so they are not in the key. Fewer distinct keys means fewer first-encounter compiles. The packed struct is 116 bytes.</p>
 
   <p><code>PipelineCache</code> now has two levels. Kyty's maps avoid rebuilding a program or
   pipeline during one run; a per-game <code>VkPipelineCache</code> is also loaded and saved so the
@@ -202,7 +200,7 @@ Common::LeastRecentlyUsedCache&lt;ImageId, uint64_t&gt; m_lru_cache;</pre>
     </ul>
   </div>
 
-<p class="deck">Guest memory holds swizzled data; Vulkan wants something else. Converting between them is about 51 KB of address arithmetic in <code>tile.cpp</code>, 36 KB of GPU-side orchestration in <code>tiler.cpp</code>, plus a family of compute shaders.</p>
+<p class="deck">Guest memory holds swizzled data; Vulkan wants something else. <code>tile.cpp</code> describes guest layouts and <code>tiler.cpp</code> orchestrates conversion using compute shaders.</p>
 
   <figure data-viz="tiling"></figure>
 
@@ -221,35 +219,80 @@ Common::LeastRecentlyUsedCache&lt;ImageId, uint64_t&gt; m_lru_cache;</pre>
     Count,
 };</pre>
 
-  <p>Each family has a different swizzle, and the parameters change with bytes-per-element and with mip level. Small mips eventually stop being tiled at all and fall into a packed "tail":</p>
+  <p>Each family has a different swizzle, and the parameters change with bytes-per-element and with mip level. Small mip levels share a packed mip tail whose offsets still follow the tiled layout:</p>
 
-<pre>struct TileVolumeLayout {
-    TileBlockFamily family;
-    uint32_t        bytes_per_element;
-    uint32_t        texel_width, texel_height;
-    uint32_t        <b>first_tail_level</b>;      <i>// below this, mips are packed together</i>
-    uint32_t        block_depth;
-    uint64_t        block_slice_size;
-    uint64_t        total_size;
-    uint64_t        level_offsets[16];
-    uint64_t        level_sizes[16];
-    uint32_t        tail_x[16], tail_y[16];  <i>// position within the packed tail</i>
-    uint32_t        level_widths[16], level_heights[16];
+<pre>struct TileSurfaceDescription {
+	Prospero::BufferFormat format    = Prospero::BufferFormat::kInvalid;
+	Prospero::TileMode     tile_mode = Prospero::TileMode::kLinear;
+	TileSurfaceDimension   dimension = TileSurfaceDimension::Dim2D;
+	uint32_t               width     = 0;
+	uint32_t               height    = 0;
+	uint32_t               depth     = 1;
+	uint32_t               levels    = 1;
+	uint32_t               layers    = 1;
+};
+
+// Width/height fields are measured in addressable elements, not texture texels.
+struct TileMipLayout {
+	uint64_t offset        = 0;
+	uint64_t size          = 0;
+	uint32_t width         = 0;
+	uint32_t height        = 0;
+	uint32_t padded_width  = 0;
+	uint32_t padded_height = 0;
+	uint32_t tail_x        = 0;
+	uint32_t tail_y        = 0;
+	bool     operator==(const TileMipLayout&amp;) const = default;
+};
+
+struct TileSurfaceLayout {
+	TileSurfaceDescription description;
+	TileTextureBlockLayout texture;
+	uint32_t               first_tail_level = 0;
+	uint64_t               block_slice_size = 0;
+	uint64_t               total_size       = 0;
+	TileMipLayout          mips[16]         = {};
 };</pre>
 
   <h4 id="the-api">The API</h4>
-<pre>bool TileGetBlockLayout(TileBlockFamily family, uint32_t bytes_per_element, TileBlockLayout&amp; layout);
-bool <b>TileGetBlockOffset</b>(const TileBlockLayout&amp;, uint32_t x, uint32_t y, uint32_t z, uint32_t&amp; byte_offset);
-bool <b>TileGetBlockXor</b>(const TileBlockLayout&amp;, uint32_t block_x, uint32_t block_y, uint32_t&amp; byte_offset);
+<pre>bool TileGetBlockLayout(TileBlockFamily family, uint32_t bytes_per_element,
+                        TileBlockLayout&amp; layout);
+bool TileGetTextureElementLayout(Prospero::BufferFormat format, TileTextureElementLayout&amp; layout);
+bool TileGetTextureBlockLayout(Prospero::BufferFormat format, Prospero::TileMode tile, bool volume,
+                               TileTextureBlockLayout&amp; layout);
+bool TileGetTiledTextureLayout(const TileSurfaceDescription&amp; description,
+                               TileSurfaceLayout&amp;            layout);
+bool TileGetBlockOffset(const TileBlockLayout&amp; layout, uint32_t x, uint32_t y, uint32_t z,
+                        uint32_t&amp; byte_offset);
+bool TileGetBlockXor(const TileBlockLayout&amp; layout, uint32_t block_x, uint32_t block_y,
+                     uint32_t&amp; byte_offset);
+bool TileGetBlockXor(const TileBlockLayout&amp; layout, uint32_t block_x, uint32_t block_y,
+                     uint32_t block_z, uint32_t&amp; byte_offset);
 
-bool TileGetTextureVolumeLayout(uint32_t format, uint32_t width, uint32_t height, uint32_t depth,
-                                uint32_t levels, uint32_t tile, TileVolumeLayout&amp; layout);
-
-bool TileGetHtileSize(uint32_t width, uint32_t height, TileSizeAlign&amp; htile_size);
-bool TileGetDepthSize(uint32_t width, uint32_t height, uint32_t pitch, uint32_t z_format,
-                      uint32_t stencil_format, bool htile, TileSizeAlign&amp; stencil_size,
-                      TileSizeAlign&amp; htile_size, TileSizeAlign&amp; depth_size, uint32_t num_fragments_log2 = 0);
-uint32_t TileGetRenderTargetPitch(uint32_t width, uint32_t bytes_per_element, uint32_t num_fragments_log2 = 0);</pre>
+bool     TileGetDepthSize(uint32_t width, uint32_t height, uint32_t pitch,
+                          Prospero::DepthFormat z_format, Prospero::StencilFormat stencil_format,
+                          bool htile, TileSizeAlign&amp; stencil_size, TileSizeAlign&amp; htile_size,
+                          TileSizeAlign&amp; depth_size, uint32_t num_fragments_log2 = 0);
+uint32_t TileGetRenderTargetPitch(uint32_t width, uint32_t bytes_per_element,
+                                  uint32_t num_fragments_log2 = 0);
+uint32_t TileGetDepthPitch(uint32_t width, uint32_t bytes_per_element,
+                           uint32_t num_fragments_log2 = 0);
+bool     TileGetRenderTargetSize(uint32_t width, uint32_t height, uint32_t pitch,
+                                 uint32_t bytes_per_element, TileSizeAlign&amp; total_size,
+                                 uint32_t num_fragments_log2 = 0);
+bool     TileGetDccSize(uint32_t width, uint32_t height, uint32_t slices,
+                        uint32_t bytes_per_element, uint32_t levels, Prospero::TileMode tile,
+                        TileSizeAlign&amp; total_size, uint32_t num_fragments_log2 = 0);
+bool     TileGetCmaskSize(uint32_t width, uint32_t height, uint32_t slices, uint32_t levels,
+                          TileSizeAlign&amp; total_size);
+void     TileGetTextureSize(Prospero::BufferFormat format, uint32_t width, uint32_t height,
+                            uint32_t levels, Prospero::TileMode tile, TileSizeAlign* total_size,
+                            TileSizeOffset* level_sizes, TilePaddedSize* padded_size);
+void     TileGetTextureTotalSize(Prospero::BufferFormat format, uint32_t width, uint32_t height,
+                                 uint32_t depth, uint32_t levels, Prospero::TileMode tile,
+                                 bool volume_texture, TileSizeAlign&amp; total_size);
+uint32_t TileGetTexturePitch(Prospero::BufferFormat format, uint32_t width,
+                             Prospero::TileMode tile);</pre>
 
   <p><code>TileGetBlockXor</code> deserves a note. Beyond the in-block interleave, AMD applies an XOR of block coordinates into the address so that adjacent blocks land in different memory channels and banks. Miss it and images come out looking like a shuffled checkerboard rather than obviously wrong.</p>
 
@@ -270,7 +313,7 @@ uint32_t TileGetRenderTargetPitch(uint32_t width, uint32_t bytes_per_element, ui
 ├─ gpu_tiler_depth.comp            depth/stencil
 ├─ gpu_tiler_promote_d16.comp      16-bit depth → 32-bit
 ├─ gpu_tiler_demote_d16.comp       and back
-└─ gpu_tiler_swap_bgra16.comp      channel order fix-ups</pre>
+└─ gpu_tiler_color_transform.comp      channel order fix-ups</pre>
 
   <p>The last three are not tiling at all — they are format adaptations for cases where the host GPU cannot represent a guest format directly. <code>promote_d16</code> / <code>demote_d16</code> exist because some drivers handle 16-bit depth poorly, so Kyty may store it as 32-bit and convert on the way in and out.</p>
 
@@ -338,17 +381,17 @@ public:
     <table>
       <thead><tr><th>File</th><th>Role</th></tr></thead>
       <tbody>
-        <tr><td><code>presentation/videoOut.cpp</code> 67 KB</td><td>The whole flip model, buffer sets, attributes, events, output modes, colour settings.</td></tr>
-        <tr><td><code>presentation/window/vulkanWindow.cpp</code> 48 KB</td><td>Instance and device creation, extension and feature selection (mesh shaders, atomics, depth features), <code>--gpu</code> device choice, queue setup.</td></tr>
-        <tr><td><code>presentation/window/swapchain.cpp</code> 42 KB</td><td>Swapchain lifecycle, format selection, present; waits for image acquisition before the layout transition.</td></tr>
-        <tr><td><code>presentation/window/window.cpp</code> 30 KB + <code>hostInput.cpp</code> 14 KB</td><td>SDL3 window and the main-thread event loop; keyboard, mouse, touchpad emulation and gamepad handling.</td></tr>
-        <tr><td><code>presentation/systemOverlay.cpp</code> 39 KB</td><td>The imgui overlay drawn over the game: the IME keyboard and system error dialogs, which stay open until dismissed and keep controller focus.</td></tr>
-        <tr><td><code>presentation/renderDoc.cpp</code> 5 KB</td><td>Loads the RenderDoc API at runtime for frame capture (<code>--rd</code>); captures start and stop on the present thread so a capture is a whole guest frame.</td></tr>
+        <tr><td><code>presentation/videoOut.cpp</code></td><td>The whole flip model, buffer sets, attributes, events, output modes, colour settings.</td></tr>
+        <tr><td><code>presentation/window/vulkanWindow.cpp</code></td><td>Instance and device creation, extension and feature selection (mesh shaders, atomics, depth features), <code>--gpu</code> device choice, queue setup.</td></tr>
+        <tr><td><code>presentation/window/swapchain.cpp</code></td><td>Swapchain lifecycle, format selection, present; waits for image acquisition before the layout transition.</td></tr>
+        <tr><td><code>presentation/window/window.cpp</code> + <code>hostInput.cpp</code></td><td>SDL3 window and the main-thread event loop; keyboard, mouse, touchpad emulation and gamepad handling.</td></tr>
+        <tr><td><code>presentation/systemOverlay.cpp</code></td><td>The imgui overlay drawn over the game: the IME keyboard and system error dialogs, which stay open until dismissed and keep controller focus.</td></tr>
+        <tr><td><code>presentation/renderDoc.cpp</code></td><td>Loads the RenderDoc API at runtime for frame capture (<code>--rd</code>); captures start and stop on the present thread so a capture is a whole guest frame.</td></tr>
       </tbody>
     </table>
   </div>
 <h4 id="blend-mapping-and-readback-lifetimes">Blend mapping and readback lifetimes</h4>
-  <p><code>PipelineStaticParameters</code> is now <strong>126 bytes</strong>: <code>blend_alpha_source_remap</code> distinguishes the logical-alpha export needed for some reordered render targets. <code>blendMapping.cpp</code> classifies mappings as direct, source-alpha or unsupported. Supported remapping uses a second blend source; unsupported combinations disable blending with a warning, not an unconditional promise of compatibility. Sampler LOD bias is clamped to the host's <code>maxSamplerLodBias</code>.</p>
+  <p><code>PipelineStaticParameters</code> is <strong>116 bytes</strong>. Depth-bounds enable and range are dynamic state. Inactive blend fields are canonicalized, and identical color/alpha equations share a key. Logical-alpha handling belongs to <code>ShaderPixelInputInfo::alpha_blend_source</code> and the effective blend factors, with <code>None</code>, <code>SourceAlpha</code>, <code>SourceAlphaOne</code> and <code>SourceAlphaZero</code> variants. <code>blendMapping.cpp</code> classifies supported remaps; unsupported combinations disable blending with a warning. Sampler LOD bias is clamped to the host limit.</p>
   <p>The 64 MiB download ring is the common readback path, not a hard transfer limit. Oversized transfers allocate a temporary download <code>Buffer</code>; the deferred completion operation owns it until GPU completion, then invalidates host caches and copies back. See <code>BufferCache::DownloadBufferMemory()</code> and <code>CommandScheduler::DeferPriorityOperation()</code>.</p>
 
     </div>
@@ -411,16 +454,16 @@ public:
 
 </main>
 
-<script src="assets/topics.js?v=20260929" defer></script>
-<script src="assets/search-index.js?v=20260929" defer></script>
-<script src="assets/app.js?v=20260929" defer></script>
-<script src="assets/viz.js?v=20260929" defer></script>
-<script src="assets/atlas.js?v=20260929" defer></script>
-<script src="assets/lab.js?v=20260929" defer></script>
-<script src="assets/figs.js?v=20260929" defer></script>
-<script src="assets/figures.js?v=20260929" defer></script>
-<script src="assets/highlight.js?v=20260929" defer></script>
-<script src="assets/tutor.js?v=20260929" defer></script>
+<script src="assets/topics.js?v=20261007" defer></script>
+<script src="assets/search-index.js?v=20261007" defer></script>
+<script src="assets/app.js?v=20261007" defer></script>
+<script src="assets/viz.js?v=20261007" defer></script>
+<script src="assets/atlas.js?v=20261007" defer></script>
+<script src="assets/lab.js?v=20261007" defer></script>
+<script src="assets/figs.js?v=20261007" defer></script>
+<script src="assets/figures.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/tutor.js?v=20261007" defer></script>
 </body>
 </html>
 

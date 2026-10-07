@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ELF, SELF and Sony's format — KytyPS5</title>
 <meta name="description" content="A PS5 module is an ELF that no standard loader will accept. Here is what is different and why.">
-<link rel="stylesheet" href="assets/viz.css?v=20260929">
-<link rel="stylesheet" href="assets/atlas.css?v=20260929">
-<link rel="stylesheet" href="assets/lab.css?v=20260929">
-<link rel="stylesheet" href="assets/tutor.css?v=20260929">
-<link rel="stylesheet" href="assets/app.css?v=20260929">
-<link rel="stylesheet" href="assets/highlight.css?v=20260929">
+<link rel="stylesheet" href="assets/viz.css?v=20261007">
+<link rel="stylesheet" href="assets/atlas.css?v=20261007">
+<link rel="stylesheet" href="assets/lab.css?v=20261007">
+<link rel="stylesheet" href="assets/tutor.css?v=20261007">
+<link rel="stylesheet" href="assets/app.css?v=20261007">
+<link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
@@ -57,7 +57,7 @@
   <h4 id="why-relocation-exists">Why relocation exists</h4>
   <p>A shared library does not know where it will be loaded. It is compiled position-independently, and every absolute address inside it is left as a placeholder. The loader must go back and fix them. Each fix is a <strong>relocation</strong>: a record saying "at offset X, write value Y."</p>
 
-  <p>Four relocation types cover almost everything Kyty sees:</p>
+  <p>The principal relocation types are:</p>
   <div class="tw">
     <table>
       <thead><tr><th>Type</th><th>Meaning</th><th>Computation</th></tr></thead>
@@ -81,14 +81,14 @@
   <h4 id="symbols-and-why-the-ps5-s-are-unreadable">Symbols, and why the PS5's are unreadable</h4>
   <p>Normally a dynamic symbol has a name: <code>printf</code>, <code>malloc</code>. PS5 modules instead export <strong>NIDs</strong> — an 11-character encoding of a hash of the original name — qualified by the library and module they belong to:</p>
 
-<pre>lUwEK9UwLNo<b>#</b>libSceGnmDriver<b>#</b>libSceGnmDriver
+<pre>b4fpgH5ZXxQ<b>#</b>Graphics5Driver<b>#</b>Graphics5Driver
 └─ symbol ─┘ └─── library ───┘ └──── module ────┘</pre>
 
   <p>Kyty stores its HLE implementations under the same key, so resolution is a dictionary lookup. You will meet the exact mechanism in <a href="t-nids.html">topic 07</a> and <a href="t-hle.html">topic 12</a>.</p>
 
   <h4 id="thread-local-storage-in-one-paragraph">Thread-local storage in one paragraph</h4>
   <p>A variable declared <code>thread_local</code> needs a different copy per thread. The usual implementation gives each thread a block of memory and a pointer to it, reachable through a segment register — <code>fs</code> on x86-64 Linux and FreeBSD. Code that reads a thread-local reads <code>fs:[offset]</code>.</p>
-  <p>Windows uses <code>fs</code> for its own purposes, so guest code doing this reads the wrong memory and usually faults. <a href="t-patching.html">topic 08</a> is entirely about the fix.</p>
+  <p>On x86-64 Windows the host TEB uses <code>gs</code>; a guest <code>fs</code> access does not address the guest TLS block. <a href="t-patching.html">topic 08</a> is entirely about the fix.</p>
 
   <div class="learn">
     <div class="lh">Learn more · linking, PIC, GOT and PLT</div>
@@ -187,8 +187,6 @@ struct SelfSegment {
     Elf64_Rela* jmprela_table;  uint64_t jmprela_table_size;
     uint64_t    init_vaddr, fini_vaddr;
     uint64_t    init_array_vaddr, init_array_size;
-
-    std::vector&lt;const char*&gt; needed;
     std::vector&lt;ModuleId&gt;    <b>export_modules</b>, <b>import_modules</b>;
     std::vector&lt;LibraryId&gt;   <b>export_libs</b>,    <b>import_libs</b>;
 };</pre>
@@ -253,16 +251,16 @@ struct SelfSegment {
 
 </main>
 
-<script src="assets/topics.js?v=20260929" defer></script>
-<script src="assets/search-index.js?v=20260929" defer></script>
-<script src="assets/app.js?v=20260929" defer></script>
-<script src="assets/viz.js?v=20260929" defer></script>
-<script src="assets/atlas.js?v=20260929" defer></script>
-<script src="assets/lab.js?v=20260929" defer></script>
-<script src="assets/figs.js?v=20260929" defer></script>
-<script src="assets/figures.js?v=20260929" defer></script>
-<script src="assets/highlight.js?v=20260929" defer></script>
-<script src="assets/tutor.js?v=20260929" defer></script>
+<script src="assets/topics.js?v=20261007" defer></script>
+<script src="assets/search-index.js?v=20261007" defer></script>
+<script src="assets/app.js?v=20261007" defer></script>
+<script src="assets/viz.js?v=20261007" defer></script>
+<script src="assets/atlas.js?v=20261007" defer></script>
+<script src="assets/lab.js?v=20261007" defer></script>
+<script src="assets/figs.js?v=20261007" defer></script>
+<script src="assets/figures.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/tutor.js?v=20261007" defer></script>
 </body>
 </html>
 

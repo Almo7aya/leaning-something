@@ -600,7 +600,7 @@
     var body = frame(host,
       "Guest memory and its GPU copy",
       "click any byte to write it as the CPU",
-      "Eight rows, one per guest page. The whole loop runs with <em>no cooperation from the game</em>: on a console CPU and GPU share one pool of memory, so nothing in the guest's code says when a texture changed. Write-protecting the pages turns each write into a fault, and the fault is the notification.");
+      "Eight schematic rows represent 4 KB tracker pages, with eight visible sample bytes each. Guest commands provide ordering and resource information; page protection also detects ordinary CPU writes to cached data. The first write to a protected page faults, letting the tracker mark it dirty and lift protection.");
 
     var PAGES = 8, PERPAGE = 8, N = PAGES * PERPAGE;
     var cpu = [], gpu = [], pstate = [];   // pstate: clean | cpu | gpu | lock
@@ -698,11 +698,11 @@
         log("Page " + p + " was write-protected → CPU faulted. HandleGpuFault marked it dirty, lifted protection, and execution resumed.");
         pstate[p] = "cpu";
       } else if (pstate[p] === "gpu") {
-        log("Page " + p + " held GPU-written data and has now been overwritten by the CPU.");
+        log("Page " + p + " held GPU-written data. The real fault path must resolve ownership before retrying the CPU write; this toy only displays the resulting dirty state.");
         pstate[p] = "cpu";
       } else {
         pstate[p] = "cpu";
-        log("CPU wrote byte " + idx + " in page " + p + ". Granularity is the page, so the whole 16 KB counts as dirty.");
+        log("CPU wrote byte " + idx + " in page " + p + ". The affected 4 KB tracker page counts as dirty.");
       }
       render();
     });
@@ -717,7 +717,7 @@
       flash("gpu", idxs, function () {
         idxs.forEach(function (i) { gpu[i] = cpu[i]; });
         for (var p = 0; p < PAGES; p++) pstate[p] = "lock";
-        log("Upload done. ApplyGpuProtection write-protected every page — the GPU owns this data now.");
+        log("Upload done. PageManager write watchers protect the tracked pages so later CPU writes can be detected.");
       });
     });
 
@@ -1182,53 +1182,53 @@
     var body = frame(host,
       "One instruction, all four forms",
       "pick an instruction · toggle its modifiers",
-      "The four panes are the four things the recompiler holds in turn. Notice how much of the work is <em>modifiers</em>: RDNA&nbsp;2 folds negation, absolute value, clamping and output scaling into the instruction encoding, and every one of those has to become explicit SPIR-V.");
+      "These are selected encoding fields and schematic lowering fragments, not complete compiler dumps or standalone SPIR-V modules. The bit ruler shows the base instruction’s first dword. Floating-point modifier toggles illustrate lowering for add/multiply; encoding them can require a different instruction form and does not update this base word.");
 
     var INS = {
       "v_add_f32": {
-        fam: "VOP2", enc: 0x06, irOp: "AddF32",
+        fam: "VOP2", enc: 0x03, irOp: "FPAdd32",
         fields: [{ n: "src0", s: 0, w: 9, v: 256 }, { n: "vsrc1", s: 9, w: 8, v: 3 }, { n: "vdst", s: 17, w: 8, v: 4 }, { n: "op", s: 25, w: 6, v: 0x03 }, { n: "enc", s: 31, w: 1, v: 0 }],
         asm: "v_add_f32  v4, v0, v3",
-        ir: "AddF32   dst=v4  src0=v0  src1=v3",
+        ir: "FPAdd32   dst=v4  src0=v0  src1=v3",
         spv: "%a = OpLoad %float %v0\n%b = OpLoad %float %v3\n%r = OpFAdd %float %a %b\nOpStore %v4 %r"
       },
       "v_mul_f32": {
-        fam: "VOP2", enc: 0x08, irOp: "MulF32",
+        fam: "VOP2", enc: 0x08, irOp: "FPMul32",
         fields: [{ n: "src0", s: 0, w: 9, v: 256 }, { n: "vsrc1", s: 9, w: 8, v: 3 }, { n: "vdst", s: 17, w: 8, v: 4 }, { n: "op", s: 25, w: 6, v: 0x08 }, { n: "enc", s: 31, w: 1, v: 0 }],
         asm: "v_mul_f32  v4, v0, v3",
-        ir: "MulF32   dst=v4  src0=v0  src1=v3",
+        ir: "FPMul32   dst=v4  src0=v0  src1=v3",
         spv: "%a = OpLoad %float %v0\n%b = OpLoad %float %v3\n%r = OpFMul %float %a %b\nOpStore %v4 %r"
       },
       "v_cmp_gt_f32": {
-        fam: "VOPC", enc: 0x14, irOp: "CompareMaskGtF32",
-        fields: [{ n: "src0", s: 0, w: 9, v: 256 }, { n: "vsrc1", s: 9, w: 8, v: 1 }, { n: "op", s: 17, w: 8, v: 0x14 }, { n: "enc", s: 25, w: 7, v: 0x3E }],
+        fam: "VOPC", enc: 0x04, irOp: "CompareMaskGtF32",
+        fields: [{ n: "src0", s: 0, w: 9, v: 256 }, { n: "vsrc1", s: 9, w: 8, v: 1 }, { n: "op", s: 17, w: 8, v: 0x04 }, { n: "enc", s: 25, w: 7, v: 0x3E }],
         asm: "v_cmp_gt_f32  vcc, v0, v1",
         ir: "CompareMaskGtF32   dst=vcc  src0=v0  src1=v1",
         spv: "%a = OpLoad %float %v0\n%b = OpLoad %float %v1\n%c = OpFOrdGreaterThan %bool %a %b\n; -> ballot into the 64-bit VCC mask\n%m = OpGroupNonUniformBallot %v4uint %Subgroup %c"
       },
       "s_and_saveexec_b64": {
-        fam: "SOP1", enc: 0x20, irOp: "SaveexecB64",
-        fields: [{ n: "ssrc0", s: 0, w: 8, v: 106 }, { n: "op", s: 8, w: 8, v: 0x20 }, { n: "sdst", s: 16, w: 7, v: 0 }, { n: "enc", s: 23, w: 9, v: 0x17D }],
+        fam: "SOP1", enc: 0x24, irOp: "SaveexecB64",
+        fields: [{ n: "ssrc0", s: 0, w: 8, v: 106 }, { n: "op", s: 8, w: 8, v: 0x24 }, { n: "sdst", s: 16, w: 7, v: 0 }, { n: "enc", s: 23, w: 9, v: 0x17D }],
         asm: "s_and_saveexec_b64  s[0:1], vcc",
         ir: "SaveexecB64   dst=s[0:1]  src=vcc  mode=And",
         spv: "; no direct equivalent — this IS the branch.\n; structured path: becomes OpSelectionMerge + OpBranchConditional\n; fallback path: EXEC becomes a value and each\n;   invocation tests its own bit"
       },
       "buffer_load_dword": {
-        fam: "MUBUF", enc: 0x38, irOp: "BufferLoadDword",
-        fields: [{ n: "offset", s: 0, w: 12, v: 0x40 }, { n: "offen", s: 12, w: 1, v: 1 }, { n: "idxen", s: 13, w: 1, v: 0 }, { n: "glc", s: 14, w: 1, v: 0 }, { n: "op", s: 18, w: 7, v: 0x14 }, { n: "enc", s: 26, w: 6, v: 0x38 }],
+        fam: "MUBUF", enc: 0x0C, irOp: "BufferLoadDword",
+        fields: [{ n: "offset", s: 0, w: 12, v: 0x40 }, { n: "offen", s: 12, w: 1, v: 1 }, { n: "idxen", s: 13, w: 1, v: 0 }, { n: "glc", s: 14, w: 1, v: 0 }, { n: "op", s: 18, w: 8, v: 0x0C }, { n: "enc", s: 26, w: 6, v: 0x38 }],
         asm: "buffer_load_dword  v2, v1, s[8:11], 0 offen offset:64",
         ir: "BufferLoadDword   dst=v2  voffset=v1  srd=s[8:11]  offset=64",
         spv: "; bounds check the hardware gives free, SPIR-V does not:\n%i  = OpUDiv %uint %byteoff %uint_4\n%ok = OpULessThan %bool %i %num_records\nOpSelectionMerge %m None\nOpBranchConditional %ok %in %oob\n%in:  %p = OpAccessChain %ptr %buf %i\n      %v = OpLoad %uint %p"
       },
       "image_sample": {
-        fam: "MIMG", enc: 0x3C, irOp: "ImageSample",
+        fam: "MIMG", enc: 0x20, irOp: "ImageSample",
         fields: [{ n: "dmask", s: 8, w: 4, v: 0xF }, { n: "unrm", s: 12, w: 1, v: 0 }, { n: "op", s: 18, w: 7, v: 0x20 }, { n: "vaddr", s: 32, w: 8, v: 4 }, { n: "enc", s: 26, w: 6, v: 0x3C }],
         asm: "image_sample  v[0:3], v[4:5], s[12:19], s[20:23] dmask:0xf",
         ir: "ImageSample   dst=v[0:3]  coord=v[4:5]  image=T#  sampler=S#  dmask=0xF",
         spv: "%img = OpLoad %image %t12\n%smp = OpLoad %sampler %s20\n%si  = OpSampledImage %sampled %img %smp\n%uv  = OpLoad %v2float %v4\n%rgba= OpImageSampleImplicitLod %v4float %si %uv"
       },
       "exp (mrt0)": {
-        fam: "EXP", enc: 0x3E, irOp: "Export",
+        fam: "EXP", enc: 0x00, irOp: "Export",
         fields: [{ n: "en", s: 0, w: 4, v: 0xF }, { n: "target", s: 4, w: 6, v: 0 }, { n: "compr", s: 10, w: 1, v: 0 }, { n: "done", s: 11, w: 1, v: 1 }, { n: "vm", s: 12, w: 1, v: 1 }, { n: "enc", s: 26, w: 6, v: 0x3E }],
         asm: "exp  mrt0, v0, v1, v2, v3 done vm",
         ir: "Export   target=Mrt  index=0  en=0xF  done=true",
@@ -1273,33 +1273,35 @@
         return { name: f.n, shift: f.s, width: Math.min(f.w, 32 - f.s), cls: f.n === "op" ? 1 : (f.n === "enc" ? 2 : 0) };
       }), null);
 
-      var neg = negBtn.getAttribute("aria-pressed") === "true";
-      var abs = absBtn.getAttribute("aria-pressed") === "true";
-      var clp = clampBtn.getAttribute("aria-pressed") === "true";
+      var floating = iSel.value === "v_add_f32" || iSel.value === "v_mul_f32";
+      [negBtn, absBtn, clampBtn].forEach(function (button) { button.disabled = !floating; });
+      var neg = floating && negBtn.getAttribute("aria-pressed") === "true";
+      var abs = floating && absBtn.getAttribute("aria-pressed") === "true";
+      var clp = floating && clampBtn.getAttribute("aria-pressed") === "true";
 
       var asm = d.asm, ir = d.ir, spv = d.spv;
       if (neg) { asm = asm.replace(/(v0|s\[8:11\]|v\[4:5\])/, "-$1"); ir += "  neg(src0)"; }
-      if (abs) { asm = asm.replace(/(v1|v3)/, "|$1|"); ir += "  abs(src1)"; }
+      if (abs) { asm = asm.replace(/v3/, "|v3|"); ir += "  abs(src1)"; }
       if (clp) { asm += " clamp"; ir += "  clamp"; }
 
-      if (neg) spv = "%na = OpFNegate %float %a      ; neg modifier\n" + spv;
-      if (abs) spv = "%ab = OpExtInst %float %glsl FAbs %b   ; abs modifier\n" + spv;
-      if (clp) spv = spv + "\n%cl = OpExtInst %float %glsl FClamp %r %f0 %f1   ; clamp modifier";
+      if (neg) spv = spv.replace("%a = OpLoad %float %v0", "%a = OpLoad %float %v0\n%na = OpFNegate %float %a").replace("%a %b", "%na %b");
+      if (abs) spv = spv.replace("%b = OpLoad %float %v3", "%b = OpLoad %float %v3\n%ab = OpExtInst %float %glsl FAbs %b").replace(/(%a|%na) %b/, "$1 %ab");
+      if (clp) spv = spv.replace("OpStore %v4 %r", "%cl = OpExtInst %float %glsl FClamp %r %f0 %f1\nOpStore %v4 %cl");
 
       var decoded =
         "family      " + d.fam + "\n" +
         "opcode_id   0x" + hx(d.enc, 2) + "\n" +
         d.fields.map(function (f) {
-          return (f.n + "            ").slice(0, 12) + f.v + (f.v > 255 ? "   (inline constant)" : "");
+          return (f.n + "            ").slice(0, 12) + f.v + (f.n === "src0" && f.v >= 256 ? "   (VGPR encoding)" : "");
         }).join("\n") +
         (neg ? "\nnegate      true" : "") + (abs ? "\nabsolute    true" : "") + (clp ? "\nclamp       true" : "");
 
       panes.innerHTML =
-        '<div class="lab-pane g"><div class="t">1 · machine code</div><pre>0x' + hx(word, 8) +
+        '<div class="lab-pane g"><div class="t">1 · base encoding (first dword)</div><pre>0x' + hx(word, 8) +
           "\n\n" + asm + "</pre></div>" +
-        '<div class="lab-pane g"><div class="t">2 · Decoder::Instruction</div><pre>' + decoded + "</pre></div>" +
-        '<div class="lab-pane k"><div class="t">3 · IR</div><pre>' + ir + "</pre></div>" +
-        '<div class="lab-pane h"><div class="t">4 · emitted SPIR-V</div><pre>' + spv + "</pre></div>";
+        '<div class="lab-pane g"><div class="t">2 · selected decoded fields</div><pre>' + decoded + "</pre></div>" +
+        '<div class="lab-pane k"><div class="t">3 · schematic IR operation</div><pre>' + ir + "</pre></div>" +
+        '<div class="lab-pane h"><div class="t">4 · illustrative SPIR-V fragment</div><pre>' + spv + "</pre></div>";
     }
     iSel.addEventListener("change", render);
     render();
@@ -1308,13 +1310,13 @@
     demoRunner(row, [
       { say: "<code>v_add_f32</code> — the easy case. Raw bits, decoded instruction, IR, SPIR-V: almost one to one.",
         run: function () { setSelect(iSel, "v_add_f32"); press(negBtn, false); press(absBtn, false); press(clampBtn, false); }, ms: 3400 },
-      { say: "RDNA&nbsp;2 folds modifiers into the encoding. Turn on <b>clamp</b> and SPIR-V needs an extra explicit instruction.",
+      { say: "Turn on <b>clamp</b> to see its lowering. This conceptual overlay leaves the base encoding unchanged; the real decoder must select a form that supports the modifier.",
         run: function () { press(clampBtn, true); }, ms: 3400 },
       { say: "Add <b>neg</b> and <b>abs</b> — three folded modifiers, three more SPIR-V instructions the emitter has to generate.",
         run: function () { press(negBtn, true); press(absBtn, true); }, ms: 3800 },
       { say: "Now a buffer load. The hardware bounds-checks it <b>for free</b>…",
         run: function () { press(negBtn, false); press(absBtn, false); press(clampBtn, false); setSelect(iSel, "buffer_load_dword"); }, ms: 3200 },
-      { say: "…but SPIR-V does not, so the emitter has to produce a comparison <em>and a branch</em>. This is exactly why such an instruction cannot sit in a loop header — it would split the block.",
+      { say: "…but SPIR-V does not, so the emitter has to produce a comparison <em>and a branch</em>. Such lowering can split blocks, so the emitter must preserve SPIR-V control-flow rules even when the source operation occurs in a loop header.",
         ms: 4600 },
       { say: "<code>s_and_saveexec_b64</code> has <b>no SPIR-V equivalent at all</b>. It <em>is</em> the control flow, and what it becomes depends entirely on whether structurisation succeeded.",
         run: function () { setSelect(iSel, "s_and_saveexec_b64"); }, ms: 4600 },
@@ -1711,14 +1713,14 @@
   reg("pipekey", function (host) {
     var body = frame(host,
       "The pipeline cache key",
-      "compare static-key changes with dynamic stencil state",
-      "Vulkan bakes fixed-function state into the immutable <code>VkPipeline</code>, so every distinct combination needs its own object. Kyty packs the state that is <em>not</em> Vulkan dynamic state into one <code>#pragma pack(1)</code> struct (<code>sizeof == 126</code>) and hashes the packed static bytes with <code>XXH3_64bits</code> — which is also why there is a <code>static_assert</code> on its exact size: a padding byte would be uninitialised, so identical states could hash differently and quietly multiply the cache. Viewport, scissor, depth test/write/compare, stencil test/operations/masks/reference and blend constants are set dynamically per draw, so they are not in the key.");
+      "compare static-key changes with dynamic depth bounds and stencil",
+      "Vulkan bakes fixed-function state into the immutable <code>VkPipeline</code>, so every distinct combination needs its own object. Kyty packs the state that is <em>not</em> Vulkan dynamic state into one <code>#pragma pack(1)</code> struct (<code>sizeof == 116</code>) and hashes the packed static bytes with <code>XXH3_64bits</code> — which is also why there is a <code>static_assert</code> on its exact size: a padding byte would be uninitialised, so identical states could hash differently and quietly multiply the cache. Viewport, scissor, depth test/write/compare, depth-bounds enable/range, stencil test/operations/masks/reference and blend constants are set dynamically per draw, so they are not in the key.");
 
     var FIELDS = [
       { k: "topology", label: "topology", vals: ["triangle list", "triangle strip", "rect list"], v: 0 },
       { k: "blend", label: "blend enable", bool: true, v: 0 },
       { k: "srcblend", label: "src blend factor", vals: ["one", "src alpha", "zero"], v: 0, dep: "blend" },
-      { k: "depthbounds", label: "depth bounds test", bool: true, v: 0 },
+      { k: "depthbounds", label: "depth bounds test (dynamic)", bool: true, v: 0, dynamic: true },
       { k: "stencil", label: "stencil test (dynamic)", bool: true, v: 0, dynamic: true },
       { k: "polymode", label: "polygon mode", vals: ["fill", "line", "point"], v: 0 },
       { k: "cullback", label: "cull back faces", bool: true, v: 1 },
@@ -1731,7 +1733,7 @@
     var cache = [];    // {hash, n}
     var lastBytes = null;
 
-    var tg = h("div", "lab-toggles"); body.appendChild(h("div", "lab-h", "pipeline state — stencil is dynamic"));
+    var tg = h("div", "lab-toggles"); body.appendChild(h("div", "lab-h", "pipeline state — depth bounds and stencil are dynamic"));
     body.appendChild(tg);
 
     var row = ctlRow(body);
@@ -1758,8 +1760,8 @@
         b.push(active ? (state[f.k] & 0xFF) : 0);
         b.push(active ? 0x01 : 0x00);
       });
-      // stand-ins for the depth-bounds floats and per-attachment colour masks the real struct carries
-      [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x3F, 0x0F, 0x00, 0x00, 0x00].forEach(function (x) { b.push(x); });
+      // Stand-in for one static per-attachment colour mask; depth bounds are dynamic.
+      [0x0F, 0x00, 0x00, 0x00].forEach(function (x) { b.push(x); });
       return b;
     }
     function hash(bytes) {
@@ -1800,7 +1802,7 @@
       else state[f.k] = +e.target.value;
       render(true);
       st.className = "lab-status";
-      st.textContent = f.dynamic ? "dynamic stencil changed — the cache key stays the same" : "key changed — press look up to see whether a pipeline already exists";
+      st.textContent = f.dynamic ? "dynamic state changed — the cache key stays the same" : "key changed — press look up to see whether a pipeline already exists";
     });
     lookBtn.addEventListener("click", function () {
       var hv = render(false);

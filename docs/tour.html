@@ -6,8 +6,8 @@
 <title>KytyPS5 — Anatomy of a PlayStation 5 Emulator</title>
 <meta name="description" content="An interactive, source-referenced walkthrough of the KytyPS5 PlayStation 5 emulator.">
 <meta name="color-scheme" content="light dark">
-<link rel="stylesheet" href="assets/viz.css?v=20260929">
-<script src="assets/viz.js?v=20260929" defer></script>
+<link rel="stylesheet" href="assets/viz.css?v=20261007">
+<script src="assets/viz.js?v=20261007" defer></script>
 <style>
 .xlinks{margin-top:var(--s6);padding-top:var(--s4);border-top:1px solid var(--rule);font-family:var(--mono);font-size:10.5px;line-height:1.8;color:var(--faint)}
 .xlinks b{display:block;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);margin-bottom:4px;font-weight:600}
@@ -15,7 +15,7 @@
 .xlinks a:hover{color:var(--ink);text-decoration:underline}
 .xlinks a.here{color:var(--ink);font-weight:600}
 </style>
-<link rel="stylesheet" href="assets/highlight.css?v=20260929">
+<link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body><style>
 /* ============================================================
@@ -425,7 +425,7 @@ details[open] summary { border-bottom: 1px solid var(--rule); }
     </nav>
       <div class="xlinks"><b>Also here</b><a href="index.html">Overview</a><a href="lab.html">The lab &mdash; 11 tools</a><a href="atlas.html">Visual atlas &mdash; 19 animations</a><a href="course.html">The complete book</a><a href="tour.html" class="here">Architecture guide</a><a href="path.html">Learning path</a></div>
     <div class="rail-foot">
-      KytyPS5 main @ 2650478<br>
+      KytyPS5 main @ 7492cb9<br>
       GPL-2.0-only<br>
       based on Kyty (MIT)<br><br>
       Every claim on this page<br>carries a <span class="src">file:line</span> tag.
@@ -508,7 +508,7 @@ details[open] summary { border-bottom: 1px solid var(--rule); }
         <p>Kyty solves this by annotating every function the guest can call with a Clang attribute, so the compiler generates a System&nbsp;V prologue for that one function while the rest of the emulator stays native:</p>
 <pre>#define <b>KYTY_MS_ABI</b>   __attribute__((ms_abi))
 #define <b>KYTY_SYSV_ABI</b> __attribute__((sysv_abi))</pre>
-        <p>This is also why the build refuses MSVC's <code>cl.exe</code> and requires <code>clang-cl</code> — MSVC has no such attribute. There is a second gap too: PS5 code reads thread-local storage through the <code>fs</code> segment register, which Windows reserves for itself. That one is solved by rewriting the guest's instruction bytes; see §04.</p>
+        <p>This is also why the build refuses MSVC's <code>cl.exe</code> and requires <code>clang-cl</code> — MSVC has no such attribute. There is a second gap too: PS5 code reads thread-local storage through the <code>fs</code> segment register, which does not address the guest TCB on the host. That one is solved by rewriting the guest's instruction bytes; see §04.</p>
         <div class="srcs"><span class="src">src/common/abi.h</span><span class="src">CMakeLists.txt</span></div>
       </div>
 
@@ -678,7 +678,7 @@ static uint64_t g_desired_base_addr = SYSTEM_RESERVED + CODE_BASE_OFFSET;</pre>
   <p>This is one of the most instructive functions in the project. Two patterns in PS5 code cannot execute on Windows, so the loader scans the guest's <code>.text</code> and rewrites them in place.</p>
 
   <h4>1 · Thread-local storage through <code>fs:[0]</code></h4>
-  <p>PS5 code reads its thread control block with <code>mov rax, qword ptr fs:[0]</code>. On Windows the <code>fs</code> segment belongs to the OS and points somewhere else entirely. The loader finds every such instruction and overwrites those exact 9 bytes with a call to a generated stub, which fetches the guest's real TCB pointer and returns it in the same register the original instruction targeted:</p>
+  <p>PS5 code reads its thread control block with <code>mov rax, qword ptr fs:[0]</code>. On x86-64 Windows the host TEB uses <code>gs</code>; <code>fs:[0]</code> does not address the guest TCB. The loader finds every such instruction and overwrites those exact 9 bytes with a call to a generated stub, which fetches the guest's real TCB pointer and returns it in the same register the original instruction targeted:</p>
 
 <pre><i>// before — 9 bytes</i>
 64 48 8B 04 25 00 00 00 00     mov rax, qword ptr fs:[0]
@@ -692,7 +692,7 @@ static uint64_t g_desired_base_addr = SYSTEM_RESERVED + CODE_BASE_OFFSET;</pre>
   <p>The stub itself is hand-assembled machine code in <code>jit.h</code>. Because the emulator is compiled with the Microsoft ABI on Windows but the guest runs System&nbsp;V, the stub (<code>SafeCall</code>) pushes the flags and all volatile registers, aligns the stack to 16 bytes, reserves 32 bytes of Win64 shadow space, calls the C++ handler, then restores everything.</p>
 
   <h4>2 · The stack canary store</h4>
-  <p>Compiler-generated stack-protector code stores through <code>fs:[0x28]</code>. Since <code>fs</code> is wrong, this would fault at address <code>0x28</code>. The loader replaces the 12-byte store with <code>nop</code>s — and, if it recognises the specific "canary failed → <code>ud2</code>" epilogue that follows, replaces the whole thing with <code>pop rbp; ret</code>.</p>
+  <p>Compiler-generated stack-protector code stores through <code>fs:[0x28]</code>. With a zero FS base this would access <code>0x28</code>; inspect the instruction rather than inferring it from the address alone. The loader replaces the 12-byte store with <code>nop</code>s — and, if it recognises the specific "canary failed → <code>ud2</code>" epilogue that follows, replaces the whole thing with <code>pop rbp; ret</code>.</p>
   <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp</span><span class="src">src/loader/jit.h</span></div>
 
   <figure data-viz="gotplt"></figure>
@@ -700,7 +700,7 @@ static uint64_t g_desired_base_addr = SYSTEM_RESERVED + CODE_BASE_OFFSET;</pre>
   <h3 id="nids-how-symbols-are-named">NIDs: how symbols are named</h3>
   <p>PS5 modules do not export readable symbol names. They export <strong>NIDs</strong> — an 11-character base64-ish encoding of a hash of the original name, followed by the library and module it belongs to, separated by <code>#</code>:</p>
 
-<pre>lUwEK9UwLNo<b>#</b>libSceGnmDriver<b>#</b>libSceGnmDriver
+<pre>b4fpgH5ZXxQ<b>#</b>Graphics5Driver<b>#</b>Graphics5Driver
 └─ symbol ─┘ └─── library ───┘ └──── module ────┘</pre>
 
   <p><code>RuntimeLinker::Resolve()</code> splits on <code>#</code>, maps the library and module identifiers back through the file's own tables, and then searches, in order: the HLE symbol database, then the export tables of every other loaded guest module.</p>
@@ -808,13 +808,13 @@ while (expanded_size &lt; 768 * 1024) {
 
 <h4 id="extended-guest-memory">The separate extended-memory arena</h4>
   <p>Ordinary guest mappings keep their existing low address bands. Extended allocations use a separate <strong>512 GiB virtual arena at <code>0x080000000000</code></strong>, an 8 TiB base, described by <code>kExtendedMemoryBase</code> and <code>kExtendedMemorySize</code> in <code>kernel/memory.h</code>. Reserving that address range does not allocate 512 GiB of physical RAM. Extended requests and ordinary mapping searches have separate allocation rules.</p>
-  <p>GPU tracking accepts the low 1 TiB region and that explicit extended interval; the space between them is not a valid resource range. Sparse image tracking covers 44-bit addresses. Dense buffer/BDA tables pack the low and extended intervals together through <code>BufferCache::PageIndex()</code> and <code>PageAddress()</code>, avoiding tables for the entire gap.</p>
+  <p>GPU tracking accepts the low 1 TiB region and that explicit extended interval; the space between them is not a valid resource range. Sparse image tracking covers 44-bit addresses. Dense buffer/BDA tables pack the low and extended intervals together through <code>BufferCache::PageIndex()</code> (guest address to packed page index) and <code>GuestAddress()</code> (packed byte offset to guest address), avoiding tables for the entire gap.</p>
   <p>Automatic backing is recycled through physical-allocation ownership. Reserved mappings are published only after backing commit succeeds, and partial POSIX unmaps preserve still-live mappings. These are allocation/alias invariants tested by <code>VirtualMemoryAllocationTests.cpp</code>. Host primitives are declared directly in <code>common/virtualMemory.h</code> and implemented by <code>sysWindowsVirtual.cpp</code> / <code>sysLinuxVirtual.cpp</code>.</p>
 
   <h3 id="keeping-the-cpu-and-gpu-in-agreement">Keeping the CPU and GPU in agreement</h3>
   <p>This is the subtlest problem in the whole emulator, and it deserves its own explanation.</p>
 
-  <p>On a real PS5, CPU and GPU share one physical memory. When a game writes vertex data with the CPU and then draws with it, no synchronisation is needed — the GPU reads the same bytes. On a PC, the GPU has its own memory, and Vulkan resources are <em>copies</em>. Kyty must detect when a copy has gone stale.</p>
+  <p>On a real PS5, CPU and GPU share one physical memory. The CPU and GPU can address the same backing, while the game still needs correct ordering and cache visibility. On a PC, the GPU has its own memory, and Vulkan resources are <em>copies</em>. Kyty must detect when a copy has gone stale.</p>
 
   <p>It does this with hardware page protection. Two classes cooperate:</p>
 
@@ -912,7 +912,7 @@ LIB_DEFINE(InitContentExport_1) {
         <tr><td>Networking</td><td><code>libNet.cpp</code> · <code>network.cpp</code></td><td>220&nbsp;KB combined — native sockets (connect, accept, listen, <code>SO_ERROR</code> and <code>TCP_NODELAY</code> translation), resolvers, SSL/HTTP shims, and the NP (PlayStation Network) surface stubbed enough to keep games running offline.</td></tr>
         <tr><td>Audio</td><td><code>audio.cpp</code> · <code>libAudio.cpp</code> · <code>libAudio2.cpp</code> · <code>ajm.cpp</code></td><td>Output mixing plus AJM, the console's hardware audio-decode block: ATRAC9 (via LibAtrac9), AAC and MP3 (via FFmpeg).</td></tr>
         <tr><td>Video</td><td><code>avPlayer.cpp</code> · <code>libVideoDec2.cpp</code></td><td>Full-motion-video playback, decoded with FFmpeg. The AVPlayer implementation credits shadPS4 as a reference.</td></tr>
-        <tr><td>Fonts &amp; images</td><td><code>libFont.cpp</code> · <code>libPngDec.cpp</code></td><td>74&nbsp;KB of font layout; PNG decode via <code>stb</code>.</td></tr>
+        <tr><td>Fonts &amp; images</td><td><code>libFont.cpp</code> · <code>libPngDec.cpp</code></td><td>font layout; PNG decode via <code>stb</code>.</td></tr>
         <tr><td>Async memory (AMPR)</td><td><code>libAmpr.cpp</code></td><td>93&nbsp;KB. The PS5's asynchronous mapping/paging engine — its command records are parsed and replayed against Kyty's memory manager.</td></tr>
         <tr><td>System services</td><td><code>libSaveData</code> · <code>libSystemService</code> · <code>libUserService</code> · <code>libPlayGo</code> · <code>libDialog</code> · <code>libShare</code></td><td>Save data, user profiles, chunk-based install progress, message and error dialogs.</td></tr>
         <tr><td>Guest <code>printf</code></td><td><code>guestPrintf.cpp</code></td><td>25&nbsp;KB implementing the format-string interpreter itself, because the guest passes a System&nbsp;V variadic argument list that cannot simply be forwarded to the host's <code>vprintf</code>.</td></tr>
@@ -995,13 +995,13 @@ extern const std::array&lt;hw_uc_parser_func_t, UC_NUM&gt;    <b>g_hw_uc_func</b
 
   <h3 id="tiling-the-layout-problem">Tiling: the layout problem</h3>
   <p>GPUs do not store textures row by row. They interleave pixels into small blocks so that a 2D neighbourhood lands in one cache line. AMD's schemes have names like Standard 4&nbsp;KB, Standard 64&nbsp;KB, PRT 64&nbsp;KB, Render-Target 64&nbsp;KB and Depth 64&nbsp;KB, each with a different swizzle and different alignment rules per bytes-per-pixel and per mip level.</p>
-  <p>Guest memory holds tiled data; Vulkan wants linear data (or its own opaque tiling). <code>tile.cpp</code> — 52&nbsp;KB of address arithmetic — computes sizes, offsets, mip layouts and the XOR swizzles. The actual conversion runs on the host GPU as compute shaders, one per layout family:</p>
+  <p>Guest memory holds tiled data; Vulkan wants linear data (or its own opaque tiling). <code>tile.cpp</code> — address arithmetic — computes sizes, offsets, mip layouts and the XOR swizzles. The actual conversion runs on the host GPU as compute shaders, one per layout family:</p>
 <pre>gpu_tiler_standard4.comp      gpu_tiler_standard4_3d.comp
 gpu_tiler_standard64.comp     gpu_tiler_standard64_3d.comp
 gpu_tiler_standard256.comp    gpu_tiler_prt.comp
 gpu_tiler_render_target.comp  gpu_tiler_prt_3d.comp
 gpu_tiler_depth.comp          gpu_tiler_promote_d16.comp
-gpu_tiler_swap_bgra16.comp    gpu_tiler_demote_d16.comp</pre>
+gpu_tiler_color_transform.comp    gpu_tiler_demote_d16.comp</pre>
   <div class="srcs"><span class="src">src/graphics/guest_gpu/tile.cpp</span><span class="src">src/graphics/host_gpu/renderer/image/tiler.cpp</span><span class="src">src/graphics/host_gpu/shaders/</span></div>
 </section>
 
@@ -1145,7 +1145,7 @@ gpu_tiler_swap_bgra16.comp    gpu_tiler_demote_d16.comp</pre>
   <h3 id="audio">Audio — ports, graphs and decoders</h3>
   <p>The implementation is now split by responsibility. <code>audio.cpp</code> owns AudioOut/AudioOut2 and AudioIn; <code>acm.cpp</code> owns ACM; <code>audio3d.cpp</code> owns Audio3D; and <code>ngs2.cpp</code> owns NGS2 systems, racks, voices and sampler graphs. Follow those files rather than looking for every API in the former monolithic audio implementation.</p>
   <p>AudioOut2 supports 12-channel (7.1.4) data with downmix, user-capability queries, even blocking-write cadence and capture of submitted PCM before shared guest buffers change. NGS2 plays PCM16 and ATRAC9 sampler blocks, preserves stream/loop positions and supports rear low-pass filtering; unsupported custom modules warn and are skipped.</p>
-  <p><code>ajm.cpp</code> parses asynchronous jobs through <code>libs/ajm/decoder.h</code>. ATRAC9 uses LibAtrac9; AAC, MP3 and the new Opus decoder use FFmpeg. <code>libs/ajm/opus_decoder.h</code> adds Opus decode/control handling, and shared reset logic handles gapless state.</p>
+  <p><code>ajm.cpp</code> parses asynchronous jobs through <code>libs/ajm/decoder.h</code>. ATRAC9 uses LibAtrac9; AAC, MP3 and Opus use FFmpeg. <code>libs/ajm/opus_decoder.h</code> adds Opus decode/control handling, and shared reset logic handles gapless state.</p>
   <p><code>--mic &lt;name&gt;</code> selects SDL3 microphone capture for AudioIn; omitting it produces paced silence. <code>dualSenseHaptics.cpp</code> routes vibration-audio ports to DualSense haptics and pad-speaker ports to the controller speaker when the host device is available. Audio haptics are a separate path from <code>PadSetVibration()</code> motor rumble.</p>
 
 <p>SDL3 also supplies gyroscope and accelerometer samples for pad motion APIs. The default keyboard mapping uses Z/C for L2/R2. Windows are resizable and recreate the swapchain on resize; Space no longer acts as a pause shortcut. VideoOut supports RGB10A2 PQ buffers and layered presentation. <code>--vr</code> enables a virtual HMD2 model (<code>libHmd2.cpp</code>), including field-of-view/reprojection state, not a physical-headset backend.</p>
@@ -1160,7 +1160,7 @@ gpu_tiler_swap_bgra16.comp    gpu_tiler_demote_d16.comp</pre>
   <div class="sec-head"><span class="sec-num">12</span><h2 id="build-dependencies-and-tooling">Build, dependencies and tooling</h2></div>
 
   <h3 id="toolchain">Toolchain</h3>
-  <p>CMake ≥ 3.22.1 drives Ninja. The documented and CI builds use <strong>Clang</strong>; CMake also recognises GCC on POSIX. MSVC's <code>cl.exe</code> is rejected because the project depends on <code>__attribute__((sysv_abi))</code>, so Windows uses <code>clang-cl</code>. Qt&nbsp;6 (Concurrent, Network, Widgets) is required for the launcher.</p>
+  <p>CMake ≥ 3.19 drives Ninja. The documented and CI builds use <strong>Clang</strong>; CMake also recognises GCC on POSIX. MSVC's <code>cl.exe</code> is rejected because the project depends on <code>__attribute__((sysv_abi))</code>, so Windows uses <code>clang-cl</code>. Qt&nbsp;6 (Concurrent, Network, Widgets) is required for the launcher.</p>
 
 <pre>cmake -S <b>.</b> -B _Build/windows -G Ninja -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl \
@@ -1191,7 +1191,7 @@ cmake --install _Build/windows --prefix _Build/windows/install</pre>
     <li><strong>Shader compiler</strong> — <code>ShaderRecompilerComputeTests</code>, <code>shaderCfgTests</code>, <code>ResourceTrackingTests</code>, the legacy-named <code>ScalarProvenanceTests</code> (now typed-IR/SRT tracing), <code>ResourceMaterializationTests</code>, and <code>ShaderVertexMetadataTests</code>.</li>
     <li><strong>Memory, synchronization, and lifetime</strong> — <code>VirtualMemoryAllocationTests</code>, <code>MemoryTrackerTests</code>, <code>PageManagerTests</code>, <code>ImagePageTableTests</code>, <code>SyncOnAddressTests</code>, and <code>EventQueueLifetimeTests</code>.</li>
   </ul>
-  <p>Smaller suites cover the IME dialog, AudioOut2 ports, the kernel file system and <code>BitArray</code>; 25 portable executables, plus the macOS SSE4a suite, aggregated behind the <code>kyty_tests</code> target and <code>ctest --test-dir _Build/windows</code>.</p>
+  <p>Smaller suites cover the IME dialog, AudioOut2 ports, the kernel file system and <code>BitArray</code>; 29 portable executables, plus the macOS SSE4a suite, aggregated behind the <code>kyty_tests</code> target and <code>ctest --test-dir _Build/windows</code>.</p>
   <p>Note the pattern in <code>memory.h</code>: test hooks are compiled in behind <code>KYTY_VIRTUAL_MEMORY_ALLOCATION_TESTS</code> — <code>TestFailNextPhysicalMemoryUnmap()</code>, <code>TestFailGuestBackingStoreUnmapAfter(n)</code>. Failure injection, so the error paths in the allocator are actually exercised.</p>
 
   <h3 id="working-conventions">Working conventions</h3>
@@ -1238,7 +1238,7 @@ cmake --install _Build/windows --prefix _Build/windows/install</pre>
     <div><span class="term">Guest / host</span><span class="def">Guest = the emulated PS5 and its software. Host = the real PC, its OS and its GPU. Nearly every design decision in the codebase is about the boundary between them.</span></div>
     <div><span class="term">SELF</span><span class="def">Signed ELF. Sony's executable container: a small header and segment table wrapping an otherwise standard ELF64 file.</span></div>
     <div><span class="term">NID</span><span class="def">The 11-character encoded hash that names an exported symbol in place of a readable name. Written as <code>hash#library#module</code>.</span></div>
-    <div><span class="term">PRX / module</span><span class="def">A PS5 shared library. Games ship some of their own alongside <code>eboot.bin</code>; Kyty preloads any it finds beside the executable.</span></div>
+    <div><span class="term">PRX / module</span><span class="def">A PS5 shared library. Games ship some of their own alongside <code>eboot.bin</code>; Kyty automatically loads libc when present; the application requests other modules.</span></div>
     <div><span class="term">TLS / TCB</span><span class="def">Thread-local storage and its thread control block. Reached on PS5 through the <code>fs</code> segment, which is why the loader rewrites those instructions.</span></div>
     <div><span class="term">SysV ABI</span><span class="def">The System&nbsp;V AMD64 calling convention, used by the PS5 (and by Linux and macOS). Differs from the Microsoft x64 convention in register assignment and stack layout.</span></div>
     <div><span class="term">Direct memory</span><span class="def">PS5 physical memory, allocated by physical offset then mapped separately to a virtual address.</span></div>
@@ -1265,7 +1265,7 @@ cmake --install _Build/windows --prefix _Build/windows/install</pre>
   </div>
 
   <div class="foot">
-    <p>Written from a reading of the KytyPS5 source tree on <code>main</code> at <code>2650478</code> (29 September 2026; CMake project version 0.3.0). Source references use file and function names at that revision. The project is GPL-2.0-only, based on <a href="https://github.com/InoriRus/Kyty">InoriRus/Kyty</a> (MIT), and credits <a href="https://github.com/shadps4-emu/shadPS4">shadPS4</a> as a reference for the memory model and AVPlayer. It is not affiliated with Sony Interactive Entertainment.</p>
+    <p>Written from a reading of the KytyPS5 source tree on <code>main</code> at <code>7492cb9</code> (7 October 2026; CMake project version 0.3.0). Source references use file and function names at that revision. The project is GPL-2.0-only, based on <a href="https://github.com/InoriRus/Kyty">InoriRus/Kyty</a> (MIT), and credits <a href="https://github.com/shadps4-emu/shadPS4">shadPS4</a> as a reference for the memory model and AVPlayer. It is not affiliated with Sony Interactive Entertainment.</p>
   </div>
 </section>
 
@@ -1461,15 +1461,15 @@ cmake --install _Build/windows --prefix _Build/windows/install</pre>
     },
     {
       t: "Relocate",
-      h: "PreloadAdjacentPrograms → RelocateAll",
-      b: "<p>Any <code>.prx</code> modules sitting beside the executable are loaded, then every relocation in every module is processed: absolute, GOT, PLT, relative and TLS-module relocations. Imports resolve against the HLE database first, then other modules; unresolved ones get a diagnostic thunk.</p>",
-      w: "All modules must be present before relocation, because a symbol may be exported by a module loaded after the one that imports it.",
+      h: "LoadProgram(libc) → RelocateAll",
+      b: "<p>The mounted <code>/app0/sce_module/libc.prx</code> is loaded if present, then relocations in loaded modules are processed: absolute, GOT, PLT, relative and TLS-module relocations. Imports resolve against the HLE database first, then other modules; unresolved ones get a diagnostic thunk.</p>",
+      w: "Only libc is automatically loaded here. Other PRXs enter through application-requested module loading and relocation.",
       s: "src/loader/runtimeLinker.cpp"
     },
     {
       t: "Run",
-      h: "StartAllModules → RunEntry",
-      b: "<p>After relocation, an optional ETAHen/GoldHEN-style cheat JSON is validated against title ID, version and process, then applied (with later module writes kept pending). Module initialisers run next, and <code>RunEntry()</code> switches to the guest stack.</p>",
+      h: "StartModule(libc) → RunEntry",
+      b: "<p>After relocation, an optional ETAHen/GoldHEN-style cheat JSON is validated against title ID, version and process, then applied (with later module writes kept pending). The libc initializer runs when present, and <code>RunEntry()</code> switches to the guest stack.</p>",
       w: "From this instruction on, the CPU is executing the game's own code natively. Everything the emulator does afterwards is reactive — it responds to calls, to page faults, and to command buffers.",
       s: "src/loader/runtimeLinker.cpp"
     }
@@ -1685,7 +1685,7 @@ var BANDS = [
   });
 })();
 </script>
-<script src="assets/highlight.js?v=20260929" defer></script>
+<script src="assets/highlight.js?v=20261007" defer></script>
 </body>
 </html>
 

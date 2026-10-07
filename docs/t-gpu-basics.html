@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>How a GPU actually draws — KytyPS5</title>
 <meta name="description" content="The pipeline, and what Vulkan and SPIR-V are — the background the graphics topics assume.">
-<link rel="stylesheet" href="assets/viz.css?v=20260929">
-<link rel="stylesheet" href="assets/atlas.css?v=20260929">
-<link rel="stylesheet" href="assets/lab.css?v=20260929">
-<link rel="stylesheet" href="assets/tutor.css?v=20260929">
-<link rel="stylesheet" href="assets/app.css?v=20260929">
-<link rel="stylesheet" href="assets/highlight.css?v=20260929">
+<link rel="stylesheet" href="assets/viz.css?v=20261007">
+<link rel="stylesheet" href="assets/atlas.css?v=20261007">
+<link rel="stylesheet" href="assets/lab.css?v=20261007">
+<link rel="stylesheet" href="assets/tutor.css?v=20261007">
+<link rel="stylesheet" href="assets/app.css?v=20261007">
+<link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
@@ -49,24 +49,24 @@
 
   <p>A GPU does not run one shader invocation at a time. It runs a <strong>wave</strong> — 32 or 64 invocations — in lockstep on one instruction stream. Each invocation is a <strong>lane</strong>. One instruction, executed simultaneously for all lanes on their own data.</p>
 
-  <p>So what happens at an <code>if</code>? The lanes cannot diverge; there is only one program counter. Instead the hardware keeps an <strong>execution mask</strong>: a 64-bit register where bit <em>n</em> enables lane <em>n</em>. Branching is implemented by masking:</p>
+  <p>So what happens at an <code>if</code>? Lanes can take different logical paths, but the wave shares an instruction stream. Instead the hardware keeps an <strong>execution mask</strong>: a 64-bit register where bit <em>n</em> enables lane <em>n</em>. Branching is implemented by masking:</p>
 
 <pre>          <i>// if (x &gt; 0) { A } else { B }</i>
 v_cmp_gt_f32  vcc, v0, 0      <i>compare in every lane → 64-bit result in vcc</i>
 s_and_saveexec_b64  s[0:1], vcc   <i>enable only lanes where the test passed</i>
-          <i>… code for A — inactive lanes execute it but discard results …</i>
+          <i>… vector code for A — masked lanes do not update results …</i>
 s_andn2_b64   exec, s[0:1], exec  <i>flip to the other lanes</i>
           <i>… code for B …</i>
 s_mov_b64     exec, s[0:1]        <i>restore</i></pre>
 
-  <p>Both branches are executed; results are simply thrown away for disabled lanes. This is why GPU code is fast when threads agree and slow when they diverge — and, more importantly for us, <strong>why GPU control flow is data manipulation rather than program structure</strong>. Recovering structure from it is the hardest job the shader recompiler has.</p>
+  <p>In this example both vector instruction sequences are visited and disabled lanes do not update their vector results. Scalar instructions are wave-wide, and scalar branches can skip blocks; EXEC masking is not a universal rule for every instruction. This is why GPU code is fast when threads agree and slow when they diverge — and, more importantly for us, <strong>why GPU control flow is data manipulation rather than program structure</strong>. Recovering structure from it is the hardest job the shader recompiler has.</p>
 
   <figure data-viz="wave"></figure>
 
   <div class="primer">
     <span class="lbl">Jargon · scalar versus vector registers</span>
     <p>RDNA 2 has two register files. <strong>VGPRs</strong> (vector registers) hold a different value per lane — a pixel's colour, a vertex's position. <strong>SGPRs</strong> (scalar registers) hold one value shared by the whole wave — a loop counter, a base address, a resource descriptor.</p>
-    <p>The distinction matters because resource descriptors always live in SGPRs. Working out what a shader's SGPRs contain is exactly what lets Kyty know which texture to bind.</p>
+    <p>Image and buffer instructions consume resource descriptors through scalar registers, but shaders can load those descriptors from memory using runtime-selected addresses. Kyty must trace that dataflow and, where supported, discover a bounded set of compatible descriptor candidates.</p>
   </div>
 
   <h4 id="descriptors-how-a-shader-reaches-a-texture">Descriptors: how a shader reaches a texture</h4>
@@ -133,7 +133,7 @@ s_mov_b64     exec, s[0:1]        <i>restore</i></pre>
       <tbody>
         <tr><td><code>VkInstance</code> / <code>VkDevice</code></td><td>The library connection and a logical GPU.</td><td><code>vulkanWindow.cpp</code>, stored in <code>GraphicContext</code>.</td></tr>
         <tr><td><code>VkCommandBuffer</code></td><td>A recorded list of GPU commands. Nothing executes until submitted.</td><td><code>CommandScheduler::CommandPool</code> allocates in batches of four and reuses buffers after their timeline tick completes.</td></tr>
-        <tr><td><code>VkPipeline</code></td><td>A fully-baked configuration: both shaders plus every fixed-function setting — blend, depth, cull, viewport, attachment formats.</td><td><code>PipelineCache</code>, keyed on shader IDs and a packed state struct.</td></tr>
+        <tr><td><code>VkPipeline</code></td><td>Shader stages plus static pipeline state. Supported dynamic state, such as viewport and depth bounds, is set separately.</td><td><code>PipelineCache</code>, keyed on shader IDs and a packed state struct.</td></tr>
         <tr><td><code>VkDescriptorSet</code></td><td>A bundle of resource bindings handed to a pipeline.</td><td><code>DescriptorHeap</code>, allocated in batches; its pool retires after the timeline tick completes.</td></tr>
         <tr><td><code>VkImage</code> / <code>VkBuffer</code></td><td>GPU memory with a format and usage.</td><td><code>TextureCache</code>, <code>BufferCache</code>.</td></tr>
         <tr><td><code>VkFence</code> / timeline <code>VkSemaphore</code></td><td>CPU–GPU and GPU–GPU synchronisation. A timeline semaphore carries a monotonically increasing counter.</td><td><code>MasterSemaphore</code>.</td></tr>
@@ -173,8 +173,8 @@ OpBranchConditional %cond %then %else
       <tbody>
         <tr><td>Original shader source</td><td><code>float d = dot(a, b);</code></td></tr>
         <tr><td>RDNA 2 machine code</td><td><code>v_mul_f32 v4, v0, v3</code> then <code>v_fma_f32 v4, v1, v2, v4</code> …</td></tr>
-        <tr><td>Kyty decoder output</td><td><code>Instruction{ family: VOP2, opcode: VMulF32, dst: v4, src0: v0, src1: v3 }</code></td></tr>
-        <tr><td>Kyty IR</td><td><code>Opcode::MulF32</code> with typed operands and a program counter</td></tr>
+        <tr><td>Kyty decoder output</td><td><code><i>schematic:</i> decoded <code>Opcode::V_MUL_F32</code> with destination v4 and sources v0, v3</code></td></tr>
+        <tr><td>Kyty IR</td><td><code>IR::ValueOpcode::FPMul32</code> with typed operands and source-location metadata</td></tr>
         <tr><td>SPIR-V</td><td><code>%r = OpFMul %float %a %b</code></td></tr>
       </tbody>
     </table>
@@ -243,16 +243,16 @@ OpBranchConditional %cond %then %else
 
 </main>
 
-<script src="assets/topics.js?v=20260929" defer></script>
-<script src="assets/search-index.js?v=20260929" defer></script>
-<script src="assets/app.js?v=20260929" defer></script>
-<script src="assets/viz.js?v=20260929" defer></script>
-<script src="assets/atlas.js?v=20260929" defer></script>
-<script src="assets/lab.js?v=20260929" defer></script>
-<script src="assets/figs.js?v=20260929" defer></script>
-<script src="assets/figures.js?v=20260929" defer></script>
-<script src="assets/highlight.js?v=20260929" defer></script>
-<script src="assets/tutor.js?v=20260929" defer></script>
+<script src="assets/topics.js?v=20261007" defer></script>
+<script src="assets/search-index.js?v=20261007" defer></script>
+<script src="assets/app.js?v=20261007" defer></script>
+<script src="assets/viz.js?v=20261007" defer></script>
+<script src="assets/atlas.js?v=20261007" defer></script>
+<script src="assets/lab.js?v=20261007" defer></script>
+<script src="assets/figs.js?v=20261007" defer></script>
+<script src="assets/figures.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/tutor.js?v=20261007" defer></script>
 </body>
 </html>
 

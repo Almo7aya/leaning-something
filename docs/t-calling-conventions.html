@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Calling conventions &amp; the ABI wall — KytyPS5</title>
 <meta name="description" content="Guest code speaks System V AMD64. Your host compiler on Windows speaks Microsoft x64. Every call between them crosses that wall.">
-<link rel="stylesheet" href="assets/viz.css?v=20260929">
-<link rel="stylesheet" href="assets/atlas.css?v=20260929">
-<link rel="stylesheet" href="assets/lab.css?v=20260929">
-<link rel="stylesheet" href="assets/tutor.css?v=20260929">
-<link rel="stylesheet" href="assets/app.css?v=20260929">
-<link rel="stylesheet" href="assets/highlight.css?v=20260929">
+<link rel="stylesheet" href="assets/viz.css?v=20261007">
+<link rel="stylesheet" href="assets/atlas.css?v=20261007">
+<link rel="stylesheet" href="assets/lab.css?v=20261007">
+<link rel="stylesheet" href="assets/tutor.css?v=20261007">
+<link rel="stylesheet" href="assets/app.css?v=20261007">
+<link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
@@ -67,7 +67,7 @@ rflags                 <i>condition flags</i></pre>
     <div class="fig-note"><p>System V passes six integer arguments in registers; Microsoft passes four, and requires the caller to reserve 32 bytes of "shadow space" on the stack even when all arguments fit in registers. The register order is different too — <code>rcx</code> is the fourth argument under System V and the <em>first</em> under Microsoft.</p></div>
   </div>
 
-  <p>They also differ on which registers a function must preserve. Under System V, <code>rbx rbp r12–r15</code> are callee-saved. Under Microsoft, that list additionally includes <code>rsi rdi</code> and the upper halves of <code>xmm6–xmm15</code>. A function compiled for one convention and called by the other will silently corrupt registers the caller expected to survive.</p>
+  <p>They also differ on which registers a function must preserve. Under System V, <code>rbx rbp r12–r15</code> are callee-saved. Under Microsoft, that list additionally includes <code>rsi rdi</code> and all 128 bits of <code>xmm6–xmm15</code> (the upper YMM/ZMM portions remain volatile). A function compiled for one convention and called by the other will silently corrupt registers the caller expected to survive.</p>
 
   <h4 id="how-kytyps5-bridges-it">How KytyPS5 bridges it</h4>
   <p>Clang lets you set the convention per function with an attribute. Kyty defines two macros and uses them everywhere the boundary is crossed:</p>
@@ -106,7 +106,7 @@ ret</pre>
 
   <h4 id="one-more-x86-64-detail-variadic-functions">One more x86-64 detail: variadic functions</h4>
   <p>Under System V, a variadic function such as <code>printf</code> receives the vector-register argument count in <code>al</code>. This matters when forwarding a real variadic call. The current unresolved-import stub only logs and returns zero; it does not preserve arguments or forward a call.</p>
-  <p>It is also why Kyty cannot simply forward a guest <code>printf</code> to the host's <code>vprintf</code>: the argument list layout differs. <code>src/libs/guestPrintf.cpp</code> is 25 KB implementing the format-string interpreter from scratch for exactly this reason.</p>
+  <p>It is also why Kyty cannot simply forward a guest <code>printf</code> to the host's <code>vprintf</code>: the argument list layout differs. <code>src/libs/guestPrintf.cpp</code> implements the guest format-string interpreter and argument decoding for exactly this reason.</p>
 
   <div class="learn">
     <div class="lh">Learn more · the two calling conventions</div>
@@ -168,16 +168,16 @@ ret</pre>
 
 </main>
 
-<script src="assets/topics.js?v=20260929" defer></script>
-<script src="assets/search-index.js?v=20260929" defer></script>
-<script src="assets/app.js?v=20260929" defer></script>
-<script src="assets/viz.js?v=20260929" defer></script>
-<script src="assets/atlas.js?v=20260929" defer></script>
-<script src="assets/lab.js?v=20260929" defer></script>
-<script src="assets/figs.js?v=20260929" defer></script>
-<script src="assets/figures.js?v=20260929" defer></script>
-<script src="assets/highlight.js?v=20260929" defer></script>
-<script src="assets/tutor.js?v=20260929" defer></script>
+<script src="assets/topics.js?v=20261007" defer></script>
+<script src="assets/search-index.js?v=20261007" defer></script>
+<script src="assets/app.js?v=20261007" defer></script>
+<script src="assets/viz.js?v=20261007" defer></script>
+<script src="assets/atlas.js?v=20261007" defer></script>
+<script src="assets/lab.js?v=20261007" defer></script>
+<script src="assets/figs.js?v=20261007" defer></script>
+<script src="assets/figures.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/tutor.js?v=20261007" defer></script>
 </body>
 </html>
 

@@ -206,7 +206,7 @@
       "Guest code was compiled with that promise and uses it constantly. Here a function has stashed values below <code>rsp</code> and expects them to still be there.",
       "Windows never agreed to this. A kernel-delivered exception, an APC, or a signal handler will use the space below <code>rsp</code> for its own frame — <b>overwriting the guest's data</b>.",
       "The guest then reads back whatever the kernel left behind. No crash, no message: just a value that is quietly wrong, in a function that looks correct.",
-      "So <code>redZonePatcher.cpp</code> walks <code>.eh_frame</code> to find function boundaries, identifies the ones that touch the red zone, and rewrites their memory instructions to route through a trampoline instead.",
+      "So <code>guestInstructionPatcher.cpp</code> walks <code>.eh_frame</code> to find function boundaries, identifies the ones that touch the red zone, and rewrites their memory instructions to route through a trampoline instead.",
       "It cannot fix everything, and it says so: the result struct counts <code>unrelocatable_memory_instruction_count</code> alongside the ones it patched. That honesty is worth more than a silent pass."
     ];
 

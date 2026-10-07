@@ -2,7 +2,7 @@
 
 Unofficial learning material for the [KytyPS5](https://github.com/KytyPS5/KytyPS5)
 PlayStation 5 emulator. The source-specific material was last checked against
-**`main` at commit `2650478` (29 September 2026)**. The material is pinned to a commit,
+**`main` at commit `7492cb9` (7 October 2026)**. The material is pinned to a commit,
 not a release tag; the CMake project version at that commit is 0.3.0.
 
 **Read it online → [almo7aya.dev/leaning-something](https://almo7aya.dev/leaning-something/)**
@@ -29,13 +29,11 @@ negative/boundary cases and an evidence-record capstone. It does not claim exhau
 emulator coverage or turn a passing fixture into game-compatibility evidence.
 
 **[C11: Implementing ray tracing](https://almo7aya.dev/leaning-something/t-ray-tracing.html)**
-is a detailed research and implementation roadmap: current BVH skipping, RDNA 2
-encoding/semantics, CPU and GPU reverse engineering, node-layout recovery, reference
-math, software shader lowering, a conditional Vulkan acceleration path, coherency,
-lifetime, caching, diagnostics and staged validation. Public AMD/Khronos/LLVM sources
-are linked beside the relevant claims. Unknown console formats are labeled; this is
-documentation of proposed work, **not newly implemented emulator RT support**.
-
+traces the implemented full-float BVH32/BVH64 software intersection path: RDNA 2
+encoding, node layouts, typed IR, SPIR-V helpers, BDA access and GPU fixtures. It also
+covers reverse engineering, reference math and a clearly marked optional Vulkan
+ray-query design. A16/D16 and incomplete NSA forms remain unsupported; source and
+fixture coverage do not establish universal game or hardware conformance.
 Run `node docs/labs/raytracing-reference.cjs` to check its 27 illustrative encoding,
 address and geometry cases. These are not hardware or guest-conformance tests.
 
@@ -55,7 +53,7 @@ The old `kytyps5-*.html` file names redirect to these.
 ### The Lab
 
 Eleven tools, none of which play on their own. Every one takes your input and computes
-a real answer, and every one can be made to fail in the way the emulator would fail.
+an answer within its stated teaching model; source-backed checks remain necessary.
 
 | Tool | What you drive |
 |---|---|
@@ -65,11 +63,11 @@ a real answer, and every one can be made to fail in the way the emulator would f
 | **memflow** | Click bytes to write as the CPU, upload, then click again and watch the page fault |
 | **regdecode** | Click individual bits of `CB_COLOR0_INFO` and friends and watch named fields change meaning |
 | **tileaddr** | Pick a texel and layout; see the full offset derivation and how many cache lines a bilinear fetch touches |
-| **wavelab** | A working RDNA 2 interpreter — step an `if` across 64 lanes and watch `EXEC` do the branching |
-| **isa2spirv** | Pick an instruction and toggle its modifiers; see bits, decoded struct, IR and emitted SPIR-V side by side |
+| **wavelab** | A simplified RDNA-style lane model — step an `if` across 64 lanes and watch `EXEC` do the branching |
+| **isa2spirv** | Compare selected encoding fields, schematic IR and SPIR-V fragments; add/multiply modifiers illustrate lowering without re-encoding the base word |
 | **pm4build** | Append packets and run the buffer; draw without a render target and read the error you get |
 | **timeline** | Submit work against a monotonic GPU timeline, then watch completed ticks release retained resources |
-| **pipekey** | Toggle pipeline state and watch the packed key, the hash, and the cache multiply — now with the fields that are actually in the key |
+| **pipekey** | Toggle pipeline state and watch the packed key, the hash, and the cache multiply — using a teaching subset of the current key |
 
 ### The Visual Atlas
 
@@ -159,22 +157,14 @@ expected-failure test to expect success; see D4 for the red-to-green workflow.
 
 ## Upstream snapshot
 
-Pinned to **`main` at `2650478` (29 September 2026)**, CMake project version 0.3.0.
-
-- Program-cache entries refresh borrowed resource snapshots in place; new permutations rebuild temporary IR. Native tessellation is opt-in with `--tessellation`; BVH compute dispatches remain unsupported and are skipped.
-- `RenderContext` owns memory/resource caches. Static pipeline state is **126 bytes**, including logical-alpha remapping; stencil is dynamic. Oversized readbacks retain temporary buffers until GPU completion.
-- Extended guest memory uses a separate 512 GiB arena. Sparse mip uploads validate address-space ownership, copy resident backing and zero-fill owned holes.
-- Dynamic imports are eagerly relocated; unresolved calls use 34-byte diagnostic stubs returning zero. Timed umtx waits and blocking short sleeps use current synchronization paths; APR preserves append order without blocking other ready priorities on address waits.
-- SDL3, read-only `.zar` loading, Unicode paths, persistent SaveDataMemory2, split audio modules, Opus, microphone capture and DualSense haptics/speaker routing are covered in their owning topics.
-- Mailbox is the default presentation mode. `--profile` enables Tracy while `TRACY_NO_CRASH_HANDLER` preserves emulator fault handlers. CMake supports Qt-free builds, compiler caches and Nix; tests include 25 portable executables plus macOS SSE4a coverage.
-
-The updated flow diagrams, simulator, and C10 pointers-and-memory appendix remain
-part of the current site. Simulations are teaching models, not the emulator itself.
-Use `git -C KytyPS5 rev-parse HEAD` to check the source revision.
+Pinned to **`main` at `7492cb9` (7 October 2026)**, CMake project version 0.3.0.
+Use `git -C KytyPS5 rev-parse HEAD` to compare your checkout. The owning
+lessons describe the current implementation; browser simulations remain bounded
+teaching models, not the emulator itself.
 
 ## Caveats
 
-- **Line references drift.** The checked commit is `2650478`; treat a reference
+- **Line references drift.** The checked commit is `7492cb9`; treat a reference
   as "look for this function", not "go to this line". Most pages now cite a function
   or struct name instead of a line.
 - **These are unofficial.** A reading of the source, not maintainer-authored

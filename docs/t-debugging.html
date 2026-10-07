@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Debugging &amp; diagnostics — KytyPS5</title>
 <meta name="description" content="The flags, dumps and tests that turn a black box into something you can inspect.">
-<link rel="stylesheet" href="assets/viz.css?v=20260929">
-<link rel="stylesheet" href="assets/atlas.css?v=20260929">
-<link rel="stylesheet" href="assets/lab.css?v=20260929">
-<link rel="stylesheet" href="assets/tutor.css?v=20260929">
-<link rel="stylesheet" href="assets/app.css?v=20260929">
-<link rel="stylesheet" href="assets/highlight.css?v=20260929">
+<link rel="stylesheet" href="assets/viz.css?v=20261007">
+<link rel="stylesheet" href="assets/atlas.css?v=20261007">
+<link rel="stylesheet" href="assets/lab.css?v=20261007">
+<link rel="stylesheet" href="assets/tutor.css?v=20261007">
+<link rel="stylesheet" href="assets/app.css?v=20261007">
+<link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
@@ -38,7 +38,12 @@
         <tr><td><code>--user-name</code> / <code>--user-id</code></td><td>Kyty / 1000</td><td>Local console user identity.</td></tr>
         <tr><td><code>--present-mode</code></td><td>Mailbox</td><td><code>Fifo</code>, <code>Mailbox</code>, or <code>Immediate</code>.</td></tr>
         <tr><td><code>--gpu &lt;index&gt;</code></td><td>-1</td><td>Which Vulkan physical device to use, by enumeration index. <code>-1</code> picks automatically; a malformed index is a usage error, an out-of-range one falls back to automatic with a log line. The launcher exposes the same choice.</td></tr>
-        <tr><td><code>--mic</code></td><td>unset</td><td>Capture from the named microphone. Omit it for paced silent AudioIn.</td></tr>
+        <tr><td><code>--controller-color &lt;#RRGGBB&gt;</code></td><td>unset</td><td>Override the controller light-bar colour; quote the value in shell commands.</td></tr>
+<tr><td><code>--controller-volume &lt;0-100&gt;</code></td><td>50</td><td>DualSense speaker volume.</td></tr>
+<tr><td><code>--controller-vibration &lt;0-100&gt;</code></td><td>100</td><td>DualSense vibration intensity.</td></tr>
+<tr><td><code>--hide-cursor</code></td><td>off</td><td>Hide the cursor after two seconds without pointer activity.</td></tr>
+<tr><td><code>--trophy-notifications &lt;true|false&gt;</code></td><td>true</td><td>Show trophy unlock notifications and play their sound.</td></tr>
+<tr><td><code>--mic</code></td><td>unset</td><td>Capture from the named microphone. Omit it for paced silent AudioIn.</td></tr>
         <tr><td><code>--vr</code></td><td>off</td><td>Enable the virtual HMD2 headset model; this is not physical VR-headset support.</td></tr>
         <tr><td><code>--amd-cpu</code></td><td>off</td><td>Enable AMD CPU instruction patches, including reciprocal-square-root emulation.</td></tr>
         <tr><td><code>--tessellation</code></td><td>off</td><td>Enable native LS / hull / evaluation-stage draws. Tessellation patches are skipped by default.</td></tr>
@@ -84,7 +89,7 @@ kyty_emulator.exe --game "D:\Games\Example" ^
       <thead><tr><th>Symptom</th><th>Turn on</th><th>Look at</th></tr></thead>
       <tbody>
         <tr><td>Exits immediately</td><td>default</td><td>The last log lines — a failed subsystem, a missing <code>eboot.bin</code>, or an <code>EXIT_NOT_IMPLEMENTED</code> in the loader naming its condition.</td></tr>
-        <tr><td>Crashes before rendering</td><td>default</td><td>Search for <code>Guest fault context</code> — the block names the guest thread, dumps the registers, 96 code bytes and 32 stack words, then ends with <code>Unhandled host exception: … address=…</code>. An address of <code>0x28</code> means an unpatched canary store; a small address usually means a null pointer downstream of a stubbed import.</td></tr>
+        <tr><td>Crashes before rendering</td><td>default</td><td>Search for <code>Guest fault context</code> — the block names the guest thread, dumps the registers, 96 code bytes and 32 stack words, then ends with <code>Unhandled host exception: … address=…</code>. An address of <code>0x28</code> can come from an unpatched segment-relative access or a null pointer plus an offset. Decode the faulting instruction and inspect its operands before assigning a cause.</td></tr>
         <tr><td>Boots, a feature does nothing</td><td><code>PRINT_NAME_ENABLE(true)</code></td><td>The per-call trace for the suspect module, plus stubbed-NID lines in the log.</td></tr>
         <tr><td>Black screen, no errors</td><td><code>--command-buffer-dump true</code></td><td>Whether <code>IT_DRAW_*</code> packets arrive at all. If not, the problem is upstream of graphics.</td></tr>
         <tr><td>Geometry wrong or missing</td><td><code>--rd</code></td><td>The captured draw in RenderDoc: vertex buffers, pipeline, viewport, scissor.</td></tr>
@@ -103,8 +108,8 @@ kyty_emulator.exe --game "D:\Games\Example" ^
     <table>
       <thead><tr><th>You will see</th><th>It means</th></tr></thead>
       <tbody>
-        <tr><td><code>EXIT_NOT_IMPLEMENTED(cond)</code><br><strong>~980 sites</strong></td><td>"If this is true, I did not handle this case." A marker of the frontier, not an impossibility claim. Grepping these maps what the emulator cannot yet do.</td></tr>
-        <tr><td><code>EXIT("…")</code><br><strong>~500 sites</strong></td><td>An unrecoverable invariant violation — a bug, not a gap. The shader recompiler now reports its own failures this way too, instead of passing error strings back up.</td></tr>
+        <tr><td><code>EXIT_NOT_IMPLEMENTED(cond)</code></td><td>"If this is true, I did not handle this case." A marker of the frontier, not an impossibility claim. Grepping these maps what the emulator cannot yet do.</td></tr>
+        <tr><td><code>EXIT("…")</code></td><td>An unrecoverable invariant violation — a bug, not a gap. The shader recompiler now reports its own failures this way too, instead of passing error strings back up.</td></tr>
         <tr><td><code>KYTY_SYSV_ABI</code></td><td>Guest code calls this directly. Never call it from emulator code without thinking about the convention.</td></tr>
         <tr><td><code>PRINT_NAME()</code></td><td>Free per-call tracing, already wired up, off by default per thread.</td></tr>
         <tr><td><code>Common::Singleton&lt;T&gt;::Instance()</code></td><td>How cross-cutting services are reached. There is no dependency injection in this codebase.</td></tr>
@@ -136,7 +141,7 @@ kyty_emulator.exe --game "D:\Games\Example" ^
     </ul>
   </div>
 
-<p class="deck">The aggregate suite covers shader compilation, resource binding, memory, archive I/O, audio, save data and dialogs. CMake defines 25 portable test executables plus an x86-64 macOS SSE4a executable.</p>
+<p class="deck">The aggregate suite covers shader compilation, resource binding, memory, archive I/O, audio, save data and dialogs. CMake defines 29 portable test executables plus an x86-64 macOS SSE4a executable.</p>
 
   <h4 id="the-targets">The targets</h4>
 <pre>cmake --build _Build/windows --target memory_tracker_tests
@@ -146,7 +151,7 @@ kyty_emulator.exe --game "D:\Games\Example" ^
 cmake --build _Build/windows --target kyty_tests
 ctest --test-dir _Build/windows --output-on-failure
 
-<i># 25 portable targets; macOS also adds macos_sse4a_tests:</i>
+<i># 29 portable targets; macOS also adds macos_sse4a_tests:</i>
 ime_dialog_tests
 shader_cfg_tests
 scalar_provenance_tests
@@ -202,11 +207,15 @@ http_uri_parse_tests</pre>
         <tr><td><code>LruCacheTests.cpp</code></td><td>Least-recently-used cache behavior.</td></tr>
         <tr><td><code>BitArrayTests.cpp</code></td><td>Bit-range operations.</td></tr>
         <tr><td><code>ShaderVertexMetadataTests.cpp</code></td><td>Vertex metadata and semantic extraction.</td></tr>
-        <tr><td><code>macosSse4aTests.cpp</code></td><td>x86-64 macOS only: SSE4a signal-context restoration.</td></tr>
+        <tr><td><code>TrophySystemTests.cpp</code></td><td>Trophy metadata, progress, persistence and notification state.</td></tr>
+<tr><td><code>AudioOutTimingTests.cpp</code></td><td>Submission cadence across guest sample rates.</td></tr>
+<tr><td><code>ControllerSettingsTests.cpp</code></td><td>Light-bar colour, speaker volume and vibration settings.</td></tr>
+<tr><td><code>PngEncTests.cpp</code></td><td>PNG encoder parameters, output and error handling.</td></tr>
+<tr><td><code>macosSse4aTests.cpp</code></td><td>x86-64 macOS only: SSE4a signal-context restoration.</td></tr>
       </tbody></table>
   </div>
 
-<p>CI now runs the recompiler suite as well as focused regressions. GPU-dependent cases can report a skip when required rasterization or subgroup capabilities are absent; inspect the test output to distinguish a skipped feature from a passing execution. CTest registrations include focused subsets of the heavy shader executable, so the number of CTest cases is larger than the number of executables. <code>ShaderRayTracingTests.inc</code> covers BVH handling, not implemented ray tracing.</p>
+<p>CI now runs the recompiler suite as well as focused regressions. GPU-dependent cases can report a skip when required rasterization or subgroup capabilities are absent; inspect the test output to distinguish a skipped feature from a passing execution. CTest registrations include focused subsets of the heavy shader executable, so the number of CTest cases is larger than the number of executables. <code>ShaderRayTracingTests.inc</code> covers decoding and compilation; <code>ShaderRayTracingGpuTests.inc</code> exercises software triangle/box intersections and traversal.</p>
 
   <h4 id="failure-injection">Failure injection</h4>
   <p>The allocator compiles in deliberate failure hooks so its error paths are exercised rather than hoped about:</p>
@@ -285,16 +294,16 @@ cmake … -DKYTY_ENABLE_CLANG_TIDY=ON            <i># clang-tidy during builds</
 
 </main>
 
-<script src="assets/topics.js?v=20260929" defer></script>
-<script src="assets/search-index.js?v=20260929" defer></script>
-<script src="assets/app.js?v=20260929" defer></script>
-<script src="assets/viz.js?v=20260929" defer></script>
-<script src="assets/atlas.js?v=20260929" defer></script>
-<script src="assets/lab.js?v=20260929" defer></script>
-<script src="assets/figs.js?v=20260929" defer></script>
-<script src="assets/figures.js?v=20260929" defer></script>
-<script src="assets/highlight.js?v=20260929" defer></script>
-<script src="assets/tutor.js?v=20260929" defer></script>
+<script src="assets/topics.js?v=20261007" defer></script>
+<script src="assets/search-index.js?v=20261007" defer></script>
+<script src="assets/app.js?v=20261007" defer></script>
+<script src="assets/viz.js?v=20261007" defer></script>
+<script src="assets/atlas.js?v=20261007" defer></script>
+<script src="assets/lab.js?v=20261007" defer></script>
+<script src="assets/figs.js?v=20261007" defer></script>
+<script src="assets/figures.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/tutor.js?v=20261007" defer></script>
 </body>
 </html>
 

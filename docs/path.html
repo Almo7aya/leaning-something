@@ -6,8 +6,8 @@
 <title>KytyPS5 — Learning Path</title>
 <meta name="description" content="A seven-level workbook for learning the KytyPS5 PlayStation 5 emulator codebase.">
 <meta name="color-scheme" content="light dark">
-<link rel="stylesheet" href="assets/viz.css?v=20260929">
-<script src="assets/viz.js?v=20260929" defer></script>
+<link rel="stylesheet" href="assets/viz.css?v=20261007">
+<script src="assets/viz.js?v=20261007" defer></script>
 <style>
 .xlinks{margin-top:var(--s6);padding-top:var(--s4);border-top:1px solid var(--rule);font-family:var(--mono);font-size:10.5px;line-height:1.8;color:var(--faint)}
 .xlinks b{display:block;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);margin-bottom:4px;font-weight:600}
@@ -15,7 +15,7 @@
 .xlinks a:hover{color:var(--ink);text-decoration:underline}
 .xlinks a.here{color:var(--ink);font-weight:600}
 </style>
-<link rel="stylesheet" href="assets/highlight.css?v=20260929">
+<link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body><style>
 :root {
@@ -393,7 +393,7 @@ ctest --test-dir _Build/windows --output-on-failure</pre>
 </section>
 
 <div class="foot">
-  <p>Built against KytyPS5 <code>main</code> at <code>2650478</code> (29 September 2026); follow source paths and symbols at that revision. Times are rough and assume you are comfortable with C++ but new to emulation. If a level takes twice as long as stated, that is normal — level 5 in particular is a compiler course wearing a disguise.</p>
+  <p>Built against KytyPS5 <code>main</code> at <code>7492cb9</code> (7 October 2026); follow source paths and symbols at that revision. Times are rough and assume you are comfortable with C++ but new to emulation. If a level takes twice as long as stated, that is normal — level 5 in particular is a compiler course wearing a disguise.</p>
 </div>
 
     </div>
@@ -463,7 +463,7 @@ ctest --test-dir _Build/windows --output-on-failure</pre>
       reading: [
         ["src/libs/libs.h", "The macros. <code>LIB_VERSION</code>, <code>LIB_FUNC</code>, <code>PRINT_NAME</code>. Read the expansions carefully — this is the whole registration mechanism."],
         ["src/libs/libs.cpp", "<code>InitAll</code>, plus three small complete examples at the bottom of the file."],
-        ["src/libs/libAppContent.cpp", "8 KB — a realistically sized module you can read in full."],
+        ["src/libs/libAppContent.cpp", "A compact module you can read in full."],
         ["src/loader/symbolDatabase.h", "How a symbol record is keyed and looked up."],
         ["src/loader/runtimeLinker.cpp", "<code>Resolve()</code> — splitting <code>name#library#module</code> and searching."]
       ],
@@ -474,7 +474,7 @@ ctest --test-dir _Build/windows --output-on-failure</pre>
         ["Work out what happens when two loaded modules export the same NID.", "Read the search order in <code>Resolve()</code>: HLE database first, then each loaded program's export table in load order."]
       ],
       checks: [
-        ["What are the three parts of <code>lUwEK9UwLNo#libSceGnmDriver#libSceGnmDriver</code>?", "<p>Encoded symbol hash, library name, module name. The loader maps the library and module identifiers back through the importing file's own <code>DT_OS_IMPORT_LIB</code> / <code>DT_OS_MODULE_INFO</code> tables before searching, so the same NID in different libraries resolves differently.</p>"],
+        ["What are the three parts of <code>b4fpgH5ZXxQ#Graphics5Driver#Graphics5Driver</code>?", "<p>Encoded symbol hash, library name, module name. The loader maps the library and module identifiers back through the importing file's own <code>DT_OS_IMPORT_LIB</code> / <code>DT_OS_MODULE_INFO</code> tables before searching, so the same NID in different libraries resolves differently.</p>"],
         ["Why must <code>Libs::InitAll()</code> run before <code>LoadElf()</code>?", "<p>Relocation is what binds a guest import to an implementation, and relocation happens during load. If the HLE table were populated afterwards, every import would already have been resolved to a stub.</p><p><span class=\"src\">src/emulator.cpp</span></p>"],
         ["A function you implemented is registered but never called. What are the two likely causes?", "<p>Either the NID string is wrong (a single character off and it silently never matches), or the library/module version in <code>LIB_VERSION</code> does not match what the game imports. Both fail silently — the import just resolves to a stub instead. Check the log for that NID appearing as unresolved.</p>"]
       ],
@@ -518,8 +518,8 @@ ctest --test-dir _Build/windows --output-on-failure</pre>
       reading: [
         ["src/graphics/guest_gpu/pm4.cpp", "147 lines. The packet dumper — the clearest statement of the packet format anywhere in the tree."],
         ["src/graphics/guest_gpu/command_processor/pm4Dispatch.h", "The four jump tables. Skim the declarations to see the shape."],
-        ["…/pm4Handlers.cpp", "<code>CpOpDrawIndexAuto</code> — a tiny function; find it in the 142 KB file and read only that."],
-        ["src/graphics/guest_gpu/graphicsRun.cpp", "<code>GpuState</code> — the queues, the thread, the submission struct."],
+        ["…/pm4Handlers.cpp", "<code>CpOpDrawIndexAuto</code> — a small packet handler; begin with this function."],
+        ["src/graphics/guest_gpu/graphicsRun.cpp", "<code>GuestGpu</code> — the queues, the thread, the submission struct."],
         ["…/graphicsRun.cpp", "<code>CommandProcessor::DrawIndexAuto</code>."],
         ["src/graphics/host_gpu/renderer/renderDraw.cpp", "<code>RenderExecutor::DrawAuto</code>."],
         ["…/renderDraw.cpp", "<code>PrepareDrawRenderState</code> — targets, shaders, resources."],
@@ -536,7 +536,7 @@ ctest --test-dir _Build/windows --output-on-failure</pre>
       checks: [
         ["How many queues does the GPU state machine have, and why that number?", "<p>57: one graphics queue plus seven compute pipes of eight queues each. It mirrors the hardware's queue topology, which games rely on for asynchronous compute — work submitted to different queues must be able to progress independently.</p><p><span class=\"src\">src/graphics/guest_gpu/graphicsRun.cpp</span></p>"],
         ["A <code>WAIT_REG_MEM</code> packet's condition is not yet true. What happens?", "<p><code>Process()</code> returns <code>Pm4ProcessResult::Blocked</code> and the submission is suspended with its buffer-stack cursor intact, so the thread can service other queues and resume later. A busy-wait would let one blocked graphics submission stall all compute work.</p>"],
-        ["Why is the entire static pipeline state part of the cache key, rather than just the shaders?", "<p>Because Vulkan bakes blend factors, cull and polygon mode, sample count and attachment formats into the <code>VkPipeline</code> object. Two draws with identical shaders but different blend state genuinely need different pipelines. Viewport, scissor, depth test/compare, stencil state and blend colour, by contrast, are set as dynamic state and were removed from the key. The key is compared as raw bytes, which is why the struct is <code>#pragma pack(1)</code> with a <code>static_assert</code> on its exact size (126 bytes).</p><p><span class=\"src\">…/pipeline/pipelineCache.h</span></p>"]
+        ["Why is the entire static pipeline state part of the cache key, rather than just the shaders?", "<p>Because Vulkan bakes blend factors, cull and polygon mode, sample count and attachment formats into the <code>VkPipeline</code> object. Two draws with identical shaders but different blend state genuinely need different pipelines. Viewport, scissor, depth test/compare, depth bounds, stencil state and blend colour, by contrast, are set as dynamic state and were removed from the key. The key is compared as raw bytes, which is why the struct is <code>#pragma pack(1)</code> with a <code>static_assert</code> on its exact size (116 bytes).</p><p><span class=\"src\">…/pipeline/pipelineCache.h</span></p>"]
       ],
       out: "Debug a draw that is missing, misplaced or wrongly blended: find its packet, inspect the register state it was built from, and see which Vulkan objects resulted."
     },
@@ -583,7 +583,7 @@ ctest --test-dir _Build/windows --output-on-failure</pre>
         ["src/graphics/host_gpu/pageManager.h", "The protection interface. Small header, large consequences."],
         ["src/graphics/host_gpu/memoryTracker.h", "Dirty tracking, upload and download loops. The templates are dense; read them slowly."],
         ["src/graphics/host_gpu/regionManager.h", "Per-region page state and the spin lock guarding it."],
-        ["…/renderer/cache/textureCache.h", "The public surface first — the private section is 71 KB of implementation."],
+        ["…/renderer/cache/textureCache.h", "Read the public surface before following the implementation in textureCache.cpp."],
         ["…/renderer/cache/bufferCache.h", "The same problem with fewer dimensions. Easier to hold in your head."]
       ],
       tasks: [
@@ -748,7 +748,7 @@ ctest --test-dir _Build/windows --output-on-failure</pre>
   spy();
 })();
 </script>
-<script src="assets/highlight.js?v=20260929" defer></script>
+<script src="assets/highlight.js?v=20261007" defer></script>
 </body>
 </html>
 

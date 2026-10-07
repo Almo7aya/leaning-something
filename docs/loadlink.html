@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>How a game loads &amp; links — KytyPS5</title>
 <meta name="description" content="A detailed, step-by-step diagram of loading a PS5 game: unwrapping the SELF, mapping segments, resolving NIDs into the GOT, standing up threads, and how the running game calls the HLE libraries through the GOT.">
-<link rel="stylesheet" href="assets/tutor.css?v=20260929">
-<link rel="stylesheet" href="assets/app.css?v=20260929">
-<link rel="stylesheet" href="assets/highlight.css?v=20260929">
-<link rel="stylesheet" href="assets/flowdiagram.css?v=20260929">
+<link rel="stylesheet" href="assets/tutor.css?v=20261007">
+<link rel="stylesheet" href="assets/app.css?v=20261007">
+<link rel="stylesheet" href="assets/highlight.css?v=20261007">
+<link rel="stylesheet" href="assets/flowdiagram.css?v=20261007">
 </head>
 <body>
 
@@ -36,16 +36,18 @@
     <div class="band-h"><span class="band-t">The three things that make it work</span></div>
     <div class="prose">
       <p><b>A NID is a name the game can carry without carrying the string.</b> The PS5 module
-      imports <code>sceKernelAllocateDirectMemory</code> as an 11-character hash of the name plus a
-      per-library suffix. The loader hashes the same way to build its lookup table, so a lookup is a
-      hash-map hit, not a string compare — and the shipped binary never contains the readable name.</p>
+      can identify a function with an 11-character NID and encoded library/module identifiers.
+      Kyty registers known NID strings through <code>LIB_FUNC</code>; it does not derive them from
+      C++ function names at load time. <code>SymbolDatabase::GenerateName</code> includes resolved
+      library/module names, versions and symbol type in the lookup key. The diagram uses synthetic
+      NIDs and addresses to show this process; it is not a NID generator.</p>
 
       <p><b>The GOT is the entire indirection.</b> The game's code doesn't know where
       <code>sceKernelAllocateDirectMemory</code> lives; it only knows <em>which GOT slot</em> holds its
       address. The linker fills that slot once, at load, with the address of KytyPS5's hand-written
       C++ function. From then on the game's <code>call [GOT+n]</code> jumps straight into native code
-      with zero per-call overhead — which is why guest code can run at full speed while still being
-      &ldquo;emulated.&rdquo;</p>
+      without resolving the symbol again. The call, ABI transition and implementation still have
+      their normal costs.</p>
 
       <p><b>A guest thread is a host thread.</b> There is no scheduler to emulate. The main thread the
       loader creates is a real <code>pthread</code> with the guest's stack and a TLS block; the
@@ -83,12 +85,12 @@
 
 </main>
 
-<script src="assets/topics.js?v=20260929" defer></script>
-<script src="assets/search-index.js?v=20260929" defer></script>
-<script src="assets/highlight.js?v=20260929" defer></script>
-<script src="assets/app.js?v=20260929" defer></script>
-<script src="assets/flowdiagram.js?v=20260929" defer></script>
-<script src="assets/loadlink.js?v=20260929" defer></script>
-<script src="assets/tutor.js?v=20260929" defer></script>
+<script src="assets/topics.js?v=20261007" defer></script>
+<script src="assets/search-index.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/app.js?v=20261007" defer></script>
+<script src="assets/flowdiagram.js?v=20261007" defer></script>
+<script src="assets/loadlink.js?v=20261007" defer></script>
+<script src="assets/tutor.js?v=20261007" defer></script>
 </body>
 </html>

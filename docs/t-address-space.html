@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>The guest address space — KytyPS5</title>
 <meta name="description" content="Address bands, direct and flexible memory, and the host reservation underneath it all.">
-<link rel="stylesheet" href="assets/viz.css?v=20260929">
-<link rel="stylesheet" href="assets/atlas.css?v=20260929">
-<link rel="stylesheet" href="assets/lab.css?v=20260929">
-<link rel="stylesheet" href="assets/tutor.css?v=20260929">
-<link rel="stylesheet" href="assets/app.css?v=20260929">
-<link rel="stylesheet" href="assets/highlight.css?v=20260929">
+<link rel="stylesheet" href="assets/viz.css?v=20261007">
+<link rel="stylesheet" href="assets/atlas.css?v=20261007">
+<link rel="stylesheet" href="assets/lab.css?v=20261007">
+<link rel="stylesheet" href="assets/tutor.css?v=20261007">
+<link rel="stylesheet" href="assets/app.css?v=20261007">
+<link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
@@ -25,7 +25,7 @@
   <section class="band band-read">
     <div class="band-h"><span class="band-t">Read</span></div>
     <div class="prose">
-<p class="deck">141 KB of code implementing three different allocation models, page attributes, naming, and queryability — because games observe all of it.</p>
+<p class="deck"><code>src/kernel/memory.cpp</code> implements three allocation models, page attributes, naming and queries — because games observe all of them.</p>
 
   <h4 id="three-ways-a-game-gets-memory">Three ways a game gets memory</h4>
   <div class="tw">
@@ -102,7 +102,7 @@ bool TryReadBacking(uint64_t vaddr, void* data, uint64_t size);</pre>
 
 <h4 id="extended-guest-memory">The separate extended-memory arena</h4>
   <p>Ordinary guest mappings keep their existing low address bands. Extended allocations use a separate <strong>512 GiB virtual arena at <code>0x080000000000</code></strong>, an 8 TiB base, described by <code>kExtendedMemoryBase</code> and <code>kExtendedMemorySize</code> in <code>kernel/memory.h</code>. Reserving that address range does not allocate 512 GiB of physical RAM. Extended requests and ordinary mapping searches have separate allocation rules.</p>
-  <p>GPU tracking accepts the low 1 TiB region and that explicit extended interval; the space between them is not a valid resource range. Sparse image tracking covers 44-bit addresses. Dense buffer/BDA tables pack the low and extended intervals together through <code>BufferCache::PageIndex()</code> and <code>PageAddress()</code>, avoiding tables for the entire gap.</p>
+  <p>GPU tracking accepts the low 1 TiB region and that explicit extended interval; the space between them is not a valid resource range. Sparse image tracking covers 44-bit addresses. Dense buffer/BDA tables pack the low and extended intervals together through <code>BufferCache::PageIndex()</code> (guest address to packed page index) and <code>GuestAddress()</code> (packed byte offset to guest address), avoiding tables for the entire gap.</p>
   <p>Automatic backing is recycled through physical-allocation ownership. Reserved mappings are published only after backing commit succeeds, and partial POSIX unmaps preserve still-live mappings. These are allocation/alias invariants tested by <code>VirtualMemoryAllocationTests.cpp</code>. Host primitives are declared directly in <code>common/virtualMemory.h</code> and implemented by <code>sysWindowsVirtual.cpp</code> / <code>sysLinuxVirtual.cpp</code>.</p>
 
   <h4 id="failure-injection">Failure injection</h4>
@@ -175,16 +175,16 @@ bool TestGuestAddressRangeIsOwned(uint64_t vaddr, uint64_t size);
 
 </main>
 
-<script src="assets/topics.js?v=20260929" defer></script>
-<script src="assets/search-index.js?v=20260929" defer></script>
-<script src="assets/app.js?v=20260929" defer></script>
-<script src="assets/viz.js?v=20260929" defer></script>
-<script src="assets/atlas.js?v=20260929" defer></script>
-<script src="assets/lab.js?v=20260929" defer></script>
-<script src="assets/figs.js?v=20260929" defer></script>
-<script src="assets/figures.js?v=20260929" defer></script>
-<script src="assets/highlight.js?v=20260929" defer></script>
-<script src="assets/tutor.js?v=20260929" defer></script>
+<script src="assets/topics.js?v=20261007" defer></script>
+<script src="assets/search-index.js?v=20261007" defer></script>
+<script src="assets/app.js?v=20261007" defer></script>
+<script src="assets/viz.js?v=20261007" defer></script>
+<script src="assets/atlas.js?v=20261007" defer></script>
+<script src="assets/lab.js?v=20261007" defer></script>
+<script src="assets/figs.js?v=20261007" defer></script>
+<script src="assets/figures.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/tutor.js?v=20261007" defer></script>
 </body>
 </html>
 

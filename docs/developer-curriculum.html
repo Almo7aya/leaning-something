@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>The developer curriculum — KytyPS5</title>
 <meta name="description" content="A source-grounded route from understanding KytyPS5 to making and verifying a focused contribution.">
-<link rel="stylesheet" href="assets/viz.css?v=20260929">
-<link rel="stylesheet" href="assets/atlas.css?v=20260929">
-<link rel="stylesheet" href="assets/lab.css?v=20260929">
-<link rel="stylesheet" href="assets/tutor.css?v=20260929">
-<link rel="stylesheet" href="assets/app.css?v=20260929">
-<link rel="stylesheet" href="assets/highlight.css?v=20260929">
+<link rel="stylesheet" href="assets/viz.css?v=20261007">
+<link rel="stylesheet" href="assets/atlas.css?v=20261007">
+<link rel="stylesheet" href="assets/lab.css?v=20261007">
+<link rel="stylesheet" href="assets/tutor.css?v=20261007">
+<link rel="stylesheet" href="assets/app.css?v=20261007">
+<link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 <main class="topic" data-app-content>
@@ -22,7 +22,7 @@
 <div class="prose">
 
 <div class="callout k"><span class="lbl">Scope, not a promise of completeness</span>
-<p>This is a route from reading the emulator to making a defensible change. It is pinned to <code>2650478</code> (29 September 2026), not a guarantee about future main. The traces follow selected real source paths; the labs deliberately introduce caller mistakes in isolated fixtures. They do not demonstrate that a game works, and they do not claim upstream has these bugs.</p></div>
+<p>This is a route from reading the emulator to making a defensible change. It is pinned to <code>7492cb9</code> (7 October 2026), not a guarantee about future main. The traces follow selected real source paths; the labs deliberately introduce caller mistakes in isolated fixtures. They do not demonstrate that a game works, and they do not claim upstream has these bugs.</p></div>
 
 <h2 id="prerequisites">Before you start</h2>
 <p>You should be able to build a small C++20 executable, read pointers and half-open ranges, distinguish an integer from an address, and explain ownership and a mutex. If those are unfamiliar, start with <a href="t-pointers-memory.html">C10: pointers and memory</a>, <a href="t-cpp-language.html">C1: C++</a>, <a href="t-calling-conventions.html">calling conventions</a> and <a href="t-cpp-concurrency.html">C4: concurrency</a>. Use the <a href="path.html">seven-level reading path</a> for orientation; use the gates below for developer readiness.</p>
@@ -60,7 +60,7 @@ git status --short</pre>
 <tr><td>APR, files, .zar and savedata</td><td><a href="t-cpp-system.html">C5 overview</a>; real test entry points in <a href="t-debugging-labs.html#upstream">D4</a>.</td><td>Step-by-step APR scheduler, cancellation/error semantics, SaveDataMemory2 persistence/recovery lab and archive corruption cases.</td></tr>
 <tr><td>Audio, NGS2, video, input</td><td>C5 overview and owning-source references.</td><td>Codec/mixer routing internals, timing/resampling, microphone and haptics labs, AV sync and hardware matrix.</td></tr>
 <tr><td>Tessellation and mesh</td><td>Source overview and branching notes in D3.</td><td>Complete tessellation/mesh traces. Tessellation is opt-in in this snapshot.</td></tr>
-<tr><td>Ray tracing / BVH</td><td><a href="t-ray-tracing.html">C11: detailed research and implementation roadmap</a>, with executable mathematical/encoding teaching fixtures.</td><td>Actual emulator RT execution, confirmed console node formats, hardware-conformance and game results. BVH compute is still skipped; a detailed plan is not implemented support.</td></tr>
+<tr><td>Ray tracing / BVH</td><td><a href="t-ray-tracing.html">C11: detailed research and implementation roadmap</a>, with executable mathematical/encoding teaching fixtures.</td><td>Exhaustive node/encoding coverage, hardware conformance and game results. Full-float BVH32/BVH64 runs through software SPIR-V; A16/D16 and incomplete NSA forms remain unsupported.</td></tr>
 <tr><td>Profiling, presentation, platforms</td><td>Debugging/performance topics and existing teaching diagrams.</td><td>Measured cross-driver benchmarks, full swapchain/video-out trace, launcher workflows and platform-specific conformance.</td></tr>
 </tbody></table></div>
 
@@ -98,10 +98,10 @@ node scripts/build-search-index.cjs</pre>
 
 </div></section>
 </main>
-<script src="assets/topics.js?v=20260929" defer></script>
-<script src="assets/search-index.js?v=20260929" defer></script>
-<script src="assets/app.js?v=20260929" defer></script>
-<script src="assets/highlight.js?v=20260929" defer></script>
-<script src="assets/tutor.js?v=20260929" defer></script>
+<script src="assets/topics.js?v=20261007" defer></script>
+<script src="assets/search-index.js?v=20261007" defer></script>
+<script src="assets/app.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/tutor.js?v=20261007" defer></script>
 </body>
 </html>

@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>The program cache — KytyPS5</title>
 <meta name="description" content="ProgramCache::Get: borrowed resource snapshots, cache misses, mesh and native tessellation stages.">
-<link rel="stylesheet" href="assets/viz.css?v=20260929">
-<link rel="stylesheet" href="assets/atlas.css?v=20260929">
-<link rel="stylesheet" href="assets/lab.css?v=20260929">
-<link rel="stylesheet" href="assets/tutor.css?v=20260929">
-<link rel="stylesheet" href="assets/app.css?v=20260929">
-<link rel="stylesheet" href="assets/highlight.css?v=20260929">
+<link rel="stylesheet" href="assets/viz.css?v=20261007">
+<link rel="stylesheet" href="assets/atlas.css?v=20261007">
+<link rel="stylesheet" href="assets/lab.css?v=20261007">
+<link rel="stylesheet" href="assets/tutor.css?v=20261007">
+<link rel="stylesheet" href="assets/app.css?v=20261007">
+<link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
@@ -25,10 +25,10 @@
   <section class="band band-read">
     <div class="band-h"><span class="band-t">Read</span></div>
     <div class="prose">
-<p class="deck">A draw arrives with a blob of RDNA 2, a hash, current user data, and stage input info. <code>Get</code> returns a handle the renderer can bind. Everything between those two sentences is this function.</p>
+<p class="deck">A draw arrives with registered RDNA 2 code, its cached hash, current user data, and stage input info. <code>ShaderMapUserData</code> validates the AGC code size and computes <code>XXH3_64bits</code> over those bytes when the code is registered; <code>PrepareProgram</code> retrieves that identity. Merged programs combine the front/back identities. <code>Get</code> returns a handle the renderer can bind. Everything between those two sentences is this function.</p>
 
   <h4 id="how-the-stage-is-chosen">How the stage is chosen</h4>
-  <p>Vertex-like input uses <code>input_info.logical_stage</code>: Vertex, Mesh, Local, TessellationControl or TessellationEvaluation. Pixel and compute are selected by input-info type. Merged ES/GS stages use Vulkan mesh shaders; enabled tessellation uses three programs prepared by <code>PrepareTessellationPrograms()</code>. Stage selection no longer tests only a nonzero mesh thread count.</p>
+  <p>Vertex-like input uses <code>input_info.logical_stage</code>: Vertex, Mesh, Local, TessellationControl or TessellationEvaluation. Pixel and compute are selected by input-info type. Merged ES/GS stages use Vulkan mesh shaders; enabled tessellation uses three programs prepared by <code>PrepareTessellationPrograms()</code>. Read the logical stage rather than inferring it from the mesh thread count.</p>
 
   <h4 id="the-lookup-key">The lookup key</h4>
   <p>The program cache is keyed on stage, shader hash, user-data count, code size and a packed static-state blob from the input info — not on the current descriptors. Two draws of the same binary share an entry even when they bind different textures. What they do <em>not</em> share is the SPIR-V permutation:</p>
@@ -46,7 +46,7 @@ return permutation-&gt;handle;</pre>
 
   <h4 id="the-two-misses">The two misses</h4>
   <p>A <em>program</em> miss calls <code>TranslateProgram()</code>, extracts a retained <code>ResourcePlan</code>, materializes its first snapshot and compiles a permutation. A <em>permutation</em> miss reuses the retained plan and refreshed specialization, but also calls <code>TranslateProgram()</code> again: translated blocks are temporary and are not retained by the cache. Both paths call <code>CompilePermutation()</code>, which runs <code>CompileProgram()</code> and creates a Vulkan shader module.</p>
-  <p>A stable hit performs neither translation nor compilation. Cached BVH-containing compute shaders return an empty handle through <code>skip_dispatch</code>. The user-data base is 8 for ordinary vertex/local/evaluation stages and 0 for mesh and tessellation control. Wave size comes from stage metadata, with tessellation control using 64.</p>
+  <p>A stable hit performs neither translation nor compilation. Supported BVH shaders use the same program/permutation path. The user-data base is 8 for ordinary vertex/local/evaluation stages and 0 for mesh and tessellation control. Wave size comes from stage metadata, with tessellation control using 64.</p>
 
   <h4 id="what-the-renderer-receives">What the renderer receives</h4>
   <p><code>ShaderStageRuntime</code> holds pointers to the compiled info and the cache entry's refreshed <code>ResourceSnapshot</code>. They are borrowed views consumed during renderer-serialized preparation, not an owned snapshot moved into each draw. Prepared bindings are reused across draws and dispatches. <code>AdvancePushData()</code> prevents stages from overlapping push constants; mesh draws reserve six dwords.</p>
@@ -70,7 +70,9 @@ return permutation-&gt;handle;</pre>
   <p>Handle <code>1</code> is the only pad. The HIDAPI driver then drives the real DualSense. <code>PadSetTriggerEffect</code> is the same shape: validate handle and pointer, forward the struct, map a failed host call to <code>PAD_ERROR_INVALID_ARG</code>. The NIDs are <code>RR4novUEENY</code> (light bar) and <code>2JgFB2n9oUM</code> (triggers) in <code>libPad.cpp</code>.</p>
 
   <h5 id="libces">libCes — a whole module in one file</h5>
-  <p><code>libCes.cpp</code> is 10 KB of CP932 / Shift-JIS ↔ UTF-8 conversion, registered as <code>LIB_VERSION("Ces", 1, "Ces", 1, 1)</code>. <code>CesDecodeUtf8</code> is a textbook UTF-8 decoder with the replacement character <code>0xfffd</code> on a truncated or invalid sequence. If you want a first HLE file to read that is not inlined inside <code>libs.cpp</code>, start here — then compare it to <code>LibContentExport</code> in <a href="t-hle.html">topic 12</a>.</p>
+  <p><code>libCes.cpp</code> implements CP932 / Shift-JIS ↔ UTF-8 conversion, registered as <code>LIB_VERSION("Ces", 1, "Ces", 1, 1)</code>. <code>CesDecodeUtf8</code> is a textbook UTF-8 decoder with the replacement character <code>0xfffd</code> on a truncated or invalid sequence. If you want a first HLE file to read that is not inlined inside <code>libs.cpp</code>, start here — then compare it to <code>LibContentExport</code> in <a href="t-hle.html">topic 12</a>.</p>
+<p>GPU-selected descriptors require a bounded set of compatible candidates. Resource tracking discovers buffer/image tables and nested selectors, materialization refreshes their current values, and binding/emission maps the selected candidate to native resources. Compatible image views can share a contiguous descriptor array. Unsupported shapes retain explicit guards: deleting a guard does not supply the missing candidate discovery or bindings.</p>
+<p>Raw scalar/descriptor reads use the buffer backing path (<code>TryReadBufferBacking()</code>); formatted image synchronization is handled by the appropriate resource binding. Compute materialization also receives <code>SrtRuntime::workgroup_counts</code>. During compilation, host evaluation values are discarded while dependencies still used by GPU memory operations are retained.</p>
     </div>
   </section>
 
@@ -82,7 +84,7 @@ return permutation-&gt;handle;</pre>
 
   <section class="band band-try">
     <div class="band-h"><span class="band-t">Try</span></div>
-    <p class="band-why">Open <code>pipelineCache.cpp</code> at <code>ProgramCache::Get</code>. Identify the cached skip, newly detected skip, permutation hit and compiled-permutation returns. Check which paths refresh resources and which rebuild temporary IR.</p>
+    <p class="band-why">Open <code>pipelineCache.cpp</code> at <code>ProgramCache::Get</code>. Identify the program miss, permutation miss, permutation hit and compiled-permutation returns. Check which paths refresh resources and which rebuild temporary IR.</p>
   </section>
 
   <section class="band band-do">
@@ -112,15 +114,15 @@ return permutation-&gt;handle;</pre>
 
 </main>
 
-<script src="assets/topics.js?v=20260929" defer></script>
-<script src="assets/search-index.js?v=20260929" defer></script>
-<script src="assets/app.js?v=20260929" defer></script>
-<script src="assets/viz.js?v=20260929" defer></script>
-<script src="assets/atlas.js?v=20260929" defer></script>
-<script src="assets/lab.js?v=20260929" defer></script>
-<script src="assets/figs.js?v=20260929" defer></script>
-<script src="assets/figures.js?v=20260929" defer></script>
-<script src="assets/highlight.js?v=20260929" defer></script>
-<script src="assets/tutor.js?v=20260929" defer></script>
+<script src="assets/topics.js?v=20261007" defer></script>
+<script src="assets/search-index.js?v=20261007" defer></script>
+<script src="assets/app.js?v=20261007" defer></script>
+<script src="assets/viz.js?v=20261007" defer></script>
+<script src="assets/atlas.js?v=20261007" defer></script>
+<script src="assets/lab.js?v=20261007" defer></script>
+<script src="assets/figs.js?v=20261007" defer></script>
+<script src="assets/figures.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/tutor.js?v=20261007" defer></script>
 </body>
 </html>

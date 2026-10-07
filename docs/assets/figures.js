@@ -307,7 +307,7 @@ var PIPE=[
   w:"Capability selection is explicit and auditable, and the emitter can reject an unsupported combination before building a partial module.",
   s:"…/backend/spirv/SpirvEmitter.cpp"},
  {t:"Emit SPIR-V", h:"Spirv::EmitProgram",
-  b:"<p>The backend — about 386 KB across 18 files, including <code>spirvEmitterMesh.cpp</code> — declares capabilities, types, interfaces and descriptors, then lowers typed IR into SPIR-V flow, ALU, memory and image instructions.</p>",
+  b:"<p>The backend, including mesh and BVH emitters, declares capabilities, types, interfaces and descriptors, then lowers typed IR into SPIR-V flow, ALU, memory and image instructions.</p>",
   w:"SPIR-V is stricter than machine code in every respect — types declared, control flow structured, capabilities requested. This stage is where all that bookkeeping happens.",
   s:"…/backend/spirv/SpirvEmitter.cpp"}
 ];

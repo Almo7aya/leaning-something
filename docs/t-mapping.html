@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Mapping a program into memory — KytyPS5</title>
 <meta name="description" content="Reserving the guest address space and laying segments into it at the addresses they demand.">
-<link rel="stylesheet" href="assets/viz.css?v=20260929">
-<link rel="stylesheet" href="assets/atlas.css?v=20260929">
-<link rel="stylesheet" href="assets/lab.css?v=20260929">
-<link rel="stylesheet" href="assets/tutor.css?v=20260929">
-<link rel="stylesheet" href="assets/app.css?v=20260929">
-<link rel="stylesheet" href="assets/highlight.css?v=20260929">
+<link rel="stylesheet" href="assets/viz.css?v=20261007">
+<link rel="stylesheet" href="assets/atlas.css?v=20261007">
+<link rel="stylesheet" href="assets/lab.css?v=20261007">
+<link rel="stylesheet" href="assets/tutor.css?v=20261007">
+<link rel="stylesheet" href="assets/app.css?v=20261007">
+<link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
@@ -28,7 +28,7 @@
 <p class="deck">One function does the whole job. It is worth reading line by line because almost every design decision in the loader is visible in it.</p>
 
   <h4 id="deciding-how-much-space-to-reserve">Deciding how much space to reserve</h4>
-  <p>The mapped size is the highest address any loadable segment reaches, rounded up to a guest page, plus room for the generated TLS handler:</p>
+  <p>The mapped size is the highest address any loadable segment reaches, rounded up to a guest page, plus optional instruction-trampoline space and room for the main module’s generated TLS handler:</p>
 
   <div class="filename">src/loader/runtimeLinker.cpp</div>
 <pre>static uint64_t CalcBaseSize(const Elf64_Ehdr* ehdr, const Elf64_Phdr* phdr) {
@@ -66,7 +66,7 @@ constexpr uint64_t CODE_BASE_OFFSET = 0x100000000u;
 
 static uint64_t g_desired_base_addr = SYSTEM_RESERVED + CODE_BASE_OFFSET;   <i>// 0x900000000</i></pre>
 
-  <p>So the main executable lands at <code>0x900000000</code>, the next module at <code>0x910000000</code>, and so on. Fixed and predictable — which is what lets the crash handler walk a guest stack by range-checking return addresses.</p>
+  <p>The preferred main-module base is <code>0x900000000</code>. The next preferred base advances by enough 256 MiB steps for the mapped size. Check the actual load log and module segments when resolving a fault address; a numeric address band alone does not identify a caller.</p>
 
   <div class="fig">
     <div class="fig-head"><span>File on disk → guest memory</span><span>what LoadProgramToMemory does</span></div>
@@ -186,7 +186,7 @@ static uint64_t g_desired_base_addr = SYSTEM_RESERVED + CODE_BASE_OFFSET;   <i>/
   </ul>
 
   <h4 id="loading-order-across-modules">Loading order across modules</h4>
-  <p><code>PreloadAdjacentPrograms()</code> scans the directory beside the executable for <code>.prx</code> / <code>.sprx</code> modules and loads them before relocation begins. This ordering is mandatory: a symbol may be exported by a module that is loaded after the one importing it, so all modules must exist before any relocation is resolved.</p>
+  <p><code>RuntimeLinker::Execute()</code> resolves <code>/app0/sce_module/libc.prx</code> through the mounted filesystem and loads it automatically if present, then calls <code>RelocateAll()</code>. It starts libc’s initializer when available. Other PRXs are loaded and started when the application requests them through the kernel module APIs; there is no directory-wide preload or dependency-sorted startup pass.</p>
   <div class="srcs"><span class="src">src/loader/runtimeLinker.cpp</span><span class="src">src/loader/runtimeLinker.cpp</span></div>
     </div>
   </section>
@@ -236,16 +236,16 @@ static uint64_t g_desired_base_addr = SYSTEM_RESERVED + CODE_BASE_OFFSET;   <i>/
 
 </main>
 
-<script src="assets/topics.js?v=20260929" defer></script>
-<script src="assets/search-index.js?v=20260929" defer></script>
-<script src="assets/app.js?v=20260929" defer></script>
-<script src="assets/viz.js?v=20260929" defer></script>
-<script src="assets/atlas.js?v=20260929" defer></script>
-<script src="assets/lab.js?v=20260929" defer></script>
-<script src="assets/figs.js?v=20260929" defer></script>
-<script src="assets/figures.js?v=20260929" defer></script>
-<script src="assets/highlight.js?v=20260929" defer></script>
-<script src="assets/tutor.js?v=20260929" defer></script>
+<script src="assets/topics.js?v=20261007" defer></script>
+<script src="assets/search-index.js?v=20261007" defer></script>
+<script src="assets/app.js?v=20261007" defer></script>
+<script src="assets/viz.js?v=20261007" defer></script>
+<script src="assets/atlas.js?v=20261007" defer></script>
+<script src="assets/lab.js?v=20261007" defer></script>
+<script src="assets/figs.js?v=20261007" defer></script>
+<script src="assets/figures.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/tutor.js?v=20261007" defer></script>
 </body>
 </html>
 

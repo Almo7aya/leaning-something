@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>What an emulator is — KytyPS5</title>
 <meta name="description" content="High-level vs low-level emulation, and what the PlayStation 5 actually is as a machine.">
-<link rel="stylesheet" href="assets/viz.css?v=20260929">
-<link rel="stylesheet" href="assets/atlas.css?v=20260929">
-<link rel="stylesheet" href="assets/lab.css?v=20260929">
-<link rel="stylesheet" href="assets/tutor.css?v=20260929">
-<link rel="stylesheet" href="assets/app.css?v=20260929">
-<link rel="stylesheet" href="assets/highlight.css?v=20260929">
+<link rel="stylesheet" href="assets/viz.css?v=20261007">
+<link rel="stylesheet" href="assets/atlas.css?v=20261007">
+<link rel="stylesheet" href="assets/lab.css?v=20261007">
+<link rel="stylesheet" href="assets/tutor.css?v=20261007">
+<link rel="stylesheet" href="assets/app.css?v=20261007">
+<link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
@@ -30,33 +30,38 @@
   <h4 id="the-simplest-possible-emulator">The simplest possible emulator</h4>
   <p>Imagine a toy machine with four registers and a handful of instructions. An emulator for it is a loop:</p>
 
-<pre>uint8_t  memory[65536];
-uint32_t reg[4];
+<pre>uint8_t memory[65536]{}; <i>// load the toy program before executing</i>
+uint32_t reg[4]{};
 uint16_t pc = 0;
+auto fetch = [&amp;]() { return memory[pc++]; }; <i>// 16-bit PC wraps</i>
 
 for (;;) {
-    uint8_t opcode = memory[pc++];
-    switch (opcode) {
-        case 0x01: {                       <i>// LOAD reg, imm32</i>
-            uint8_t r = memory[pc++];
-            reg[r] = *(uint32_t*)&amp;memory[pc];
-            pc += 4;
+    switch (fetch()) {
+        case 0x01: { <i>// LOAD reg, little-endian imm32</i>
+            const uint8_t r = fetch();
+            if (r &gt;= 4) return; <i>// invalid register</i>
+            uint32_t value = 0;
+            for (unsigned byte = 0; byte &lt; 4; ++byte)
+                value |= uint32_t(fetch()) &lt;&lt; (8 * byte);
+            reg[r] = value;
             break;
         }
-        case 0x02: {                       <i>// ADD dst, src</i>
-            uint8_t d = memory[pc++], s = memory[pc++];
+        case 0x02: { <i>// ADD dst, src</i>
+            const uint8_t d = fetch(), s = fetch();
+            if (d &gt;= 4 || s &gt;= 4) return;
             reg[d] += reg[s];
             break;
         }
-        case 0xFF: return;                 <i>// HALT</i>
+        case 0xFF: return; <i>// HALT</i>
+        default: return;  <i>// invalid opcode</i>
     }
 }</pre>
 
-  <p>That is a real emulator. It is called an <strong>interpreter</strong>: fetch an instruction, decode it, do what it says, repeat. Every emulator you have heard of started as some version of this loop.</p>
+  <p>This illustrates an <strong>interpreter</strong>: fetch an instruction, decode it, perform its operation, repeat. A complete implementation also defines invalid instructions, exceptions and every other part of the guest machine.</p>
 
-  <p>The problem is speed. That C code takes maybe 10–50 host instructions to execute one guest instruction. A 3.5 GHz guest CPU would need a 100 GHz host. So real emulators for modern systems do something cleverer.</p>
+  <p>The loop adds decoding and dispatch work to every guest instruction. Its cost depends on the interpreter, host and workload; CPU clock rates alone cannot predict emulation speed. Caching translated code or executing compatible guest instructions natively can avoid much of that repeated work.</p>
 
-  <h4 id="the-four-strategies-from-slowest-to-fastest">The four strategies, from slowest to fastest</h4>
+  <h4 id="the-four-strategies-from-slowest-to-fastest">Execution strategies and HLE</h4>
 
   <div class="tw">
     <table>
@@ -65,26 +70,26 @@ for (;;) {
         <tr>
           <td><strong>Interpretation</strong></td>
           <td>Decode and execute one guest instruction at a time, every time.</td>
-          <td>10–100× slower than native. Perfectly accurate, trivially debuggable.</td>
-          <td>Reference implementations; fallback paths; old 8-bit systems where 100× slower is still fast enough.</td>
+          <td>Repeated decode/dispatch overhead. Instruction stepping is straightforward, but accuracy still depends on the implementation.</td>
+          <td>Reference implementations, fallback paths and systems whose workloads fit the host’s available performance.</td>
         </tr>
         <tr>
           <td><strong>Dynamic recompilation (JIT)</strong></td>
           <td>Translate a block of guest instructions into host instructions once, cache the result, then jump into the cached block whenever that address is reached again.</td>
-          <td>2–10× slower. Complex: self-modifying code, precise exceptions and flags all become hard.</td>
-          <td>Nearly every serious console emulator where guest and host CPUs differ — PS2, Switch, GameCube.</td>
+          <td>Amortises translation cost. Self-modifying code, precise exceptions and flags require careful handling.</td>
+          <td>Common in emulators for systems with a different guest CPU, including PS2 and GameCube.</td>
         </tr>
         <tr>
           <td><strong>Native execution</strong></td>
           <td>Guest and host share an instruction set, so guest code is simply mapped into memory and jumped to.</td>
-          <td>1× — no CPU cost at all. Only possible when the architectures match.</td>
-          <td><strong>KytyPS5</strong>, and every other PS4/PS5 emulator.</td>
+          <td>Avoids general CPU translation. Host feature gaps, ABI crossings, services and faults still have costs.</td>
+          <td><strong>KytyPS5</strong> on a compatible x86-64 execution environment.</td>
         </tr>
         <tr>
           <td><strong>High-level emulation (HLE)</strong></td>
           <td>Not a CPU strategy but a <em>library</em> strategy: instead of running the console's operating system, reimplement what its functions do in native code.</td>
-          <td>Can be faster than the real console. Accuracy depends entirely on how well each function was reverse-engineered.</td>
-          <td>KytyPS5 for all system services and the entire GPU.</td>
+          <td>Performance varies. Correctness depends on matching guest-visible results, side effects, ordering and timing.</td>
+          <td>KytyPS5’s service replacements; graphics also requires packet interpretation and shader translation.</td>
         </tr>
       </tbody>
     </table>
@@ -92,9 +97,9 @@ for (;;) {
 
   <div class="primer">
     <span class="lbl">Jargon · LLE versus HLE</span>
-    <p><strong>Low-level emulation (LLE)</strong> simulates the hardware and runs the console's own firmware and libraries on top. Maximum accuracy, terrible speed, and it requires copyrighted system files that users must dump from a console they own.</p>
+    <p><strong>Low-level emulation (LLE)</strong> reproduces lower-level hardware interfaces, often allowing original firmware or libraries to execute. It can preserve behavior that an HLE replacement omits, but neither accuracy nor speed follows from the label alone.</p>
     <p><strong>High-level emulation (HLE)</strong> replaces those libraries with reimplementations. It can avoid executing those system-library binaries, but each replacement must match the guest-visible contract. A missing function can fail immediately or fall back to a logging zero-return stub; silent incorrect results can cause failures much later. HLE does not by itself establish compatibility.</p>
-    <p>KytyPS5 is HLE throughout. Its README states that "no external low-level emulation modules are currently required," which is a deliberate design goal, not an accident.</p>
+    <p>KytyPS5 primarily replaces system services with HLE. Its README says no external low-level emulation modules are required. The loader can still execute a game-supplied <code>/app0/sce_module/libc.prx</code>; “HLE” does not mean every instruction outside the main executable is replaced.</p>
   </div>
 
   <h4 id="what-an-emulator-must-actually-reproduce">What an emulator must actually reproduce</h4>
@@ -109,7 +114,7 @@ for (;;) {
     <li><strong>The timing model</strong> — vertical blank, frame pacing, audio clocks. Games are full of code that assumes 60 Hz.</li>
   </ol>
 
-  <p>Notice that only the first of those is about "emulating a CPU." For the PS5, the first item is free — and the remaining five are the entire project.</p>
+  <p>Most ordinary guest CPU instructions execute directly in a compatible x86-64 environment. Targeted instruction compatibility is still necessary; the remaining responsibilities account for most of this project.</p>
 
   <div class="learn">
     <div class="lh">Learn more · emulation fundamentals</div>
@@ -128,11 +133,11 @@ for (;;) {
     <table>
       <thead><tr><th>Component</th><th>What it is</th><th>Emulation consequence</th></tr></thead>
       <tbody>
-        <tr><td><strong>CPU</strong></td><td>8-core AMD Zen 2, x86-64, 16 hardware threads, ~3.5 GHz.</td><td>Same instruction set as any modern PC. This is the single most important fact in this book.</td></tr>
+        <tr><td><strong>CPU</strong></td><td>8-core AMD Zen 2, x86-64, 16 hardware threads, ~3.5 GHz.</td><td>Shares the x86-64 ISA with an x86-64 PC; individual instruction features still need checking.</td></tr>
         <tr><td><strong>GPU</strong></td><td>AMD RDNA 2, 36 compute units, custom. Programmed through a command-packet interface, not a driver API.</td><td>Must be modelled in software: packet parser, register file, and a shader compiler from RDNA 2 to SPIR-V.</td></tr>
-        <tr><td><strong>Memory</strong></td><td>16 GB GDDR6, <em>unified</em> — CPU and GPU address the same physical memory.</td><td>The hardest problem in the project. A PC has separate GPU memory, so every shared resource becomes a copy that can go stale.</td></tr>
-        <tr><td><strong>Page size</strong></td><td>16 KB, not the 4 KB PCs use.</td><td>Guest allocations, alignment and protection all work in 16 KB units; the host works in 4 KB. Every protection change touches four host pages.</td></tr>
-        <tr><td><strong>Storage</strong></td><td>Custom NVMe with hardware decompression.</td><td>Emulated as ordinary file I/O. Games that assume streaming speeds may behave oddly but rarely break.</td></tr>
+        <tr><td><strong>Memory</strong></td><td>16 GB GDDR6, <em>unified</em> — CPU and GPU address the same physical memory.</td><td>Host Vulkan resources can have separate backing or layouts. Kyty must keep CPU-visible guest bytes and cached GPU resources coherent, including on unified-memory hosts.</td></tr>
+        <tr><td><strong>Page size</strong></td><td>16 KB, not the 4 KB PCs use.</td><td>Guest VM APIs use 16 KB granularity where required. The renderer’s tracker uses 4 KB pages; one guest page spans four of them.</td></tr>
+        <tr><td><strong>Storage</strong></td><td>Custom NVMe with hardware decompression.</td><td>Implemented through file I/O, asynchronous requests and supported decompression paths. Ordering, completion and error behavior matter alongside throughput.</td></tr>
         <tr><td><strong>Audio</strong></td><td>"Tempest" 3D audio engine plus a fixed-function decode block (AJM).</td><td>AJM takes batched decode jobs, so Kyty parses the job format and routes to FFmpeg / LibAtrac9.</td></tr>
       </tbody>
     </table>
@@ -144,14 +149,14 @@ for (;;) {
   <div class="stack">
     <div class="layer g"><span class="nm">Game / engine</span><span class="chip guest">guest</span><span class="ds">Unreal, Unity, or an in-house engine, compiled to x86-64 with Sony's Clang-based toolchain.</span></div>
     <div class="arrow">↓ calls</div>
-    <div class="layer g"><span class="nm">System modules (.prx / .sprx)</span><span class="chip guest">guest</span><span class="ds"><code>libkernel</code>, <code>libSceGnmDriver</code> (graphics), <code>libSceAudioOut</code>, <code>libSceNet</code>, <code>libSceSaveData</code>… Dozens of shared libraries, each exporting hashed symbols.</span></div>
+    <div class="layer g"><span class="nm">System modules (.prx / .sprx)</span><span class="chip guest">guest</span><span class="ds"><code>libkernel</code>, <code>Graphics5Driver</code> (graphics), <code>libSceAudioOut</code>, <code>libSceNet</code>, <code>libSceSaveData</code>… Dozens of shared libraries, each exporting hashed symbols.</span></div>
     <div class="arrow">↓ syscalls</div>
     <div class="layer g"><span class="nm">Kernel (FreeBSD-derived)</span><span class="chip guest">guest</span><span class="ds">Processes, threads (pthreads), <code>kqueue</code>-style event queues, mmap-style memory, a Unix-like file system.</span></div>
     <div class="arrow">↓ writes packets to</div>
     <div class="layer g"><span class="nm">GPU command processor</span><span class="chip guest">guest</span><span class="ds">Reads PM4 packets straight out of memory. There is no "driver" between the game and the hardware in the PC sense.</span></div>
   </div>
 
-  <p>KytyPS5 replaces the middle two layers wholesale with native C++, and models the fourth in software. The top layer — the game — runs untouched.</p>
+  <p>KytyPS5 replaces the middle two layers wholesale with native C++, and models the fourth in software. The game executes natively, with relocations and targeted compatibility patches applied by the loader.</p>
 
   <div class="callout g">
     <span class="lbl">Naming you will meet</span>
@@ -228,16 +233,16 @@ for (;;) {
 
 </main>
 
-<script src="assets/topics.js?v=20260929" defer></script>
-<script src="assets/search-index.js?v=20260929" defer></script>
-<script src="assets/app.js?v=20260929" defer></script>
-<script src="assets/viz.js?v=20260929" defer></script>
-<script src="assets/atlas.js?v=20260929" defer></script>
-<script src="assets/lab.js?v=20260929" defer></script>
-<script src="assets/figs.js?v=20260929" defer></script>
-<script src="assets/figures.js?v=20260929" defer></script>
-<script src="assets/highlight.js?v=20260929" defer></script>
-<script src="assets/tutor.js?v=20260929" defer></script>
+<script src="assets/topics.js?v=20261007" defer></script>
+<script src="assets/search-index.js?v=20261007" defer></script>
+<script src="assets/app.js?v=20261007" defer></script>
+<script src="assets/viz.js?v=20261007" defer></script>
+<script src="assets/atlas.js?v=20261007" defer></script>
+<script src="assets/lab.js?v=20261007" defer></script>
+<script src="assets/figs.js?v=20261007" defer></script>
+<script src="assets/figures.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/tutor.js?v=20261007" defer></script>
 </body>
 </html>
 

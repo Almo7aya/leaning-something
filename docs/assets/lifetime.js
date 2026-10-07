@@ -99,7 +99,7 @@
 
     { p: "Run", t: "Jump to the entry point", to: ["t-calling-conventions.html", "03 · Calling conventions & the ABI wall"],
       stage: "abi", focus: "stage",
-      say: "Control enters guest code. This is the ABI wall: the emulator was compiled for the host convention, the guest for <b>System V</b>. Arguments live in different registers on each side, so the crossing has to be deliberate — and from here the CPU runs the game's own instructions natively, at full speed." },
+      say: "Control enters guest code. This is the ABI wall: the emulator was compiled for the host convention, the guest for <b>System V</b>. Arguments live in different registers on each side, so the crossing has to be deliberate — and from here the CPU executes ordinary game instructions directly." },
 
     { p: "Run", t: "The game spawns threads", to: ["t-threads.html", "11 · Threads and TLS"],
       stage: "threads", focus: "mem",

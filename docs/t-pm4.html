@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PM4 &amp; the command processor — KytyPS5</title>
 <meta name="description" content="How a draw call travels from guest code into PM4 command packets, through a software command processor, and out to Vulkan.">
-<link rel="stylesheet" href="assets/viz.css?v=20260929">
-<link rel="stylesheet" href="assets/atlas.css?v=20260929">
-<link rel="stylesheet" href="assets/lab.css?v=20260929">
-<link rel="stylesheet" href="assets/tutor.css?v=20260929">
-<link rel="stylesheet" href="assets/app.css?v=20260929">
-<link rel="stylesheet" href="assets/highlight.css?v=20260929">
+<link rel="stylesheet" href="assets/viz.css?v=20261007">
+<link rel="stylesheet" href="assets/atlas.css?v=20261007">
+<link rel="stylesheet" href="assets/lab.css?v=20261007">
+<link rel="stylesheet" href="assets/tutor.css?v=20261007">
+<link rel="stylesheet" href="assets/app.css?v=20261007">
+<link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
@@ -33,17 +33,17 @@
   <h4 id="what-an-agc-call-actually-does">What an AGC call actually does</h4>
   <p>On a PC, <code>vkCmdDraw</code> goes into a driver that eventually produces hardware commands. On the PS5 the game <em>is</em> the driver. AGC functions are thin builders that write dwords into memory the game owns:</p>
 
-<pre>uint32_t* KYTY_SYSV_ABI GraphicsCbDispatch(CommandBuffer* buf, uint32_t thread_group_x,
+<pre>uint32_t* KYTY_SYSV_ABI AgcCbDispatch(CommandBuffer* buf, uint32_t thread_group_x,
                                             uint32_t thread_group_y, uint32_t thread_group_z, ...);
-uint32_t  KYTY_SYSV_ABI GraphicsCbDispatchGetSize();
-uint32_t* KYTY_SYSV_ABI GraphicsCbSetShRegistersDirect(CommandBuffer* buf, ...);
-uint32_t* KYTY_SYSV_ABI GraphicsCbReleaseMem(CommandBuffer* buf, uint8_t action, ...);</pre>
+uint32_t  KYTY_SYSV_ABI AgcCbDispatchGetSize();
+uint32_t* KYTY_SYSV_ABI AgcCbSetShRegistersDirect(CommandBuffer* buf, ...);
+uint32_t* KYTY_SYSV_ABI AgcCbReleaseMem(CommandBuffer* buf, uint8_t action, ...);</pre>
 
   <p>Note the <code>…GetSize()</code> companions. A game asks how many dwords a command will occupy so it can lay out its buffer in advance, then calls the builder to fill them. This is why Kyty's reimplementations must produce <strong>byte-identical output</strong> to the real driver: the game may compute offsets into the buffer, patch values later, or jump over regions.</p>
 
   <div class="callout g">
     <span class="lbl">Patch functions prove the point</span>
-    <p>The AGC API includes functions such as <code>GraphicsSetCxRegIndirectPatchSetAddress</code>, <code>GraphicsJumpPatchSetTarget</code> and <code>GraphicsWriteDataPatchSetAddressOrOffset</code>. These exist so a game can build a command buffer once and rewrite specific fields each frame. A reimplementation that produced structurally different packets would break them.</p>
+    <p>The AGC API includes functions such as <code>AgcSetCxRegIndirectPatchSetAddress</code>, <code>AgcJumpPatchSetTarget</code> and <code>AgcWriteDataPatchSetAddressOrOffset</code>. These exist so a game can build a command buffer once and rewrite specific fields each frame. A reimplementation that produced structurally different packets would break them.</p>
   </div>
 
   <h4 id="submission">Submission</h4>
@@ -64,9 +64,9 @@ void SubmitCompute(uint32_t queue, std::span&lt;const uint32_t&gt; commands);</p
   makes lifetime bugs visible instead of hiding them behind an emulator-only copy.</p>
 
   <h4 id="the-queue-model">The queue model</h4>
-  <div class="filename">src/graphics/guest_gpu/graphicsRun.cpp</div>
+  <div class="filename">src/graphics/guest_gpu/graphicsRun.h — selected private fields</div>
 <pre>class GuestGpu {
-public:
+private:
     static constexpr uint32_t ComputePipeCount     = 7;
     static constexpr uint32_t QueuesPerComputePipe = 8;
     static constexpr uint32_t ComputeQueueCount    = ComputePipeCount * QueuesPerComputePipe; <i>// 56</i>
@@ -90,7 +90,6 @@ private:
     std::span&lt;const uint32_t&gt; constant_commands;
     Pm4Execution   command_execution;      <i>// resumable cursor</i>
     Pm4Execution   constant_execution;
-    bool           reset_processor  = false;
     bool           started          = false;
     bool           command_complete = false;
     bool           constant_complete = false;
@@ -106,10 +105,16 @@ void SendCommandSync(Common::UniqueFunction&lt;void&gt;&amp;&amp; command);    <
 
   <p>Both are re-entrancy aware — if you are already on the GPU thread they run the callable inline rather than deadlocking:</p>
 <pre>void GuestGpu::SendCommand(Common::UniqueFunction&lt;void&gt;&amp;&amp; command) {
-    if (<b>IsGpuThread</b>()) { command(); return; }
-    Common::LockGuard lock(m_queue_mutex);
-    m_commands.push_back(std::move(command));
-    m_work_available.Signal();
+	EXIT_IF(!command);
+	if (IsGpuThread()) {
+		command();
+		return;
+	}
+	Common::LockGuard lock(m_queue_mutex);
+	EXIT_IF(!m_accepting);
+	m_commands.push_back(std::move(command));
+	m_pending_commands.fetch_add(1, std::memory_order_release);
+	m_work_available.Signal();
 }</pre>
 <p class="deck">Kyty implements, in software, the front end of an AMD GPU: the unit that reads packets from memory and turns them into state changes and work.</p>
 
@@ -147,7 +152,7 @@ len                    = ((cmd_id &gt;&gt; <b>16u</b>) &amp; 0x3fffu) + 1;   <i>
   </div>
 
   <h4 id="dispatch-by-jump-table">Dispatch by jump table</h4>
-  <p>With around 50 opcodes and thousands of register offsets, a switch would be unmanageable. Kyty builds four function-pointer tables and indexes them directly:</p>
+  <p>With around 50 opcodes and thousands of register offsets, a switch would be unmanageable. Kyty builds five function-pointer tables and indexes them directly:</p>
 
   <div class="filename">src/graphics/guest_gpu/command_processor/pm4Dispatch.h</div>
 <pre>extern const std::array&lt;cp_op_parser_func_t, 256&gt;       <b>g_cp_op_func</b>;        <i>// by opcode</i>
@@ -176,7 +181,7 @@ void GraphicsInitJmpTables();</pre>
     return 2;                                        <i>// consumed 2 body dwords</i>
 }</pre>
 
-  <p>That is the pattern for all 144 KB of <code>pm4Handlers.cpp</code>: assert on what is not understood, unpack the fields, call into <code>CommandProcessor</code>, report the size.</p>
+  <p>That is the pattern throughout <code>pm4Handlers.cpp</code>: assert on what is not understood, unpack the fields, call into <code>CommandProcessor</code>, report the size.</p>
 
   <h4 id="mechanisms-a-real-command-processor-has">Mechanisms a real command processor has</h4>
   <div class="tw">
@@ -220,19 +225,26 @@ void GraphicsInitJmpTables();</pre>
   <h4 id="the-resumable-cursor">The resumable cursor</h4>
   <div class="filename">…/command_processor/commandProcessor.h</div>
 <pre>class Pm4Execution {
-    struct BufferCursor {
-        uint32_t* next_packet         = nullptr;
-        uint32_t  remaining_dw        = 0;
-        uint32_t  total_dw            = 0;
-        uint32_t  deferred_advance_dw = 0;
-    };
-    std::vector&lt;BufferCursor&gt; m_buffer_stack;   <i>// indirect-buffer nesting</i>
-    bool m_suspended     = false;
-    bool m_made_progress = false;
+public:
+	[[nodiscard]] bool MadeProgress() const noexcept { return m_made_progress; }
+
+private:
+	friend class CommandProcessor;
+
+	struct BufferCursor {
+		std::span&lt;const uint32_t&gt; commands;
+		uint32_t                  offset_dw = 0;
+	};
+
+	std::vector&lt;BufferCursor&gt; m_buffer_stack;
+	std::span&lt;const uint32_t&gt; m_next_buffer;
+	bool                      m_chain         = false;
+	bool                      m_suspended     = false;
+	bool                      m_made_progress = false;
 };
 
 enum class Pm4ProcessResult { Complete, Blocked };
-Pm4ProcessResult Process(Pm4Execution&amp; execution, uint32_t* buffer, uint32_t size_dw);</pre>
+	Pm4ProcessResult Process(Pm4Execution&amp; execution, std::span&lt;const uint32_t&gt; commands);</pre>
 
   <p><code>m_made_progress</code> lets the scheduler detect a queue that is blocked and getting nowhere, so it can move on instead of spinning.</p>
     </div>
@@ -338,16 +350,16 @@ Pm4ProcessResult Process(Pm4Execution&amp; execution, uint32_t* buffer, uint32_t
 
 </main>
 
-<script src="assets/topics.js?v=20260929" defer></script>
-<script src="assets/search-index.js?v=20260929" defer></script>
-<script src="assets/highlight.js?v=20260929" defer></script>
-<script src="assets/app.js?v=20260929" defer></script>
-<script src="assets/viz.js?v=20260929" defer></script>
-<script src="assets/atlas.js?v=20260929" defer></script>
-<script src="assets/lab.js?v=20260929" defer></script>
-<script src="assets/figs.js?v=20260929" defer></script>
-<script src="assets/figures.js?v=20260929" defer></script>
-<script src="assets/tutor.js?v=20260929" defer></script>
+<script src="assets/topics.js?v=20261007" defer></script>
+<script src="assets/search-index.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/app.js?v=20261007" defer></script>
+<script src="assets/viz.js?v=20261007" defer></script>
+<script src="assets/atlas.js?v=20261007" defer></script>
+<script src="assets/lab.js?v=20261007" defer></script>
+<script src="assets/figs.js?v=20261007" defer></script>
+<script src="assets/figures.js?v=20261007" defer></script>
+<script src="assets/tutor.js?v=20261007" defer></script>
 </body>
 </html>
 

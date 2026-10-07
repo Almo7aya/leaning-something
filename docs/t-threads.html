@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Threads and TLS — KytyPS5</title>
 <meta name="description" content="Guest threads are real host threads. Standing one up means crossing the ABI wall in the opposite direction.">
-<link rel="stylesheet" href="assets/viz.css?v=20260929">
-<link rel="stylesheet" href="assets/atlas.css?v=20260929">
-<link rel="stylesheet" href="assets/lab.css?v=20260929">
-<link rel="stylesheet" href="assets/tutor.css?v=20260929">
-<link rel="stylesheet" href="assets/app.css?v=20260929">
-<link rel="stylesheet" href="assets/highlight.css?v=20260929">
+<link rel="stylesheet" href="assets/viz.css?v=20261007">
+<link rel="stylesheet" href="assets/atlas.css?v=20261007">
+<link rel="stylesheet" href="assets/lab.css?v=20261007">
+<link rel="stylesheet" href="assets/tutor.css?v=20261007">
+<link rel="stylesheet" href="assets/app.css?v=20261007">
+<link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
@@ -28,7 +28,7 @@
 <p class="deck">Guest threads are real host threads — but with two pieces of state Kyty has to maintain itself, and a set of FreeBSD semantics that do not come free.</p>
 
   <h4 id="what-pthread-cpp-implements">What <code>pthread.cpp</code> implements</h4>
-  <p>About 130 KB covering: threads with names, priorities and CPU affinity masks; mutexes in all four types with protocol attributes; condition variables; read-write locks (including try/timed variants); <code>umtx</code> wait/wake; thread-specific keys with destructors; cancellation in both deferred and asynchronous modes; per-thread signal queues; and the timing calls (<code>KernelUsleep</code>, <code>KernelNanosleep</code>, clock queries). On Linux and macOS every guest thread also installs a 64 KB alternate signal stack so a GPU-tracking fault can still be delivered when the guest stack itself is write-protected.</p>
+  <p>The file covers: threads with names, priorities and CPU affinity masks; mutexes in all four types with protocol attributes; condition variables; read-write locks (including try/timed variants); <code>umtx</code> wait/wake; thread-specific keys with destructors; cancellation in both deferred and asynchronous modes; per-thread signal queues; and the timing calls (<code>KernelUsleep</code>, <code>KernelNanosleep</code>, clock queries). On Linux and macOS every guest thread also installs a 64 KB alternate signal stack so a GPU-tracking fault can still be delivered when the guest stack itself is write-protected.</p>
 
   <p>Both the Sony-prefixed and POSIX-named entry points are registered, because games use both:</p>
 <pre>LIB_FUNC("7H0iTOciTLo", Posix::pthread_mutex_lock);
@@ -84,9 +84,9 @@ void* ApplicationHeapMemalign(uint64_t alignment, uint64_t size);</pre>
     </div>
   </section>
 
-  <section class="band band-read"><div class="band-h"><span class="band-t">Current wait and fiber behavior</span></div><div class="prose"><p>Timed <code>_umtx_op</code> waits now use shared <code>SyncOnAddress</code> deadlines and pending-signal dispatch. Pthread key values are indexed per thread, per-thread wakeups are corrected, and the old global condition-waiter registry has been removed. Fiber context uses native TLS when execution migrates between threads; small guest stacks are preserved.</p>
+  <section class="band band-read"><div class="band-h"><span class="band-t">Current wait and fiber behavior</span></div><div class="prose"><p>Timed <code>_umtx_op</code> waits use shared <code>SyncOnAddress</code> deadlines and pending-signal dispatch. Pthread key values and wakeup state are maintained per thread. Fiber context uses native TLS when execution migrates between threads; small guest stacks are preserved.</p>
 <h4 id="blocking-short-sleeps">Short sleeps block too</h4>
-  <p><code>KernelUsleep()</code> and <code>KernelNanosleep()</code> use signal-polling sleep helpers. Nonzero short waits no longer take the old busy-spin or one-microsecond backoff shortcut. Windows uses its high-resolution waitable timer path; POSIX uses an absolute monotonic deadline that survives signal interruptions. Zero-duration requests still have their explicit signal-dispatch behavior.</p>
+  <p><code>KernelUsleep()</code> and <code>KernelNanosleep()</code> use signal-polling sleep helpers. Nonzero short waits use blocking waits with signal polling. Windows uses its high-resolution waitable timer path; POSIX uses an absolute monotonic deadline that survives signal interruptions. Zero-duration requests still have their explicit signal-dispatch behavior.</p>
 </div></section>
 
   <section class="band band-watch">
@@ -138,16 +138,16 @@ void* ApplicationHeapMemalign(uint64_t alignment, uint64_t size);</pre>
 
 </main>
 
-<script src="assets/topics.js?v=20260929" defer></script>
-<script src="assets/search-index.js?v=20260929" defer></script>
-<script src="assets/app.js?v=20260929" defer></script>
-<script src="assets/viz.js?v=20260929" defer></script>
-<script src="assets/atlas.js?v=20260929" defer></script>
-<script src="assets/lab.js?v=20260929" defer></script>
-<script src="assets/figs.js?v=20260929" defer></script>
-<script src="assets/figures.js?v=20260929" defer></script>
-<script src="assets/highlight.js?v=20260929" defer></script>
-<script src="assets/tutor.js?v=20260929" defer></script>
+<script src="assets/topics.js?v=20261007" defer></script>
+<script src="assets/search-index.js?v=20261007" defer></script>
+<script src="assets/app.js?v=20261007" defer></script>
+<script src="assets/viz.js?v=20261007" defer></script>
+<script src="assets/atlas.js?v=20261007" defer></script>
+<script src="assets/lab.js?v=20261007" defer></script>
+<script src="assets/figs.js?v=20261007" defer></script>
+<script src="assets/figures.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/tutor.js?v=20261007" defer></script>
 </body>
 </html>
 

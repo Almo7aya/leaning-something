@@ -28,7 +28,7 @@ buggy command without weakening tests. Its expected-failure CTest entry will
 then complain because the bug is gone: replace it with a success test if keeping
 your solution. The baseline meta-tests deliberately check the teaching fixtures.
 
-Verified on Windows x64, Clang 22.1.3, with source `2650478`: 7/7 baseline checks.
+The baseline is seven CTest checks. Validate it against your checkout with the commands above.
 No full emulator, Vulkan or game runtime validation is implied. Keep source SHA,
 commands, exit codes, before/after results and remaining limits in your report.
 

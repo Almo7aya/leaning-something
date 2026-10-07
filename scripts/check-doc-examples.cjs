@@ -20,11 +20,34 @@ const key = run(lab.match(/var FIELDS = \[[^]*?(?=    var cache =)/)[0] +
 const original = JSON.stringify(key.pack());
 key.state.stencil = 1;
 assert.equal(JSON.stringify(key.pack()), original, 'dynamic stencil must not change the key');
+key.state.depthbounds = 1;
+assert.equal(JSON.stringify(key.pack()), original, 'dynamic depth bounds must not change the key');
 key.state.blend = 1;
 assert.notEqual(JSON.stringify(key.pack()), original, 'static blend enable must change the key');
 key.state.blend = 0;
 key.state.srcblend = 2;
 assert.equal(JSON.stringify(key.pack()), original, 'inactive blend factors must not change the key');
+const instructions = run(lab.match(/var INS = \{[^]*?\n    \};/)[0]).INS;
+for (const [name, opcode] of Object.entries({v_add_f32: 0x03, v_mul_f32: 0x08,
+  v_cmp_gt_f32: 0x04, s_and_saveexec_b64: 0x24, buffer_load_dword: 0x0c, image_sample: 0x20})) {
+  const instruction = instructions[name];
+  assert.equal(instruction.enc, opcode, name+' decoder opcode');
+  assert.equal(instruction.fields.find(field => field.n === 'op').v, opcode, name+' encoded opcode');
+}
+// Exercise the real modifier lowering; operands must be defined before use and feed the result.
+const modifierCode = lab.slice(lab.indexOf('      if (neg) spv ='), lab.indexOf('      var decoded ='));
+const modified = run('var neg=true, abs=true, clp=true; var spv='+
+  JSON.stringify(instructions.v_add_f32.spv)+';\n'+modifierCode).spv;
+assert.ok(modified.indexOf('%a = OpLoad') < modified.indexOf('%na = OpFNegate'));
+assert.ok(modified.indexOf('%b = OpLoad') < modified.indexOf('%ab = OpExtInst'));
+assert.match(modified, /OpFAdd %float %na %ab/);
+assert.match(modified, /OpStore %v4 %cl/);
+const atlas = read('docs/assets/atlas.js');
+const pageRenderer = atlas.match(/var gcls = \["", "", "", ""\], hcls[^]*?(?=      gR.innerHTML)/)[0];
+const pageState = run('var i=3;\n'+pageRenderer);
+assert.equal(pageState.hcls.filter(state => state === 'dirty').length, 1,
+  'one tracker fault must not mark all four host pages dirty');
+assert.equal(pageState.hcls[5], 'dirty');
 const playground = read('docs/assets/playground.js');
 const stubs = run(playground.match(/var JIT_STUBS = \{[^]*?\n  \};/)[0]).JIT_STUBS;
 assert.deepEqual(Object.keys(stubs), ['call9', 'tls'], 'only current relative-call examples');
@@ -64,4 +87,4 @@ for (const file of ['loadlink.html', 'guest-run.html', 'host-run.html', 't-point
 assert.equal(fs.existsSync(path.join(root, 'docs/upstream-changes.html')), false,
   'main intentionally removed the standalone changelog');
 assert.match(read('docs/assets/topics.js'), /n: "C10"/);
-console.log('PASS: memory boundaries, pipeline keys, JIT examples, memory maps, simulator disk-cache behavior and retained main features.');
+console.log('PASS: memory boundaries/tracking, pipeline keys, shader encodings/modifiers, JIT examples, memory maps, simulator cache behavior and retained features.');

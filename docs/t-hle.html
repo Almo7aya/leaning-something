@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>HLE libraries — KytyPS5</title>
 <meta name="description" content="The hand-written stand-ins for the console's system libraries — how one is structured and what is in them.">
-<link rel="stylesheet" href="assets/viz.css?v=20260929">
-<link rel="stylesheet" href="assets/atlas.css?v=20260929">
-<link rel="stylesheet" href="assets/lab.css?v=20260929">
-<link rel="stylesheet" href="assets/tutor.css?v=20260929">
-<link rel="stylesheet" href="assets/app.css?v=20260929">
-<link rel="stylesheet" href="assets/highlight.css?v=20260929">
+<link rel="stylesheet" href="assets/viz.css?v=20261007">
+<link rel="stylesheet" href="assets/atlas.css?v=20261007">
+<link rel="stylesheet" href="assets/lab.css?v=20261007">
+<link rel="stylesheet" href="assets/tutor.css?v=20261007">
+<link rel="stylesheet" href="assets/app.css?v=20261007">
+<link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
@@ -25,7 +25,7 @@
   <section class="band band-read">
     <div class="band-h"><span class="band-t">Read</span></div>
     <div class="prose">
-<p class="deck">Every file in <code>src/libs/</code> has the same shape. Learn it once and all sixty-eight become readable — a standalone file such as <code>libCes.cpp</code> is the same pattern as the inlined <code>ContentExport</code> below.</p>
+<p class="deck">Every file in <code>src/libs/</code> has the same shape. Learn it once and their shared pattern becomes readable — a standalone file such as <code>libCes.cpp</code> is the same pattern as the inlined <code>ContentExport</code> below.</p>
 
   <h4 id="a-complete-module-start-to-finish">A complete module, start to finish</h4>
   <p>This is <code>ContentExport</code> in full — the smallest real example in the tree:</p>
@@ -119,7 +119,7 @@ static int <b>KYTY_SYSV_ABI</b> ContentExportInit2(const ContentExportInitParam2
 
   <div class="callout k">
     <span class="lbl">Error codes are not arbitrary</span>
-    <p><code>src/libs/errno.h</code> is 46 KB of console error constants. Returning the <em>right</em> negative value matters: games branch on specific codes, and returning a generic failure where the game expected <code>ERROR_NOT_FOUND</code> can send it down a completely different path.</p>
+    <p><code>src/libs/errno.h</code> is console error constants. Returning the <em>right</em> negative value matters: games branch on specific codes, and returning a generic failure where the game expected <code>ERROR_NOT_FOUND</code> can send it down a completely different path.</p>
   </div>
 
 <p class="deck">What is implemented, how big each area is, and what is genuinely hard about it.</p>
@@ -130,67 +130,67 @@ static int <b>KYTY_SYSV_ABI</b> ContentExportInit2(const ContentExportInitParam2
       <tbody>
         <tr>
           <td><strong>Graphics driver (AGC)</strong></td>
-          <td><code>agc.cpp</code> 150 KB<br><code>libAgcDriver.cpp</code> 10 KB<br><code>agcRegisterDefaults.inc</code> 213 KB</td>
+          <td><code>agc.cpp</code><br><code>libAgcDriver.cpp</code><br><code>agcRegisterDefaults.inc</code></td>
           <td>Hundreds of command-buffer builder functions, plus a generated table of the register values the real driver writes at context reset. Games only set registers they change, so the defaults must match the hardware exactly or state leaks between draws. Covered in <a href="t-pm4.html">topic 14</a>.</td>
         </tr>
         <tr>
           <td><strong>Kernel surface</strong></td>
-          <td><code>libKernel.cpp</code> 109 KB</td>
+          <td><code>libKernel.cpp</code></td>
           <td>The parts of <code>libkernel</code> that did not earn a file in <code>src/kernel/</code>: time and clocks, process info, dynamic library queries, and a <code>Posix::</code> namespace aliasing the POSIX-named exports onto the same implementations.</td>
         </tr>
         <tr>
           <td><strong>Networking</strong></td>
-          <td><code>libNet.cpp</code> 118 KB<br><code>network.cpp</code> 106 KB</td>
+          <td><code>libNet.cpp</code><br><code>network.cpp</code></td>
           <td>Sockets, resolvers, SSL and HTTP shims, plus the NP (PlayStation Network) surface stubbed carefully enough that games run offline rather than hanging on a login that will never succeed. The socket layer increasingly forwards to the host natively — <code>SO_ERROR</code>, <code>TCP_NODELAY</code>, listen/connect/accept and readiness checks all map straight onto the OS socket API with error-code translation.</td>
         </tr>
         <tr>
           <td><strong>Audio output</strong></td>
-          <td><code>audio.cpp</code> 32 KB<br><code>libAudio.cpp</code> 37 KB<br><code>libAudio2.cpp</code> 34 KB</td>
+          <td><code>audio.cpp</code><br><code>libAudio.cpp</code><br><code>libAudio2.cpp</code></td>
           <td>Port management, mixing and output on a dedicated thread. The guest submits fixed-size blocks and expects the call to block when buffers are full — that back-pressure is part of how games pace themselves. AudioOut2 now accepts 12-channel (7.1.4) ports and downmixes them for SDL.</td>
         </tr>
         <tr>
           <td><strong>Audio decode (AJM)</strong></td>
-          <td><code>ajm.cpp</code> 40 KB<br><code>ajm/decoder.h</code> + one header per codec</td>
+          <td><code>ajm.cpp</code><br><code>ajm/decoder.h</code> + one header per codec</td>
           <td>Models a fixed-function hardware block. The guest submits a <em>batch of jobs</em> describing input/output buffers and codec parameters; Kyty parses that job format and routes each through a small decoder interface (<code>ajm/decoder.h</code>) to LibAtrac9 (ATRAC9) or FFmpeg (AAC, MP3). The same AAC decoder now serves the older Audiodec API.</td>
         </tr>
         <tr>
           <td><strong>Video</strong></td>
-          <td><code>avPlayer.cpp</code> 71 KB<br><code>libVideoDec2.cpp</code> 23 KB<br><code>videoDec2Decoder.cpp</code> 13 KB</td>
+          <td><code>avPlayer.cpp</code><br><code>libVideoDec2.cpp</code><br><code>videoDec2Decoder.cpp</code></td>
           <td>Full-motion-video playback and a general video-decode API, both on FFmpeg. The README credits shadPS4 as a reference for the AVPlayer implementation.</td>
         </tr>
         <tr>
           <td><strong>Async memory (AMPR)</strong></td>
-          <td><code>libAmpr.cpp</code> 90 KB</td>
+          <td><code>libAmpr.cpp</code></td>
           <td>The PS5's asynchronous mapping and paging engine. Like the GPU, it consumes a stream of command records rather than function calls, so Kyty parses the record formats and replays them against the memory manager.</td>
         </tr>
         <tr>
           <td><strong>Fonts</strong></td>
-          <td><code>libFont.cpp</code> 74 KB<br><code>libFontFt.cpp</code></td>
+          <td><code>libFont.cpp</code><br><code>libFontFt.cpp</code></td>
           <td>Glyph layout, metrics and rendering. Large because the API surface is large.</td>
         </tr>
         <tr>
           <td><strong>System services</strong></td>
-          <td><code>libSaveData</code> 28 KB<br><code>libSystemService</code> 19 KB<br><code>libUserService</code> 7 KB<br><code>libPlayGo</code> 12 KB<br><code>libDialog</code> 6 KB + <code>dialog.cpp</code> 19 KB<br><code>libShare</code> 7 KB<br><code>libWebBrowserDialog</code>, <code>libConvertKeycode</code></td>
+          <td><code>libSaveData</code><br><code>libSystemService</code><br><code>libUserService</code><br><code>libPlayGo</code><br><code>libDialog</code> + <code>dialog.cpp</code><br><code>libShare</code><br><code>libWebBrowserDialog</code>, <code>libConvertKeycode</code></td>
           <td>Save-data mounting, user profiles, chunk-based install progress (games query how much of themselves has "downloaded"), message and error dialogs (drawn by the imgui system overlay and kept open until dismissed), share features. The last two are the newest files in the directory — a status stub and one keyboard-type query — and show how small a "library" can be.</td>
         </tr>
         <tr>
           <td><strong>Data formats</strong></td>
-          <td><code>libJson2</code> 29 KB<br><code>libPngDec</code> 11 KB<br><code>libRtc</code> 15 KB<br><code>libCes</code> 10 KB</td>
+          <td><code>libJson2</code><br><code>libPngDec</code><br><code>libRtc</code><br><code>libCes</code></td>
           <td>JSON parsing, PNG decode via <code>stb</code>, real-time clock conversions, and — the newest file in the directory — <code>Ces</code>, the console's character-encoding service, implementing the Shift-JIS/CP932 ↔ UTF-8 conversions Japanese titles call.</td>
         </tr>
         <tr>
           <td><strong>Input</strong></td>
-          <td><code>libPad.cpp</code> 12 KB<br><code>controller.cpp</code> 26 KB</td>
+          <td><code>libPad.cpp</code><br><code>controller.cpp</code></td>
           <td>DualSense state, customizable keyboard/mouse mapping, SDL rumble forwarding, and — since SDL's DualSense HIDAPI driver was enabled — the light bar, adaptive triggers and the touchpad (emulated from the mouse). A DualShock 4 takes the same pad path.</td>
         </tr>
         <tr>
           <td><strong>Guest <code>printf</code></strong></td>
-          <td><code>guestPrintf.cpp</code> 25 KB</td>
+          <td><code>guestPrintf.cpp</code></td>
           <td>A from-scratch format-string interpreter. Necessary because the guest passes a System V variadic argument list, which cannot simply be forwarded to the host's <code>vprintf</code>.</td>
         </tr>
         <tr>
           <td><strong>C runtime</strong></td>
-          <td><code>libC.cpp</code> 22 KB</td>
+          <td><code>libC.cpp</code></td>
           <td>The subset of libc the console exports as a module, including the C++ ABI hooks games call during static initialisation.</td>
         </tr>
       </tbody>
@@ -244,8 +244,9 @@ struct KernelEvent {
   <p>A queue can be destroyed while another thread is blocked in <code>KernelWaitEqueue</code>, or while the graphics thread is part-way through delivering an event into it. Kyty pins queues with a shared pointer for the duration of any operation:</p>
 <pre>using KernelEqueueRef = std::shared_ptr&lt;KernelEqueuePrivate&gt;;
 [[nodiscard]] KernelEqueueRef <b>KernelPinEqueue</b>(KernelEqueue eq);</pre>
-  <p>Each attached filter also carries a <code>std::shared_ptr&lt;void&gt; owner</code> and a <code>delete_event_func</code>, so a source can keep its own state alive exactly as long as the event exists. <code>tests/EventQueueLifetimeTests.cpp</code> is 19 KB devoted to this alone.</p>
+  <p>Each attached filter also carries a <code>std::shared_ptr&lt;void&gt; owner</code> and a <code>delete_event_func</code>, so a source can keep its own state alive exactly as long as the event exists. <code>tests/EventQueueLifetimeTests.cpp</code> exercises event lifetime and ownership.</p>
 
+<p><code>KernelAddTimerEvent()</code> registers periodic microsecond timers using <code>KERNEL_EVFILT_TIMER</code> and <code>EV_CLEAR</code>; delivery accumulates elapsed expirations and advances the deadline. High-resolution timers remain a separate one-shot path. Persistent user events are emitted once per wait batch and remain available to a later wait. APR events use their own filter. These semantics matter independently of queue lifetime.</p>
   <h4 id="the-file-system">The file system</h4>
   <p>The guest sees a console-shaped tree synthesised from host directories:</p>
   <div class="tw">
@@ -274,7 +275,7 @@ struct KernelEvent {
 
   <p>Two details that cause real bugs:</p>
   <ul>
-    <li><strong>Case sensitivity.</strong> The console's file system is case-insensitive; Linux's is not. A game asking for <code>Data/Textures.pak</code> when the file is <code>data/textures.pak</code> works on console and on Windows, and fails on Linux unless the lookup falls back to a case-folded directory scan.</li>
+    <li><strong>Case sensitivity.</strong> Host path lookup differs across platforms. The filesystem code includes a case-insensitive fallback for mounted paths; trace that fallback and its tests when a dump’s spelling differs from the guest request.</li>
     <li><strong>Path translation.</strong> Every guest path must be converted to a host path through the mount table. <code>GetRealFilename()</code> does this, and it is why the loader is handed <code>/app0/eboot.bin</code> rather than a host path.</li>
   </ul>
 
@@ -343,16 +344,16 @@ struct KernelEvent {
 
 </main>
 
-<script src="assets/topics.js?v=20260929" defer></script>
-<script src="assets/search-index.js?v=20260929" defer></script>
-<script src="assets/app.js?v=20260929" defer></script>
-<script src="assets/viz.js?v=20260929" defer></script>
-<script src="assets/atlas.js?v=20260929" defer></script>
-<script src="assets/lab.js?v=20260929" defer></script>
-<script src="assets/figs.js?v=20260929" defer></script>
-<script src="assets/figures.js?v=20260929" defer></script>
-<script src="assets/highlight.js?v=20260929" defer></script>
-<script src="assets/tutor.js?v=20260929" defer></script>
+<script src="assets/topics.js?v=20261007" defer></script>
+<script src="assets/search-index.js?v=20261007" defer></script>
+<script src="assets/app.js?v=20261007" defer></script>
+<script src="assets/viz.js?v=20261007" defer></script>
+<script src="assets/atlas.js?v=20261007" defer></script>
+<script src="assets/lab.js?v=20261007" defer></script>
+<script src="assets/figs.js?v=20261007" defer></script>
+<script src="assets/figures.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/tutor.js?v=20261007" defer></script>
 </body>
 </html>
 

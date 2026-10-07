@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Virtual memory, briefly — KytyPS5</title>
 <meta name="description" content="Pages, protection and faults — the mechanism the emulator leans on hardest.">
-<link rel="stylesheet" href="assets/viz.css?v=20260929">
-<link rel="stylesheet" href="assets/atlas.css?v=20260929">
-<link rel="stylesheet" href="assets/lab.css?v=20260929">
-<link rel="stylesheet" href="assets/tutor.css?v=20260929">
-<link rel="stylesheet" href="assets/app.css?v=20260929">
-<link rel="stylesheet" href="assets/highlight.css?v=20260929">
+<link rel="stylesheet" href="assets/viz.css?v=20261007">
+<link rel="stylesheet" href="assets/atlas.css?v=20261007">
+<link rel="stylesheet" href="assets/lab.css?v=20261007">
+<link rel="stylesheet" href="assets/tutor.css?v=20261007">
+<link rel="stylesheet" href="assets/app.css?v=20261007">
+<link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
@@ -43,7 +43,7 @@
   <div class="stack">
     <div class="layer k"><span class="nm">1 · Enforce the guest's own protections</span><span class="chip kyty">kyty</span><span class="ds">When the game calls <code>sceKernelMprotect</code>, Kyty applies the equivalent host protection so that a genuine guest bug still faults the way it would on console.</span></div>
     <div class="layer k"><span class="nm">2 · Detect CPU writes to GPU data</span><span class="chip kyty">kyty</span><span class="ds">Memory the GPU has cached as a Vulkan image is deliberately write-protected. When the game writes to it, the fault tells the renderer its copy is stale. <strong>The fault is the notification.</strong></span></div>
-    <div class="layer k"><span class="nm">3 · Commit reserved ranges lazily</span><span class="chip kyty">kyty</span><span class="ds">A guest touch inside a reserved-but-uncommitted range is caught and the range is committed on demand.</span></div>
+    <div class="layer k"><span class="nm">3 · Commit reserved ranges lazily</span><span class="chip kyty">kyty</span><span class="ds">Eligible faults in the guest backing ranges can commit missing backing. A reserved address alone does not make an access valid; guest mappings, permissions and ownership still matter.</span></div>
   </div>
 
   <p>All three funnel into one function — the exception handler installed by the loader — which is why <a href="t-coherency.html">topic 10</a> exists.</p>
@@ -55,7 +55,7 @@
 <pre>constexpr uint64_t GUEST_PAGE_SIZE = <b>0x4000</b>;
 program-&gt;base_size_aligned = AlignUp(program-&gt;base_size, GUEST_PAGE_SIZE);</pre>
 
-  <p>The consequence is subtle but pervasive: one guest page is four host pages, so any protection change covers four host pages at once. The memory tracker's dirty bits therefore have coarser granularity than the guest might expect, and a write anywhere in a 16 KB region marks the whole thing dirty. That is correct but conservative — it can cause more uploading than strictly necessary.</p>
+  <p>One 16 KB guest page spans four 4 KB host pages. Guest VM alignment and renderer tracking are separate: <code>TRACKER_PAGE_SIZE</code> is 4 KB, so a tracking fault does not inherently dirty the entire 16 KB guest page. Host protection calls accept ranges and can cover several pages in one call.</p>
 
   <h4 id="the-address-map-kyty-imposes">The address map Kyty imposes</h4>
   <p>Kyty does not let the host OS choose where things go. It divides the address space into bands and enforces them:</p>
@@ -80,7 +80,7 @@ program-&gt;base_size_aligned = AlignUp(program-&gt;base_size, GUEST_PAGE_SIZE);
 
   <div class="callout k">
     <span class="lbl">Why bands, not just "ask the OS"</span>
-    <p>Console software hard-codes addresses and assumes allocations land in particular ranges. It also passes pointers to the GPU, which in Kyty means those pointers must be distinguishable from emulator pointers. Fixing the bands makes both problems tractable: a value beginning <code>0x9…</code> is guest module code, a value beginning <code>0x1…</code> is guest heap, and anything above <code>0x7000_0000_0000</code> is the emulator itself.</p>
+    <p>Console software hard-codes addresses and assumes allocations land in particular ranges. It also passes pointers to the GPU, which in Kyty means those pointers must be distinguishable from emulator pointers. Fixing the bands makes both problems tractable: use the actual range bounds and loaded-segment metadata to classify an address. A hexadecimal prefix alone does not prove that a value is guest code, heap data or a host pointer.</p>
   </div>
     </div>
   </section>
@@ -122,7 +122,7 @@ program-&gt;base_size_aligned = AlignUp(program-&gt;base_size, GUEST_PAGE_SIZE);
         </li>
         <li class="check-item">
           <input type="checkbox">
-          <label>Explain why the mismatch means one guest-level protection change is never exactly one host call.</label>
+          <label>Explain how one 16 KB guest page maps to four 4 KB tracker pages, and why one host protection call can cover all four.</label>
         </li>
       </ul>
     </div>
@@ -130,16 +130,16 @@ program-&gt;base_size_aligned = AlignUp(program-&gt;base_size, GUEST_PAGE_SIZE);
 
 </main>
 
-<script src="assets/topics.js?v=20260929" defer></script>
-<script src="assets/search-index.js?v=20260929" defer></script>
-<script src="assets/app.js?v=20260929" defer></script>
-<script src="assets/viz.js?v=20260929" defer></script>
-<script src="assets/atlas.js?v=20260929" defer></script>
-<script src="assets/lab.js?v=20260929" defer></script>
-<script src="assets/figs.js?v=20260929" defer></script>
-<script src="assets/figures.js?v=20260929" defer></script>
-<script src="assets/highlight.js?v=20260929" defer></script>
-<script src="assets/tutor.js?v=20260929" defer></script>
+<script src="assets/topics.js?v=20261007" defer></script>
+<script src="assets/search-index.js?v=20261007" defer></script>
+<script src="assets/app.js?v=20261007" defer></script>
+<script src="assets/viz.js?v=20261007" defer></script>
+<script src="assets/atlas.js?v=20261007" defer></script>
+<script src="assets/lab.js?v=20261007" defer></script>
+<script src="assets/figs.js?v=20261007" defer></script>
+<script src="assets/figures.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/tutor.js?v=20261007" defer></script>
 </body>
 </html>
 

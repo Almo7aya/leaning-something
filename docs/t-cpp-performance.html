@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Performance: why this design is fast — KytyPS5</title>
-<meta name="description" content="The design choices that make an HLE emulator fast — native execution, one-jump imports, batched GPU work, cached shaders — and where the time actually goes.">
-<link rel="stylesheet" href="assets/viz.css?v=20260929">
-<link rel="stylesheet" href="assets/atlas.css?v=20260929">
-<link rel="stylesheet" href="assets/lab.css?v=20260929">
-<link rel="stylesheet" href="assets/tutor.css?v=20260929">
-<link rel="stylesheet" href="assets/app.css?v=20260929">
-<link rel="stylesheet" href="assets/highlight.css?v=20260929">
+<meta name="description" content="The design choices that make an HLE emulator fast — native execution, resolved imports, batched GPU work, cached shaders — and where the time actually goes.">
+<link rel="stylesheet" href="assets/viz.css?v=20261007">
+<link rel="stylesheet" href="assets/atlas.css?v=20261007">
+<link rel="stylesheet" href="assets/lab.css?v=20261007">
+<link rel="stylesheet" href="assets/tutor.css?v=20261007">
+<link rel="stylesheet" href="assets/app.css?v=20261007">
+<link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
@@ -27,63 +27,38 @@
     <div class="prose">
 <p class="deck">The headline — guest code runs natively — is one of five design choices, and it would not be enough on its own. The others are about not paying for the parts of a real console that don't matter.</p>
 
-  <h4 id="choice-one-no-interpreter">Choice one — no interpreter</h4>
-  <p>The guest CPU is the host CPU. Every guest instruction is one host instruction, so the emulator's per-instruction cost is effectively zero — it only spends time when the game calls <em>into</em> the OS or <em>out</em> to the GPU. That is the whole reason <a href="t-no-cpu-emulator.html">topic 02</a> exists. The cost of this choice is the <a href="t-cpp-asm.html">ABI wall (topic C2)</a>: the game's System V registers and the host's Microsoft registers disagree, so every boundary crossing needs annotation or assembly.</p>
-
-  <h4 id="choice-two-one-jump-imports">Choice two — imports cost one jump</h4>
-  <p>When a game calls a console function, the normal cost would be: trap into a kernel, switch context, dispatch. Here it is a <strong>push + jmp</strong>. The runtime linker rewrites the GOT slot once at load time (topic 07), and the JIT stubs in <code>jit.h</code> (topic C2) are just bytes: <code>push &lt;index&gt;; jmp &lt;handler&gt;</code>. After resolution, a console call is exactly as expensive as a local function call. No interpreter, no dispatch table, no syscall.</p>
-
-  <div class="filename">src/loader/jit.h — the whole import cost</div>
-<pre>// 68 00 00 00 00          push     &lt;index&gt;
-// E9 E0 FF FF FF          jmp      &lt;handler&gt;</pre>
-
-  <h4 id="choice-three-batched-gpu-work">Choice three — GPU work is batched</h4>
-  <p>The game doesn't make a Vulkan call per draw — it writes PM4 packets into a ring buffer, and the <strong>GPU thread</strong> (topic C4) consumes them in bulk. The CPU and GPU overlap: the game can run several frames ahead while the GPU thread chews on queued command buffers. The overlap is held together by <strong>timeline semaphores</strong> (topic C4, the Lab's <code>timeline</code> tool) so a submission waits on the previous tick instead of stalling the CPU. That is why a heavy frame doesn't necessarily cost the CPU anything.</p>
-
-  <h4 id="choice-four-cached-shaders">Choice four — shaders are cached, not recompiled</h4>
-  <p>The RDNA2 → SPIR-V translation is the most expensive per-object work in the emulator — a complex shader can take hundreds of milliseconds the first time. The answer is a cache keyed on the shader's <code>chksum</code>/hash: recompile once, reuse every frame after. <code>shader.cpp</code> even logs cache hits so you can see it working:</p>
-
-  <div class="filename">src/graphics/shader/shader.cpp — the cache-hit path</div>
-<pre>static void LogShaderProgramCacheHit(const char* stage, uint64_t shader_hash, uint64_t words) {
-    static std::atomic&lt;uint32_t&gt; log_count {0};
-    if (log_count.fetch_add(1, std::memory_order_relaxed) &gt;= 512) { return; }
-    LOGF("Shader cache hit: %s hash=0x%016" PRIx64 " (%" PRIu64 " words)\n",
-         stage, shader_hash, words);
-}</pre>
-
-  <p>The Vulkan pipeline is cached too, so the driver doesn't re-compile SPIR-V either. The practical consequence: <strong>the first frame after a shader compiles is slow; everything after is free</strong>.</p>
-
-  <h4 id="choice-five-coherency-without-copies">Choice five — coherency without copies</h4>
-  <p>A real GPU shares memory with the CPU, and games rely on that. The naive host approach is to copy the game's buffers to the GPU on every use. Kyty's approach (topic 10) is to <em>let the guest write, and fault on the GPU's behalf</em>: the page manager watches guest pages, and when the GPU needs a buffer it uses, the coherency layer uploads the dirty pages on demand. The trick is the page-fault channel does the dirty tracking for free — no copies, no polling, no per-draw bookkeeping.</p>
-
-  <h4 id="where-the-time-actually-goes">Where the time actually goes</h4>
-  <p>Be honest about the costs, because they are the <em>interesting</em> performance facts:</p>
-  <div class="tw">
-    <table>
-      <thead><tr><th>Cost</th><th>Why</th><th>What to do about it</th></tr></thead>
-      <tbody>
-        <tr><td>First shader compile</td><td>decode + CFG + IR + SPIR-V + Vulkan compile, per new shader</td><td>play past it; watch for "cache miss" in the shader log; this is where <code>--shader-log-direction File</code> helps debug <em>slowness</em>, not just correctness</td></tr>
-        <tr><td>Page-fault storms</td><td>every dirty page crossing to the GPU faults once</td><td>it self-limits; the fault is the notification, not a crash — see topic 10</td></tr>
-        <tr><td>Debug builds</td><td><code>-O2</code>/<code>NDEBUG</code> are Release-only; Debug runs everything at assertions-on speed</td><td>benchmark Release, debug in Debug — and don't compare the two</td></tr>
-        <tr><td>Validation layers</td><td><code>--vulkan-validation true</code> makes every Vulkan call checked</td><td>leave them off for the speed runs, on for the bug hunt</td></tr>
-        <tr><td>Boundary crossings</td><td>each guest→host call crosses the ABI wall and a lock</td><td>they're cheap, but a game calling <code>sceKernelX</code> in a hot loop notices; the <code>PRINT_NAME</code> trace shows you which</td></tr>
-      </tbody>
-    </table>
-  </div>
-
-  <p>And the honest framing for the whole project: <strong>HLE is fast because it skips the expensive parts, not because it is clever in the expensive parts.</strong> No firmware to boot, no silicon to simulate, no instruction interpretation. The parts that <em>are</em> translated (shaders) and the parts that <em>are</em> emulated (OS calls) are where the CPU time is spent, and each has been made one-time-cost or per-call-cheap. That is the whole performance model — and the answer to "why does the first frame hang then run fine" is always shaders.</p>
-
-  <div class="callout h">
-    <span class="lbl">Measuring, not guessing</span>
-    <p>Two switches exist for this. <code>--profile</code> streams into the <a href="https://github.com/wolfpld/tracy">Tracy</a> profiler (the trace appears in the 3rdparty toolbox from <a href="t-cpp-codebase.html">topic C6</a>), and the <code>KYTY_PROFILER_FUNCTION</code> scopes sprinkled through <code>shader.cpp</code> and the renderer light it up. If you ever need to answer "what is slow", that is the instrument.</p>
-  </div>
+<h4 id="choice-one-no-interpreter">Choice one — native guest CPU execution</h4>
+<p>Most guest x86-64 instructions execute directly on the host CPU. TLS rewrites, red-zone protection and unsupported-instruction patches add work where the host environment differs. Native execution avoids a general CPU interpreter, but page faults, HLE calls and synchronization still cost time. Windows HLE entry points use the System V ABI annotation to match the guest calling convention.</p>
+<h4 id="choice-two-one-jump-imports">Choice two — resolve imports ahead of calls</h4>
+<p>The runtime linker writes resolved HLE or module addresses into relocation slots. Those calls enter the resolved function directly; unresolved imports use diagnostic thunks generated in <code>runtimeLinker.cpp</code>. The thunk’s helper call is therefore not the cost of every successful import. An HLE function may still allocate, lock, wait or call the host OS.</p>
+<h4 id="choice-three-batched-gpu-work">Choice three — GPU work is batched</h4>
+<p>The guest builds PM4 command buffers. A GPU worker consumes submissions and records Vulkan work; timeline ticks track completion and keep resources alive while work is in flight. This permits overlap with guest execution, subject to waits and dependencies. It does not remove command processing or synchronization costs.</p>
+<h4 id="choice-four-cached-shaders">Choice four — cache source programs and specializations</h4>
+<p><code>ShaderMapUserData()</code> validates the registered AGC code size and hashes those code bytes with XXH3. The renderer’s <code>ProgramCache</code> keys source programs by code and static stage information, retains resource analysis, and selects a compiled permutation for the current specialization. Resource materialization still runs on reuse. A new permutation can require translation and emission even when the source hash is familiar.</p>
+<div class="filename">src/graphics/shader/shader.cpp — registration excerpt, after validation</div>
+<pre>const auto hash = XXH3_64bits(reinterpret_cast&lt;const void*&gt;(addr), data.code_size_bytes);
+std::scoped_lock lock(g_shader_map_mutex);
+(*g_shader_map)[addr] = {data, hash};</pre>
+<p>Compiled programs and Vulkan pipeline objects are reused in memory. A separate persisted Vulkan driver cache can reduce driver pipeline-creation work after restart; it does not persist Kyty’s translated IR or SPIR-V program cache. See <a href="t-program-cache.html">topic 16</a> for the two cache levels and their keys.</p>
+<h4 id="choice-five-coherency-without-copies">Choice five — track dirty ranges</h4>
+<p>Page protection tracks CPU writes and accesses to GPU-owned data. The caches upload and download relevant dirty ranges, with copies, barriers, fault handling and completion waits where required. This avoids unconditional full-resource transfers; it is not zero-copy or free synchronization. Reprotection and ownership transitions can cause repeated faults on the same page.</p>
+<h4 id="where-the-time-actually-goes">Where the time actually goes</h4>
+<div class="tw"><table><thead><tr><th>Cost</th><th>Evidence</th><th>Follow-up</th></tr></thead><tbody>
+<tr><td>Shader translation and emission</td><td>Phase logs with stage, hash and elapsed time</td><td>Distinguish a source miss from a new specialization.</td></tr>
+<tr><td>Vulkan pipeline creation</td><td>Profiler scopes around pipeline creation</td><td>Separate driver cache behavior from the program cache.</td></tr>
+<tr><td>Transfers, faults and waits</td><td>Dirty ranges, completion ticks and blocked threads</td><td>Trace CPU/GPU ownership and the dependency that requires waiting.</td></tr>
+<tr><td>HLE and command processing</td><td>Profiler scopes and focused call traces</td><td>Check work per call and frequency; avoid broad logging during timing.</td></tr>
+<tr><td>Build and diagnostic settings</td><td>Build label, optimization flags and enabled validation</td><td>Compare the same build type, title state and settings.</td></tr>
+</tbody></table></div>
+<h4 id="measuring-not-guessing">Measuring, not guessing</h4>
+<p><code>--profile</code> enables Tracy scopes. <code>--shader-log-direction File</code> provides compiler artifacts; phase lines also require a visible logger destination such as <code>--printf-direction File</code>. A slow first frame can involve compilation, asset I/O, uploads or initialization. Measure the interval before attributing it to one subsystem, and distinguish cold-start timing from steady-state timing.</p>
 
   <div class="learn">
     <div class="lh">Learn more · performance</div>
     <ul>
       <li><span class="kind">Book</span><div><a href="https://www.agner.org/optimize/">Agner Fog — optimization manuals</a><span class="d">The microarchitecture half: why native execution is cheap and where the hidden costs (cache, branch, alignment) live.</span></div></li>
       <li><span class="kind">Article</span><div><a href="https://chipsandcheese.com/">Chips and Cheese</a><span class="d">Readable deep dives on CPU/GPU design that make the guest/host split in this project make sense.</span></div></li>
-      <li><span class="kind">Guide</span><div><a href="https://developer.nvidia.com/docs/drive/drive-os/6.0.5/public/drive-os-guide/gpu-architecture/timeline-semaphores.html">Vulkan timeline semaphores</a><span class="d">The mechanism behind "the CPU can run ahead" — what <code>pWaitSemaphoreValues</code> from topic C4 actually does.</span></div></li>
+      <li><span class="kind">Guide</span><div><a href="https://docs.vulkan.org/samples/latest/samples/extensions/timeline_semaphore/README.html">Vulkan timeline semaphores</a><span class="d">The mechanism behind "the CPU can run ahead" — what <code>pWaitSemaphoreValues</code> from topic C4 actually does.</span></div></li>
     </ul>
   </div>
     </div>
@@ -122,7 +97,7 @@
         </li>
         <li class="check-item">
           <input type="checkbox">
-          <label>In <code>src/loader/jit.h</code>, point at the exact bytes that make a resolved import cost one jump (hint: it is two lines of comments).</label>
+          <label>Trace one resolved import and one unresolved import through <code>runtimeLinker.cpp</code> and <code>jit.h</code>. Explain which one needs a diagnostic stub.</label>
         </li>
         <li class="check-item">
           <input type="checkbox">
@@ -130,15 +105,15 @@
         </li>
         <li class="check-item">
           <input type="checkbox">
-          <label>Say why the first frame is slow and every frame after is not — name the cache and its key.</label>
+          <label>Explain when a familiar shader hash still needs a new specialization, and name the work that remains on a cache hit.</label>
         </li>
         <li class="check-item">
           <input type="checkbox">
-          <label>Explain why coherency via page faults beats copying, and what the fault actually costs (once per dirty page).</label>
+          <label>Trace a dirty range through fault tracking and upload. Identify the copies and waits, and when the page can fault again.</label>
         </li>
         <li class="check-item">
           <input type="checkbox">
-          <label>List the two switches for measuring rather than guessing, and which profiler the first one feeds.</label>
+          <label>Name the profiler switch and the logging settings needed to correlate compiler phases with a shader hash.</label>
         </li>
       </ul>
     </div>
@@ -146,15 +121,15 @@
 
 </main>
 
-<script src="assets/topics.js?v=20260929" defer></script>
-<script src="assets/search-index.js?v=20260929" defer></script>
-<script src="assets/app.js?v=20260929" defer></script>
-<script src="assets/viz.js?v=20260929" defer></script>
-<script src="assets/atlas.js?v=20260929" defer></script>
-<script src="assets/lab.js?v=20260929" defer></script>
-<script src="assets/figs.js?v=20260929" defer></script>
-<script src="assets/figures.js?v=20260929" defer></script>
-<script src="assets/highlight.js?v=20260929" defer></script>
-<script src="assets/tutor.js?v=20260929" defer></script>
+<script src="assets/topics.js?v=20261007" defer></script>
+<script src="assets/search-index.js?v=20261007" defer></script>
+<script src="assets/app.js?v=20261007" defer></script>
+<script src="assets/viz.js?v=20261007" defer></script>
+<script src="assets/atlas.js?v=20261007" defer></script>
+<script src="assets/lab.js?v=20261007" defer></script>
+<script src="assets/figs.js?v=20261007" defer></script>
+<script src="assets/figures.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/tutor.js?v=20261007" defer></script>
 </body>
 </html>
