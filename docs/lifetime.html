@@ -11,6 +11,7 @@
 <link rel="stylesheet" href="assets/app.css?v=20261007-7">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 <link rel="stylesheet" href="assets/lifetime.css?v=20261007">
+<link rel="stylesheet" href="assets/visual-tools.css?v=20261007-tools1">
 </head>
 <body>
 
@@ -31,7 +32,9 @@
     to jump.
   </p>
 
-  <div id="lifetime"></div>
+<section class="vt-guide" aria-label="Guided experiment"><h2 id="guided-experiment">Launch to first frame</h2><p><strong>Read first:</strong> <a href="t-what-an-emulator-is.html">What an emulator is</a>. <a href="start.html">Return to the learning route</a>.</p><p><strong>Model boundary:</strong> A stepped story with invented addresses and counts. It shows ordering, not a captured run.</p><p><button type="button" data-vt-action="overview">Prepare experiment</button> <span role="status"></span></p><ol><li>Predict which must happen first: reserve address space, copy segments, resolve imports, or execute the entry point.</li><li>Reset, then advance through Map the segments, Resolve the NIDs and Patch the GOT. Watch the memory and state panels.</li><li>Continue to the first image. Explain why mapped code and a running guest do not yet imply a completed frame.</li></ol><details><summary>Check your explanation</summary><p>Reservation creates an address range; mapping supplies bytes and permissions. Import resolution finds targets, and relocation writes the appropriate slots. A visible frame also needs guest GPU work, host preparation, submission and completion. This selected story is not a claim that every title follows identical startup timing.</p></details></section>
+
+  <div id="lifetime" data-visual-workspace="Launch to first frame"></div>
 
   <!-- ---------------------------------------------------------- -->
   <section class="band band-read" style="margin-top:52px">
@@ -81,15 +84,16 @@
 
 </main>
 
-<script src="assets/topics.js?v=20261007-8" defer></script>
-<script src="assets/search-index.js?v=20261007-8" defer></script>
+<script src="assets/topics.js?v=20261007-tools1" defer></script>
+<script src="assets/search-index.js?v=20261007-tools1" defer></script>
 <script src="assets/app.js?v=20261007-7" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>
 <script src="assets/figures.js?v=20261007" defer></script>
 <script src="assets/highlight.js?v=20261007-6" defer></script>
-<script src="assets/lifetime.js?v=20261007" defer></script>
+<script src="assets/lifetime.js?v=20261007-tools1" defer></script>
+<script src="assets/visual-tools.js?v=20261007-tools1" defer></script>
 </body>
 </html>
 

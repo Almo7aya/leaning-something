@@ -43,7 +43,7 @@
       }
     };
 
-    var svg = e("svg", { viewBox: cfg.viewBox, class: "fd-svg", role: "img", "aria-label": cfg.aria || "flow diagram" });
+    var svg = e("svg", { viewBox: cfg.viewBox, class: "fd-svg", role: "group", "aria-label": cfg.aria || "flow diagram" });
     var defs = e("defs");
     defs.appendChild(e("marker", { id: "fd-arrow", viewBox: "0 0 10 10", refX: "8", refY: "5", markerWidth: "7", markerHeight: "7", orient: "auto-start-reverse" },
       [e("path", { d: "M0,0 L10,5 L0,10 z", fill: "#3a4b61" })]));
@@ -64,7 +64,7 @@
     var bodyEls = {};
     Object.keys(cfg.nodes).forEach(function (id) {
       var n = cfg.nodes[id];
-      var g = e("g", { class: "fd-node", "data-n": id });
+      var g = e("g", { class: "fd-node", "data-n": id, tabindex: "0", role: "button", "aria-label": "Inspect " + n.t });
       g.appendChild(e("rect", { x: n.x, y: n.y, width: n.w, height: n.h, rx: 10, class: "fd-frame" }));
       g.appendChild(e("text", { x: n.x + 12, y: n.y + 22, class: "fd-title" }, n.t));
       if (n.s) g.appendChild(e("text", { x: n.x + 12, y: n.y + 38, class: "fd-sub" }, n.s));
@@ -73,6 +73,7 @@
       svg.appendChild(g);
       bodyEls[id] = body;
       g.addEventListener("click", function () { focusNode(id); });
+      g.addEventListener("keydown", function (ev) { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); focusNode(id); } });
     });
     mount.appendChild(svg);
 
@@ -97,6 +98,8 @@
       cap.innerHTML = "<b>" + (cur + 1) + " / " + STEPS.length + " · " + st.t + "</b> " + st.cap;
       Array.prototype.forEach.call(rail.children, function (m, k) { m.classList.toggle("on", k === cur); m.classList.toggle("done", k < cur); });
       pos.textContent = (cur + 1) + " / " + STEPS.length;
+      prevBtn.disabled = cur === 0;
+      nextBtn.disabled = cur === STEPS.length - 1;
     }
     function focusNode(id) { for (var i = 0; i < STEPS.length; i++) if ((STEPS[i].on || []).indexOf(id) >= 0) { stop(); render(i); return; } }
 
@@ -107,13 +110,16 @@
     function btn(txt, fn, cls) { var b = document.createElement("button"); b.type = "button"; b.className = "fd-btn " + (cls || ""); b.textContent = txt; b.onclick = fn; return b; }
     var playBtn = btn("▶ Play", function () { toggle(); }, "pri");
     var pos = document.createElement("span"); pos.className = "fd-pos";
-    ctl.appendChild(btn("‹ Prev", function () { stop(); render(cur - 1); }));
+    var prevBtn = btn("‹ Prev", function () { stop(); render(cur - 1); });
+    var nextBtn = btn("Next ›", function () { stop(); render(cur + 1); });
+    ctl.appendChild(prevBtn);
     ctl.appendChild(playBtn);
-    ctl.appendChild(btn("Next ›", function () { stop(); render(cur + 1); }));
+    ctl.appendChild(nextBtn);
     ctl.appendChild(pos);
     var rail = document.createElement("div"); rail.className = "fd-rail";
     STEPS.forEach(function (s, i) {
       var m = document.createElement("button"); m.type = "button"; m.className = "fd-mark"; m.title = (i + 1) + ". " + s.t;
+      m.setAttribute("aria-label", m.title);
       m.onclick = function () { stop(); render(i); };
       rail.appendChild(m);
     });
@@ -127,14 +133,15 @@
       if (cur >= STEPS.length - 1) render(0);
       timer = setInterval(function () { if (cur >= STEPS.length - 1) { stop(); return; } render(cur + 1); }, 4200);
     }
-    mount.addEventListener("keydown", function () {});
-    document.addEventListener("keydown", function (ev) {
+    mount.tabIndex = 0;
+    mount.addEventListener("keydown", function (ev) {
       if (ev.target && /INPUT|TEXTAREA|SELECT/.test(ev.target.tagName)) return;
       var r = mount.getBoundingClientRect();
       if (r.bottom < 0 || r.top > (window.innerHeight || 900)) return;   // only when on screen
-      if (ev.key === "ArrowRight") { stop(); render(cur + 1); }
-      else if (ev.key === "ArrowLeft") { stop(); render(cur - 1); }
+      if (ev.key === "ArrowRight") { ev.preventDefault(); stop(); render(cur + 1); }
+      else if (ev.key === "ArrowLeft") { ev.preventDefault(); stop(); render(cur - 1); }
     });
+    document.addEventListener('visibilitychange', function() { if(document.hidden)stop(); });
 
     render(0);
     return { render: render };

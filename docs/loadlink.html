@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="assets/app.css?v=20261007-7">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 <link rel="stylesheet" href="assets/flowdiagram.css?v=20261007">
+<link rel="stylesheet" href="assets/visual-tools.css?v=20261007-tools1">
 </head>
 <body>
 
@@ -28,7 +29,9 @@
     click a box to jump to where it first matters.
   </p>
 
-  <div class="fd" id="loadlink"></div>
+<section class="vt-guide" aria-label="Guided experiment"><h2 id="guided-experiment">Follow one import</h2><p><strong>Read first:</strong> <a href="t-nids.html">NIDs and the runtime linker</a>. <a href="start.html">Return to the learning route</a>.</p><p><strong>Model boundary:</strong> Synthetic NIDs, addresses and GOT slots illustrate a selected load path. No executable is loaded by this diagram.</p><p><button type="button" data-vt-action="load">Prepare experiment</button> <span role="status"></span></p><ol><li>Predict what a GOT slot contains before and after its import is resolved.</li><li>Step from the module through resolution and relocation. Select the GOT box to revisit its first active step.</li><li>Follow the game calling a library. Identify the lookup done at load time and the function call done at runtime.</li></ol><details><summary>Check your explanation</summary><p>A relocation changes the slot from unresolved data to the selected target address or a generated stub. A later indirect call reads that slot; it does not repeat the symbol lookup. Matching a NID alone is insufficient: library/module identity, versions and symbol type are part of resolution.</p></details></section>
+
+  <div class="fd" data-visual-workspace="Follow one import" id="loadlink"></div>
 
   <!-- ---------------------------------------------------------- -->
   <section class="band band-read" style="margin-top:48px">
@@ -64,7 +67,7 @@
         <table>
           <thead><tr><th>Step</th><th>Where it lives in KytyPS5</th></tr></thead>
           <tbody>
-            <tr><td>Open + unwrap SELF → ELF</td><td><code>loader/self.cpp</code>, <code>loader/elf.cpp</code></td></tr>
+            <tr><td>Open + unwrap SELF → ELF</td><td><code>loader/elf.cpp</code></td></tr>
             <tr><td>Reserve + map + protect</td><td><code>kernel/memory.cpp</code>, <code>common/virtualMemory.h</code></td></tr>
             <tr><td>Dynamic tables, relocations, NID resolution</td><td><code>loader/runtimeLinker.cpp</code>, <code>loader/symbolDatabase.cpp</code></td></tr>
             <tr><td>Provide the HLE libraries</td><td><code>libs/libs.cpp</code> (<code>Libs::InitAll</code>) and each <code>libs/*.cpp</code></td></tr>
@@ -84,11 +87,12 @@
 
 </main>
 
-<script src="assets/topics.js?v=20261007-8" defer></script>
-<script src="assets/search-index.js?v=20261007-8" defer></script>
+<script src="assets/topics.js?v=20261007-tools1" defer></script>
+<script src="assets/search-index.js?v=20261007-tools1" defer></script>
 <script src="assets/highlight.js?v=20261007-6" defer></script>
 <script src="assets/app.js?v=20261007-7" defer></script>
-<script src="assets/flowdiagram.js?v=20261007" defer></script>
+<script src="assets/flowdiagram.js?v=20261007-tools1" defer></script>
 <script src="assets/loadlink.js?v=20261007" defer></script>
+<script src="assets/visual-tools.js?v=20261007-tools1" defer></script>
 </body>
 </html>

@@ -1,10 +1,12 @@
 /* ============================================================
    KytyPS5 Playground — tools that work on YOUR artifacts.
-   Every constant here is copied from the emulator source, not
-   recalled; the source file + line is cited on each tool.
+   Tables follow the pinned source. Supported parsing boundaries
+   and model limitations are stated in the interface.
    ============================================================ */
 (function () {
   "use strict";
+  var A = window.KYTY_ARTIFACTS;
+  function showError(out, err) { out.innerHTML = '<p class="pg-hint pg-warntext" role="alert">' + esc(err.message) + "</p>"; }
 
   function el(t, c, x) { var n = document.createElement(t); if (c) n.className = c; if (x != null) n.textContent = x; return n; }
   function $(s, r) { return (r || document).querySelector(s); }
@@ -35,28 +37,7 @@
            | ((r & (R_NUM-1)) << 2)     // R_NUM = 0x40  (pm4.h)
      ============================================================ */
 
-  var IT = {
-    0x10: "IT_NOP", 0x11: "IT_SET_BASE", 0x12: "IT_CLEAR_STATE",
-    0x13: "IT_INDEX_BUFFER_SIZE", 0x15: "IT_DISPATCH_DIRECT",
-    0x16: "IT_DISPATCH_INDIRECT", 0x20: "IT_SET_PREDICATION",
-    0x22: "IT_COND_EXEC", 0x24: "IT_DRAW_INDIRECT",
-    0x25: "IT_DRAW_INDEX_INDIRECT", 0x26: "IT_INDEX_BASE",
-    0x27: "IT_DRAW_INDEX_2", 0x28: "IT_CONTEXT_CONTROL",
-    0x2A: "IT_INDEX_TYPE", 0x2C: "IT_DRAW_INDIRECT_MULTI",
-    0x2D: "IT_DRAW_INDEX_AUTO", 0x2F: "IT_NUM_INSTANCES",
-    0x33: "IT_INDIRECT_BUFFER_CNST", 0x35: "IT_DRAW_INDEX_OFFSET_2",
-    0x37: "IT_WRITE_DATA", 0x38: "IT_DRAW_INDEX_INDIRECT_MULTI",
-    0x39: "IT_MEM_SEMAPHORE", 0x3A: "IT_DISPATCH_DRAW_PREAMBLE",
-    0x3F: "IT_INDIRECT_BUFFER", 0x40: "IT_COPY_DATA", 0x41: "IT_CP_DMA",
-    0x42: "IT_PFP_SYNC_ME", 0x43: "IT_SURFACE_SYNC", 0x46: "IT_EVENT_WRITE",
-    0x47: "IT_EVENT_WRITE_EOP", 0x48: "IT_EVENT_WRITE_EOS",
-    0x49: "IT_RELEASE_MEM", 0x50: "IT_DMA_DATA", 0x58: "IT_ACQUIRE_MEM",
-    0x59: "IT_REWIND", 0x63: "IT_SET_SH_REG_INDIRECT",
-    0x64: "IT_SET_UCONFIG_REG_INDIRECT", 0x68: "IT_SET_CONFIG_REG",
-    0x69: "IT_SET_CONTEXT_REG", 0x76: "IT_SET_SH_REG",
-    0x78: "IT_SET_QUEUE_REG", 0x79: "IT_SET_UCONFIG_REG",
-    0x7A: "IT_SET_UCONFIG_REG_INDEX"
-  };
+  var IT = A.data.pm4;
 
   var IT_NOTE = {
     0x2D: "Draw non-indexed. Vertex count in the next dword; the vertex shader " +
@@ -76,63 +57,16 @@
           "must honour it. Also used as padding to align packets."
   };
 
-  function decodePm4(dwords) {
-    var out = [], i = 0, guard = 0;
-    while (i < dwords.length && guard++ < 4096) {
-      var cmd = dwords[i] >>> 0;
-      var type = cmd >>> 30;
-      var rec = { at: i, raw: cmd, type: type };
-
-      if (type === 3) {
-        rec.len = ((cmd >>> 16) & 0x3fff) + 2;
-        rec.op = (cmd >>> 8) & 0xff;
-        rec.r = (cmd >>> 2) & 0x3f;
-        rec.name = IT[rec.op] || "IT_UNKNOWN_" + hex(rec.op, 2);
-        rec.note = IT_NOTE[rec.op] || null;
-        rec.payload = dwords.slice(i + 1, i + rec.len);
-        rec.short = rec.payload.length < rec.len - 1;
-        i += rec.len;
-      } else if (type === 2) {
-        // A bare type-2 dword is a filler/NOP. graphicsRun accepts trailing ones.
-        rec.len = 1;
-        rec.name = "TYPE-2 filler";
-        rec.note = "Single-dword padding. Trailing type-2 packets are tolerated at " +
-                   "the end of a command buffer.";
-        rec.payload = [];
-        i += 1;
-      } else {
-        rec.len = 1;
-        rec.name = "TYPE-" + type + " (not used by this GPU)";
-        rec.payload = [];
-        i += 1;
-        rec.bad = true;
-      }
-      out.push(rec);
-    }
-    return out;
-  }
-
-  function parseDwords(text) {
-    var toks = String(text).split(/[^0-9a-fA-FxX]+/).filter(Boolean);
-    var out = [];
-    toks.forEach(function (t) {
-      var v = t.replace(/^0[xX]/, "");
-      if (!/^[0-9a-fA-F]{1,8}$/.test(v)) return;
-      out.push(parseInt(v, 16) >>> 0);
-    });
-    return out;
-  }
-
-  function encodePm4(len, op, r) {
-    return (0xc0000000 | (((len - 2) & 0x3fff) << 16) | ((op & 0xff) << 8) | ((r & 0x3f) << 2)) >>> 0;
-  }
+  function decodePm4(words) { return A.decodePm4(words).map(function(r) { r.note = IT_NOTE[r.op] || null; return r; }); }
+  var parseDwords = A.parseWords;
+  var encodePm4 = A.encodePm4;
 
   var PM4_PRESETS = {
     draw: {
-      label: "A minimal non-indexed draw",
+      label: "Non-indexed draw packet",
       text: "C0012D00 00000003 00000002\nC0001000 00000000",
       why: "IT_DRAW_INDEX_AUTO (0x2D) with len 3: header + vertex count + draw-initiator. " +
-           "Then a NOP. This is the smallest thing that puts a triangle on screen."
+           "Then a NOP. This is a packet-shape example. Rendering also needs shaders, targets, descriptors and valid register state."
     },
     ctx: {
       label: "Two CONTEXT register writes",
@@ -141,13 +75,13 @@
            "two values written to consecutive registers."
     },
     release: {
-      label: "Release-mem (GPU → CPU signal)",
+      label: "Release-mem header example",
       text: "C0044900 00000004 40000000 DEADBEEF 00000001 00000000",
-      why: "IT_RELEASE_MEM (0x49). The CPU-side fence the emulator turns into a Vulkan " +
-           "timeline semaphore signal."
+      why: "IT_RELEASE_MEM (0x49), illustrative header and payload. This does not establish a valid fence or " +
+           "completion signal."
     },
     mixed: {
-      label: "A realistic little stream",
+      label: "Synthetic packet stream",
       text:
         "C0001000 00000000\n" +
         "C0027900 00000242 00000004 00000000\n" +
@@ -155,7 +89,7 @@
         "C0012D00 00000003 00000002\n" +
         "C0044900 00000004 40000000 CAFEBABE 00000001 00000000",
       why: "NOP, a UCONFIG write, a CONTEXT write, the draw, then the release. " +
-           "Roughly the shape of one real draw's worth of packets."
+           "Illustrative payloads only: packet boundaries are not proof of valid GPU state or command semantics."
     }
   };
 
@@ -199,7 +133,7 @@
 
     $("#pm4-build", root).addEventListener("click", function () {
       var op = +sel.value, len = +$("#pm4-len", root).value, r = +$("#pm4-r", root).value;
-      var cmd = encodePm4(len, op, r);
+      var cmd; try { cmd = encodePm4(len, op, r); } catch (err) { showError(out, err); return; }
       var pad = [];
       for (var i = 0; i < len - 1; i++) pad.push("00000000");
       inp.value = hex(cmd).slice(2) + (pad.length ? " " + pad.join(" ") : "");
@@ -208,12 +142,12 @@
     });
 
     function render(why) {
-      var dw = parseDwords(inp.value);
+      var dw, recs; try { dw = parseDwords(inp.value); recs = decodePm4(dw); } catch (err) { showError(out, err); return; }
       if (!dw.length) {
         out.innerHTML = '<p class="pg-hint">Paste hex dwords, pick a preset, or encode a packet above.</p>';
         return;
       }
-      var recs = decodePm4(dw);
+
       var html = why ? '<p class="pg-why">' + esc(why) + "</p>" : "";
       html += '<table class="pg-table"><thead><tr><th>#</th><th>header</th><th>packet</th>' +
         "<th>len</th><th>payload</th></tr></thead><tbody>";
@@ -233,7 +167,7 @@
       var bad = recs.filter(function (r) { return r.bad || r.short; }).length;
       html += '<p class="pg-sum">' + recs.length + " packet" + (recs.length === 1 ? "" : "s") +
         " over " + dw.length + " dwords" +
-        (bad ? " · <span class=\"pg-warntext\">" + bad + " look malformed</span>" : " · all well-formed") +
+        (bad ? " · <span class=\"pg-warntext\">" + bad + " look malformed</span>" : " · packet boundaries valid; payload semantics not validated") +
         "</p>";
       out.innerHTML = html;
     }
@@ -250,31 +184,8 @@
 
   var ID64_ALPHA = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-";
 
-  function encodeId64(id) {
-    id = id & 0xffff;
-    var s = "";
-    if (id < 0x40) {
-      s += ID64_ALPHA[id];
-    } else if (id < 0x1000) {
-      s += ID64_ALPHA[(id >> 6) & 0x3f];
-      s += ID64_ALPHA[id & 0x3f];
-    } else {
-      s += ID64_ALPHA[(id >> 12) & 0x3f];
-      s += ID64_ALPHA[(id >> 6) & 0x3f];
-      s += ID64_ALPHA[id & 0x3f];
-    }
-    return s;
-  }
-
-  function decodeId64(str) {
-    var v = 0;
-    for (var i = 0; i < str.length; i++) {
-      var d = ID64_ALPHA.indexOf(str[i]);
-      if (d < 0) return null;
-      v = (v << 6) | d;
-    }
-    return v & 0xffff;
-  }
+  var encodeId64 = A.encodeId64;
+  var decodeId64 = A.decodeId64;
 
   function toolId64(root) {
     root.innerHTML =
@@ -323,18 +234,14 @@
     }
 
     function fromNum() {
-      var v = Math.max(0, Math.min(65535, +num.value || 0));
-      rng.value = v; str.value = encodeId64(v); show(v);
+      try { var v = Number(num.value); if (!num.value.trim()) throw new Error("Enter an ID."); str.value = encodeId64(v); rng.value=v; show(v); }
+      catch(err) { showError(out,err); }
     }
     function fromStr() {
-      var v = decodeId64(str.value.trim());
-      if (v == null) {
-        out.innerHTML = '<p class="pg-hint pg-warntext">“' + esc(str.value) +
-          '” contains a character outside the 64-symbol alphabet.</p>';
-        return;
-      }
-      num.value = v; rng.value = v; show(v);
+      try { var v=decodeId64(str.value.trim()); num.value=v; rng.value=v; show(v); }
+      catch(err) { showError(out,err); }
     }
+
     num.addEventListener("input", fromNum);
     rng.addEventListener("input", function () { num.value = rng.value; fromNum(); });
     str.addEventListener("input", fromStr);
@@ -383,78 +290,14 @@
   var ET = {
     0: "ET_NONE", 1: "ET_REL", 2: "ET_EXEC", 3: "ET_DYN", 4: "ET_CORE",
     0xfe00: "ET_SCE_EXEC", 0xfe04: "ET_SCE_REPLAY_EXEC", 0xfe0c: "ET_SCE_RELEXEC",
-    0xfe10: "ET_SCE_STUBLIB", 0xfe18: "ET_SCE_DYNEXEC", 0xfe1c: "ET_SCE_DYNAMIC"
+    0xfe10: "ET_DYNEXEC (KytyPS5)", 0xfe18: "ET_DYNAMIC (KytyPS5)", 0xfe1c: "Sony type 0xFE1C"
   };
 
   function flagStr(f) {
     return ((f & 4) ? "R" : "-") + ((f & 2) ? "W" : "-") + ((f & 1) ? "X" : "-");
   }
 
-  function parseElf(buf) {
-    var dv = new DataView(buf);
-    if (buf.byteLength < 64) throw new Error("File is too small to be an ELF.");
-
-    var off = 0, selfHdr = null;
-    var m0 = dv.getUint32(0, true);
-    // SELF files wrap the ELF. Detect the Sony container magic and locate the ELF inside.
-    if (m0 === 0x1d3d154f || m0 === 0x4f153d1d) {
-      selfHdr = { magic: hex(m0) };
-      // Scan for the inner ELF magic rather than trusting a header layout we can't verify.
-      for (var s = 0; s < Math.min(buf.byteLength - 4, 0x4000); s += 4) {
-        if (dv.getUint32(s, false) === 0x7f454c46) { off = s; break; }
-      }
-      if (!off) throw new Error("Looks like a SELF, but no unencrypted ELF header was found inside. " +
-        "Retail SELFs are encrypted — use a decrypted/FSELF module.");
-    } else if (dv.getUint32(0, false) !== 0x7f454c46) {
-      throw new Error("Not an ELF: magic is " + hex(dv.getUint32(0, false)) + ", expected 0x7F454C46.");
-    }
-
-    var cls = dv.getUint8(off + 4);
-    if (cls !== 2) throw new Error("Only 64-bit ELF (ELFCLASS64) is supported; this is class " + cls + ".");
-
-    var e = {
-      selfHdr: selfHdr,
-      elfOffset: off,
-      type: dv.getUint16(off + 16, true),
-      machine: dv.getUint16(off + 18, true),
-      entryLo: dv.getUint32(off + 24, true),
-      entryHi: dv.getUint32(off + 28, true),
-      phoff: dv.getUint32(off + 32, true) + dv.getUint32(off + 36, true) * 4294967296,
-      phentsize: dv.getUint16(off + 54, true),
-      phnum: dv.getUint16(off + 56, true),
-      phdrs: []
-    };
-
-    for (var i = 0; i < e.phnum; i++) {
-      var p = off + e.phoff + i * e.phentsize;
-      if (p + 56 > buf.byteLength) break;
-      e.phdrs.push({
-        type: dv.getUint32(p, true),
-        flags: dv.getUint32(p + 4, true),
-        offset: dv.getUint32(p + 8, true) + dv.getUint32(p + 12, true) * 4294967296,
-        vaddrLo: dv.getUint32(p + 16, true),
-        vaddrHi: dv.getUint32(p + 20, true),
-        filesz: dv.getUint32(p + 32, true) + dv.getUint32(p + 36, true) * 4294967296,
-        memsz: dv.getUint32(p + 40, true) + dv.getUint32(p + 44, true) * 4294967296,
-        align: dv.getUint32(p + 48, true) + dv.getUint32(p + 52, true) * 4294967296
-      });
-    }
-
-    // Walk PT_DYNAMIC for the Sony DT_OS_* tags.
-    e.dyn = [];
-    var dynSeg = e.phdrs.filter(function (p) { return p.type === 2; })[0];
-    if (dynSeg && dynSeg.filesz) {
-      var d = off + dynSeg.offset, end = Math.min(d + dynSeg.filesz, buf.byteLength);
-      while (d + 16 <= end) {
-        var tagLo = dv.getUint32(d, true), tagHi = dv.getUint32(d + 4, true);
-        var valLo = dv.getUint32(d + 8, true), valHi = dv.getUint32(d + 12, true);
-        if (tagLo === 0 && tagHi === 0) break;
-        e.dyn.push({ tagLo: tagLo, tagHi: tagHi, valLo: valLo, valHi: valHi });
-        d += 16;
-      }
-    }
-    return e;
-  }
+  var parseElf = A.parseElf;
 
   function renderElf(e, name, out) {
     var h = "";
@@ -462,7 +305,7 @@
 
     if (e.selfHdr) {
       h += '<p class="pg-why">This is a <strong>SELF</strong> container (magic ' + e.selfHdr.magic +
-        "). Found an unencrypted ELF at offset " + hex(e.elfOffset) + " inside it.</p>";
+        "). Found a readable ELF header at offset " + hex(e.elfOffset) + " inside it. This does not establish that its segment payloads are unencrypted.</p>";
     }
 
     h += '<table class="pg-table pg-narrow"><tbody>';
@@ -475,9 +318,10 @@
       hex(e.phoff) + "</td></tr>";
     h += "</tbody></table>";
 
-    if (ET[e.type] && /SCE/.test(ET[e.type])) {
-      h += '<p class="pg-why">The <code>ET_SCE_*</code> type is the first hard signal that this ' +
-        "is a Sony module rather than a stock ELF — a normal loader would reject it outright.</p>";
+    e.warnings.forEach(function(w) { h += '<p class="pg-hint pg-warntext">' + esc(w) + "</p>"; });
+    if (e.type === 0xfe10 || e.type === 0xfe18) {
+      h += '<p class="pg-why">The project-specific executable/shared type identifies this ' +
+        "as a Sony module. The labels here follow the pinned loader/elf.h.</p>";
     }
 
     h += "<h4>Program headers</h4>";
@@ -511,24 +355,26 @@
     }
 
     var totalMem = e.phdrs.filter(function (p) { return p.type === 1; })
-      .reduce(function (a, p) { return a + p.memsz; }, 0);
+      .reduce(function (a, p) { return a + BigInt(p.memsz); }, 0n);
     h += '<p class="pg-sum">Loadable footprint: <strong>' +
-      (totalMem / 1024).toFixed(1) + " KB</strong> across " +
+      totalMem.toLocaleString() + " bytes</strong> across " +
       e.phdrs.filter(function (p) { return p.type === 1; }).length +
-      " PT_LOAD segments. That is what the emulator has to reserve inside the guest " +
-      "address band before a single instruction runs.</p>";
+      " PT_LOAD segments. This is the sum of PT_LOAD memory sizes; it excludes address gaps and is not the reserved " +
+      "address span. Header inspection does not establish that the module will load or execute.</p>";
 
     out.innerHTML = h;
   }
 
   // A tiny synthetic PS5-flavoured module so the tool demos with no file.
   function demoElf() {
-    var buf = new ArrayBuffer(0x400);
+    var buf = new ArrayBuffer(0x28800);
     var dv = new DataView(buf);
     var u8 = new Uint8Array(buf);
     u8[0] = 0x7f; u8[1] = 0x45; u8[2] = 0x4c; u8[3] = 0x46;
     u8[4] = 2; u8[5] = 1; u8[6] = 1; u8[7] = 0;
-    dv.setUint16(16, 0xfe18, true);   // ET_SCE_DYNEXEC
+    dv.setUint16(16, 0xfe10, true);   // ET_DYNEXEC in the pinned KytyPS5 loader
+    dv.setUint32(20, 1, true);
+    dv.setUint16(52, 64, true);
     dv.setUint16(18, 0x3e, true);     // x86-64
     dv.setUint32(24, 0x00081000, true); dv.setUint32(28, 0, true); // entry
     dv.setUint32(32, 64, true); dv.setUint32(36, 0, true);         // phoff
@@ -538,7 +384,7 @@
     var segs = [
       { t: 1,          f: 5, va: 0x00080000, fs: 0x21000, ms: 0x21000, al: 0x4000, off: 0x0 },
       { t: 1,          f: 6, va: 0x000a1000, fs: 0x03000, ms: 0x05000, al: 0x4000, off: 0x21000 },
-      { t: 2,          f: 4, va: 0x000a3000, fs: 0x100,   ms: 0x100,   al: 8,      off: 0x100 },
+      { t: 2,          f: 4, va: 0x000a3000, fs: 0x100,   ms: 0x100,   al: 8,      off: 0x22000 },
       { t: 7,          f: 4, va: 0x000a4000, fs: 0x40,    ms: 0x80,    al: 16,     off: 0x300 },
       { t: 0x61000000, f: 4, va: 0,          fs: 0x4800,  ms: 0x4800,  al: 16,     off: 0x24000 }
     ];
@@ -553,7 +399,7 @@
       dv.setUint32(p + 48, s.al, true); dv.setUint32(p + 52, 0, true);
     });
 
-    // A few dynamic entries at file offset 0x100, incl. real Sony tags.
+    // A few dynamic entries at file offset 0x22000, incl. real Sony tags.
     var dyn = [
       [0x6100000d, 0x00000001], // DT_OS_MODULE_INFO
       [0x61000015, 0x00010000], // DT_OS_IMPORT_LIB
@@ -564,7 +410,7 @@
       [0x00000000, 0x00000000]
     ];
     dyn.forEach(function (d, i) {
-      var p = 0x100 + i * 16;
+      var p = 0x22000 + i * 16;
       dv.setUint32(p, d[0], true); dv.setUint32(p + 4, 0, true);
       dv.setUint32(p + 8, d[1], true); dv.setUint32(p + 12, 0, true);
     });
@@ -595,6 +441,7 @@
     }
     function pick(f) {
       if (!f) return;
+      if(f.size > A.MAX_FILE) { showError(out,new Error("File exceeds the 64 MiB interactive limit. Extract a smaller artifact.")); return; }
       var r = new FileReader();
       r.onload = function () { handle(r.result, f.name); };
       r.onerror = function () {
@@ -603,7 +450,7 @@
       r.readAsArrayBuffer(f);
     }
 
-    drop.addEventListener("click", function () { file.click(); });
+    drop.addEventListener("click", function(e) { if(e.target !== file) file.click(); });
     drop.addEventListener("keydown", function (e) {
       if (e.key === "Enter" || e.key === " ") { e.preventDefault(); file.click(); }
     });
@@ -626,59 +473,8 @@
      4. Log triage — drop your own _kyty.txt
      ============================================================ */
 
-  var LOG_RULES = [
-    { key: "unresolved", re: /unresolved|not found|can't resolve|cannot resolve/i,
-      label: "Unresolved imports",
-      why: "A NID the runtime linker could not match to an HLE implementation. Each one is a " +
-           "concrete, self-contained thing you could go implement." },
-    { key: "unimpl", re: /unimplemented|not implemented|stub|TODO/i,
-      label: "Unimplemented calls",
-      why: "The symbol resolved, but the body is a stub. These usually fail softly until " +
-           "something depends on the return value." },
-    { key: "unknown", re: /unknown (opcode|packet|register|format)|unhandled/i,
-      label: "Unknown / unhandled",
-      why: "GPU or shader work the decoder does not recognise. Cross-reference the opcode " +
-           "against the PM4 decoder above." },
-    { key: "error", re: /\berror\b|\bfail(ed)?\b|exception|assert/i,
-      label: "Errors",
-      why: "Hard failures. Read these bottom-up — the last one before a hang is usually the " +
-           "real cause." },
-    { key: "warn", re: /\bwarn(ing)?\b/i, label: "Warnings",
-      why: "Tolerated deviations. Noisy, but a sudden spike often marks the frame where " +
-           "something went wrong." }
-  ];
-
-  function analyseLog(text) {
-    var lines = text.split(/\r?\n/);
-    var buckets = {};
-    LOG_RULES.forEach(function (r) { buckets[r.key] = { rule: r, hits: [], counts: {} }; });
-
-    lines.forEach(function (ln, i) {
-      if (!ln.trim()) return;
-      for (var k = 0; k < LOG_RULES.length; k++) {
-        var r = LOG_RULES[k];
-        if (r.re.test(ln)) {
-          var b = buckets[r.key];
-          // Normalise so repeats collapse: strip hex, digits, quoted strings.
-          var norm = ln.replace(/0x[0-9a-fA-F]+/g, "0x…").replace(/\b\d{2,}\b/g, "…").trim().slice(0, 190);
-          b.counts[norm] = (b.counts[norm] || 0) + 1;
-          if (b.hits.length < 400) b.hits.push({ n: i + 1, t: ln.trim() });
-          break;
-        }
-      }
-    });
-
-    // Pull anything that looks like a NID (base64-ish 11-char token).
-    var nids = {};
-    var nidRe = /\b([A-Za-z0-9+\-]{11})\b/g, m;
-    lines.forEach(function (ln) {
-      if (!/unresolved|not found|nid|symbol/i.test(ln)) return;
-      nidRe.lastIndex = 0;
-      while ((m = nidRe.exec(ln))) nids[m[1]] = (nids[m[1]] || 0) + 1;
-    });
-
-    return { lines: lines.length, buckets: buckets, nids: nids };
-  }
+  var LOG_RULES = A.LOG_RULES;
+  var analyseLog = A.analyseLog;
 
   function renderLog(res, name, out) {
     var h = '<div class="pg-file">' + esc(name) + ' <span class="pg-dim">· ' +
@@ -697,7 +493,7 @@
 
     if (!any) {
       h += '<p class="pg-why">Nothing matched the triage patterns — either this is a very clean ' +
-        "run, or the log is not from the emulator. Try running with " +
+        "run, an unsupported message format, or the wrong log. No matches is not proof of success. Try running with " +
         "<code>--printf-direction File</code>.</p>";
       out.innerHTML = h;
       return;
@@ -719,12 +515,14 @@
       if (keys.length > 15) h += '<p class="pg-sum">…and ' + (keys.length - 15) + " more distinct messages.</p>";
     });
 
+    h += '<p class="pg-sum">' + res.unmatched + ' nonempty lines did not match these heuristics.</p>';
+    h += '<details class="pg-evidence"><summary>Inspect original evidence with line numbers</summary><pre>' + esc(LOG_RULES.flatMap(function(r) { return res.buckets[r.key].hits; }).sort(function(a,b) { return a.n-b.n; }).map(function(hit) { return hit.n + ': ' + hit.t; }).join('\n')) + '</pre><p>Up to 400 matching lines per category. Refer to the original file for surrounding context.</p></details>';
     var nidKeys = Object.keys(res.nids);
     if (nidKeys.length) {
       h += "<h4>Candidate NIDs <span class=\"pg-dim\">· " + nidKeys.length + "</span></h4>";
       h += '<p class="pg-note">Tokens near symbol-resolution messages that match the shape of an ' +
         "encoded NID. Not every one is real — but a repeated token here is a good place to start " +
-        "if you want to implement a missing function.</p>";
+        "when investigating why the lookup failed.</p>";
       h += '<div class="pg-nids">' + nidKeys.slice(0, 60).map(function (k) {
         return '<code class="pg-nid">' + esc(k) + "</code>";
       }).join("") + "</div>";
@@ -734,7 +532,7 @@
   }
 
   var DEMO_LOG = [
-    "[  0.000] Kyty emulator starting, build 7a40dad",
+    "[  0.000] Synthetic teaching log — invented messages, not a captured run",
     "[  0.014] loader: mapping eboot.bin at 0x0000000000080000 (0x21000 bytes, R-X)",
     "[  0.015] loader: mapping segment 1 at 0x00000000000a1000 (0x5000 bytes, RW-)",
     "[  0.021] runtimeLinker: module libkernel needs 4 libraries",
@@ -764,7 +562,7 @@
       "<div><strong>Drop your <code>_kyty.txt</code> here</strong><br>" +
       '<span class="pg-dim">or click to pick a log file</span></div>' +
       '<input type="file" id="log-file" accept=".txt,.log,text/plain" hidden></div>' +
-      '<div class="pg-row"><button type="button" class="pg-btn pg-demo" id="log-demo">▶ Run demo (sample log)</button>' +
+      '<div class="pg-row"><button type="button" class="pg-btn pg-demo" id="log-demo">▶ Run demo (synthetic log)</button>' +
       '<button type="button" class="pg-btn" id="log-paste">Paste text instead</button></div>' +
       '<textarea id="log-ta" class="pg-ta" rows="6" spellcheck="false" hidden ' +
       'placeholder="Paste log lines here…"></textarea>' +
@@ -775,15 +573,17 @@
     var out = $("#log-out", root), drop = $("#log-drop", root), file = $("#log-file", root);
     var ta = $("#log-ta", root);
 
-    function run(text, name) { renderLog(analyseLog(text), name, out); }
+    function run(text, name) { try { renderLog(analyseLog(text), name, out); } catch(err) { showError(out,err); } }
 
     function pick(f) {
       if (!f) return;
+      if(f.size > A.MAX_TEXT) { showError(out,new Error("Text file exceeds the 2 MiB interactive limit. Extract a smaller artifact.")); return; }
       var r = new FileReader();
       r.onload = function () { run(String(r.result), f.name); };
+      r.onerror = function () { showError(out,new Error("Could not read that file.")); };
       r.readAsText(f);
     }
-    drop.addEventListener("click", function () { file.click(); });
+    drop.addEventListener("click", function(e) { if(e.target !== file) file.click(); });
     drop.addEventListener("keydown", function (e) {
       if (e.key === "Enter" || e.key === " ") { e.preventDefault(); file.click(); }
     });
@@ -806,7 +606,7 @@
       if (!ta.hidden) ta.focus();
     });
     ta.addEventListener("input", function () {
-      if (ta.value.trim()) run(ta.value, "pasted text");
+      run(ta.value, "pasted text");
     });
   }
 
@@ -840,10 +640,10 @@
       why: "u8 at 0, then seven bytes of padding so the u64 lands on an 8-byte boundary. sizeof is 24, not the 14 you might guess." },
     { id: "natural", label: "Two ints + pointer — natural alignment",
       members: ["u32", "u32", "ptr"], pack: false,
-      why: "The pointer needs 8-byte alignment, so four bytes of padding are inserted after the second u32." },
+      why: "Two u32 members occupy offsets 0 and 4. The pointer begins at offset 8, already aligned: no padding is needed, and sizeof is 16." },
     { id: "valist",  label: "VaList — the real packed struct (vaContext.h)",
       members: ["u32", "u32", "ptr", "ptr"], pack: true,
-      why: "#pragma pack(1) removes all padding: 4 + 4 + 8 + 8 = 24 bytes, exactly what the guest ABI expects." },
+      why: "4 + 4 + 8 + 8 = 24 bytes in either mode for this member order. Packing changes the struct alignment from 8 to 1; it does not shrink this particular layout." },
     { id: "jit",     label: "JmpRax — machine code as bytes (jit.h)",
       members: ["u8x16"], pack: true,
       why: "A 16-byte array containing mov rax,imm64; jmp rax plus zero padding. SetFunc writes the eight-byte address at &code[2]; array elements are contiguous." }
@@ -856,12 +656,12 @@
       var al = pack ? 1 : t.align;
       if (al > maxAlign) maxAlign = al;
       var pad = (off % al) ? (al - (off % al)) : 0;
-      rows.push({ type: t, offset: off + pad, pad: pad });
+      rows.push({ type: t, offset: off + pad, pad: pad, align: al });
       off = off + pad + t.size;
     });
     var structAlign = pack ? 1 : maxAlign;
     var trailing = (off % structAlign) ? (structAlign - (off % structAlign)) : 0;
-    return { rows: rows, size: off + trailing, structAlign: structAlign, trailing: trailing };
+    return { rows: rows, size: Math.max(1, off + trailing), structAlign: structAlign, trailing: trailing };
   }
 
   function toolLayout(root) {
@@ -889,7 +689,9 @@
     var curExpect = null;
 
     LAYOUT_PRESETS.forEach(function (p) {
-      preset.appendChild(el("option", null, p.label));
+      var option = el("option", null, p.label);
+      option.value = p.id;
+      preset.appendChild(option);
     });
 
     function renderMembers() {
@@ -918,6 +720,7 @@
 
     preset.addEventListener("change", function () {
       cur = LAYOUT_PRESETS[preset.selectedIndex];
+      curExpect = null;
       state.members = cur.members.slice();
       state.pack = cur.pack;
       pack.checked = cur.pack;
@@ -955,17 +758,20 @@
       L.rows.forEach(function (r) {
         rows += "<tr" + (r.pad ? ' class="pg-warn"' : "") + "><td><code>" + esc(r.type.label) +
           "</code></td><td>" + r.offset + "</td><td>" + r.type.size + "</td><td>" +
-          r.type.align + "</td><td>" + (r.pad ? "<strong>" + r.pad + "</strong>" : "—") + "</td></tr>";
+          r.align + "</td><td>" + (r.pad ? "<strong>" + r.pad + "</strong>" : "—") + "</td></tr>";
       });
 
       if (curExpect == null) curExpect = L.size;
-      var want = Math.max(1, Math.round(curExpect) || 1);
-      var ok = want === L.size;
-      var assertMsg = '<div class="pg-hint' + (ok ? "" : " pg-warntext") + '"><code>static_assert(' +
-        "sizeof(MyStruct) == " + want + ')</code> → <strong>' + (ok ? "PASS" : "FAIL") +
-        "</strong>" + (ok ? " — the layout is exactly " + want + " bytes." :
-          " — sizeof is actually " + L.size + ", not " + want +
-          ". The tree uses this to guarantee ABI layouts (memory.h).") + "</div>";
+      var want = curExpect;
+      function assertion(expected) {
+        if (!Number.isInteger(expected) || expected < 1 || expected > 4096) return '<p class="pg-hint pg-warntext">Enter an integer size from 1 to 4096.</p>';
+        var ok = expected === L.size;
+        return '<div class="pg-hint' + (ok ? "" : " pg-warntext") + '"><code>static_assert(' +
+          "sizeof(MyStruct) == " + expected + ')</code> → <strong>' + (ok ? "PASS" : "FAIL") +
+          "</strong>" + (ok ? " — the layout is exactly " + expected + " bytes." :
+            " — sizeof is actually " + L.size + ", not " + expected +
+            ". The tree uses this to guarantee ABI layouts (memory.h).") + "</div>";
+      }
 
       out.innerHTML =
         '<div class="ly-wrap"><div class="ly-strip">' + strip + "</div><div class='ly-scale'>" + scale + "</div></div>" + big +
@@ -977,15 +783,16 @@
         '<span class="pg-stat-n">' + L.trailing + "</span></div></div>" +
         '<table class="pg-table pg-narrow"><tbody>' + rows + "</tbody></table>" +
         '<div class="pg-row" style="margin-top:10px"><label class="pg-mini">Assert exact size' +
-        '<input id="ly-expect" class="pg-num" type="number" min="1" max="4096" value="' + want + '"></label></div>' +
-        '<div id="ly-assert">' + assertMsg + "</div>" +
+        '<input id="ly-expect" class="pg-num" type="number" min="1" max="4096" value="' + (Number.isFinite(want) ? want : '') + '"></label></div>' +
+        '<div id="ly-assert">' + assertion(want) + "</div>" +
+        '<p class="pg-why"><strong>Preset reference:</strong> ' + esc(cur.why) + '</p>' +
         '<p class="pg-why"><strong>Read the strip left to right.</strong> Grey = a real member; ' +
-        'hollow = padding the compiler inserted (or removed, under pack). The preset explains its own ' +
-        'padding; toggle the checkbox and watch sizeof fall — that is exactly what pack(1) buys for ' +
-        "the machine-code structs and the guest ABI structs.</p>";
+        'hollow = padding. Packing lowers member alignment to one and can reduce sizeof when padding exists. ' +
+        'An empty C++ struct still occupies one byte. This model covers the listed scalar types on x86-64; ' +
+        'verify real layouts with sizeof, alignof and offsetof on your compiler.</p>';
 
       var ne = $("#ly-expect", root);
-      ne.addEventListener("input", function () { curExpect = parseInt(ne.value, 10) || 0; render(); });
+      ne.addEventListener("input", function () { curExpect = ne.value === '' ? NaN : Number(ne.value); $("#ly-assert", root).innerHTML = assertion(curExpect); });
     }
 
     renderMembers();
@@ -1017,30 +824,12 @@
     }
   };
 
-  function patchBytes(disp) {
-    var d = disp & 0xffffffff;
-    var out = [];
-    for (var i = 0; i < 4; i++) { out.push(("0" + ((d >> (i * 8)) & 0xff).toString(16)).slice(-2).toUpperCase()); }
-    return out;
-  }
-
-  function renderByteString(prefix, operand, suffix, nops, opByte, dispBytes) {
-    var spans = function (bytes, isOperand) {
-      return bytes.trim().split(/\s+/).map(function (b) {
-        return b ? '<span class="pg-bits' + (isOperand ? " oper" : "") + '">' + b + "</span>" : "";
-      }).join("");
-    };
-    return spans(prefix, false) + '<span class="pg-bits oper">' + dispBytes.join(" ") + "</span>" +
-      spans(suffix || "", false) +
-      spans(Array(nops + 1).join("90 "), false);
-  }
-
   function toolJit(root) {
     root.innerHTML =
       '<div class="pg-controls">' +
       '<label class="pg-mini" style="flex:2">Stub template' +
       '<select id="jit-stub" class="pg-sel"></select></label>' +
-      '<label class="pg-mini" style="flex:1">rip — address after the opcode' +
+      '<label class="pg-mini" style="flex:1">rip — address of the next instruction' +
       '<input id="jit-rip" class="pg-txt" spellcheck="false" value="0x0000000100000000"></label>' +
       '<label class="pg-mini" style="flex:1">target — handler address' +
       '<input id="jit-func" class="pg-txt" spellcheck="false" value="0x0000000100000020"></label>' +
@@ -1061,63 +850,17 @@
       var o = el("option", null, JIT_STUBS[id].label); o.value = id; stubSel.appendChild(o);
     });
 
-    function parseHex(v) {
-      var s = String(v).trim().replace(/^0[xX]/, "");
-      if (!/^[0-9a-fA-F]{1,16}$/.test(s)) return null;
-      return parseInt(s, 16);
-    }
-    function hx(v) {
-      var s = (v >>> 0).toString(16).toUpperCase();
-      while (s.length < 8) s = "0" + s;
-      var t = Math.floor(v / 4294967296).toString(16).toUpperCase();
-      while (t.length < 8) t = "0" + t;
-      return "0x" + t + s;
-    }
-
     function render() {
-      var stub = JIT_STUBS[stubSel.value];
-      var r = parseHex(rip.value), t = parseHex(func.value);
-      if (r == null || t == null) {
-        out.innerHTML = '<p class="pg-hint pg-warntext">Enter addresses as hex (16 hex digits, optional 0x).</p>';
-        return;
-      }
-      var disp = t - r;
-      var signed = (disp << 32 >> 32); // sign-extend to 32 bits
-      var inRange = disp >= -2147483648 && disp <= 2147483647;
-      var bytes = patchBytes(disp);
-
-      var asm = "  " + stub.opName + "  0x" + (disp >>> 0).toString(16).toUpperCase();
-      if (stub.opName === "jmp") asm = "  jmp   " + hx(t);
-
-      var stubBytes = renderByteString(stub.prefix, bytes, stub.suffix || "", stub.nops, stub.opByte, bytes);
-
-      var tail = stub.nops ? Array(stub.nops + 1).join(" 90") : "";
-      var hexView = '<code>' + (stub.prefix ? stub.prefix.trim() + " " : "") + '<b>' +
-        bytes.join(" ") + "</b>" + (stub.suffix || "") + tail + "</code>";
-
-      out.innerHTML =
-        '<div class="pg-stats"><div class="pg-stat"><span class="pg-stat-l">displacement</span>' +
-        '<span class="pg-stat-n">' + (disp < 0 ? "−" : "") + Math.abs(disp) + "</span></div>" +
-        '<div class="pg-stat"><span class="pg-stat-l">as signed 32-bit</span>' +
-        '<span class="pg-stat-n">' + signed + "</span></div>" +
-        '<div class="pg-stat"><span class="pg-stat-l">fits rel32?</span>' +
-        '<span class="pg-stat-n">' + (inRange ? "yes" : "NO") + "</span></div></div>" +
-        (inRange ? "" : '<p class="pg-hint pg-warntext">The target is more than ±2 GB away from rip — ' +
-          "this stub cannot reach it with a rel32. That is why the loader also has " +
-          "<code>JmpRax</code> (movabs rax; jmp rax), an absolute form.</p>") +
-        '<p class="pg-why">distance = target − rip = ' + hx(t) + " − " + hx(r) + " = " + (disp < 0 ? "−" : "") +
-        Math.abs(disp) + " (0x" + (disp >>> 0).toString(16).toUpperCase() + "). " +
-        "Stored little-endian, lowest byte first:</p>" +
-        '<div class="pg-big" style="font-size:15px"><code>' + hexView + "</code></div>" +
-        '<table class="pg-table pg-narrow"><tbody>' +
-        "<tr><td>opcode byte</td><td><code>" + stub.op + "</code> " + stub.opName + "</td></tr>" +
-        "<tr><td>operand lives at</td><td><code>code[" + stub.opByte + "]</code></td></tr>" +
-        "<tr><td>rip when the cpu reads it</td><td><code>code[" + stub.ripByte + "]</code> (next instruction)</td></tr>" +
-        "<tr><td>4 bytes written</td><td><code>" + bytes.join(" ") + "</code></td></tr>" +
-        "</tbody></table>" +
-        '<p class="pg-sum">SetFunc computes this in C++ and writes it straight into the struct ' +
-        "that <em>is</em> the stub — no assembler involved. This is the whole machine-code-as-data " +
-        "trick from <a href=\"t-cpp-asm.html#machine-code-as-data\">topic C2</a> in one screen.</p>";
+      try {
+        var stub=JIT_STUBS[stubSel.value],r=A.parseAddress(rip.value),t=A.parseAddress(func.value),patch=A.relativePatch(rip.value,func.value);
+        out.innerHTML='<div class="pg-stats"><div class="pg-stat"><span class="pg-stat-l">displacement</span><span class="pg-stat-n">'+patch.displacement+'</span></div>'+
+          '<div class="pg-stat"><span class="pg-stat-l">fits signed rel32?</span><span class="pg-stat-n">'+(patch.inRange?'yes':'NO')+'</span></div></div>'+
+          '<p class="pg-why">target − next instruction = '+A.hex(t,16)+' − '+A.hex(r,16)+' = '+patch.displacement+'. Exact 64-bit integer arithmetic.</p>'+
+          (patch.inRange?'':'<p class="pg-hint pg-warntext">This target cannot be reached by this relative call. The bytes below are the truncated low 32 bits, not a valid call to the requested target.</p>')+
+          '<pre data-lang="text">'+esc(stub.prefix.trim()+' '+patch.bytes.join(' ')+(stub.suffix?' '+stub.suffix.trim():'')+(stub.nops?' '+Array(stub.nops).fill('90').join(' '):''))+'</pre>'+
+          '<table class="pg-table"><tbody><tr><td>operand starts at</td><td>code['+stub.opByte+']</td></tr><tr><td>next instruction address</td><td>code['+stub.ripByte+']</td></tr><tr><td>signed low 32 bits</td><td>'+patch.signed+'</td></tr></tbody></table>'+
+          '<p class="pg-sum">Use the address after the complete call instruction, including its displacement. This calculator does not allocate or execute machine code.</p>';
+      } catch(err) { showError(out,err); }
     }
 
     stubSel.addEventListener("change", render);
@@ -1151,61 +894,7 @@
     c0000409: "STATUS_STACK_BUFFER_OVERRUN"
   };
 
-  var EXCEPTION_TYPES = { 0: "Unknown", 1: "AccessViolation", 2: "IllegalInstruction" };
-  var ACCESS_TYPES = { 0: "Unknown", 1: "Read", 2: "Write", 3: "Execute" };
-
-  function parseCrash(text) {
-    var t = String(text).replace(/\r/g, "");
-    var o = { regs: [], stack: [], guest: [], trace: [], code: [], codeFault: -1, summary: {}, unpatched: false, format: "" };
-    var m;
-    var HEX = "[0-9a-fA-F]";
-
-    /* ---- current format ---- */
-    if (/---\s*Guest fault context\s*---/i.test(t)) o.format = "guest-fault-context";
-    if ((m = t.match(/^\s*thread:\s*(.+)$/mi))) o.summary.thread = m[1].trim();
-    if ((m = t.match(/Unhandled host exception:\s*type=(\d+)\s+code=(\d+)\s+pc=0x(" + HEX + "+)\s+access=(\d+)\s+address=0x(" + HEX + "+)/i)) ||
-        (m = t.match(new RegExp("Unhandled host exception:\\s*type=(\\d+)\\s+code=(\\d+)\\s+pc=0x(" + HEX + "+)\\s+access=(\\d+)\\s+address=0x(" + HEX + "+)", "i")))) {
-      o.format = o.format || "guest-fault-context";
-      o.summary.type = EXCEPTION_TYPES[+m[1]] || ("type " + m[1]);
-      o.summary.native = (+m[2]).toString(16).toLowerCase();
-      o.summary.addr = m[3].toUpperCase();
-      o.summary.av_type = ACCESS_TYPES[+m[4]] || ("access " + m[4]);
-      o.summary.av_addr = m[5].toUpperCase();
-    }
-    if ((m = t.match(/code \(pc-48 \.\. pc\+48, fault at byte 48\):\s*\n((?:[ \t]*(?:[0-9a-fA-F]{2}[ \t]*)+\n?)+)/i))) {
-      o.code = m[1].trim().split(/\s+/).filter(Boolean).slice(0, 96);
-      o.codeFault = 48;
-    }
-    if ((m = t.match(/^\s*stack:\s*\n((?:[ \t]*(?:[0-9a-fA-F]{16}[ \t]*)+\n?)+)/mi))) {
-      o.stack = m[1].trim().split(/\s+/).filter(Boolean).slice(0, 32).map(function (v) { return v.toUpperCase(); });
-    }
-
-    /* ---- legacy format ---- */
-    if ((m = t.match(/kyty_exception_handler:\s*([0-9a-fA-F]+)/))) { o.summary.addr = m[1].toUpperCase(); o.format = o.format || "legacy"; }
-    if ((m = t.match(/exception module:\s*(.+)/i))) o.summary.module = m[1].trim();
-    if ((m = t.match(/code-32:\s*(.+)/i))) { o.code = m[1].trim().split(/\s+/).filter(Boolean).slice(0, 32); o.codeFault = -1; }
-    if ((m = t.match(/exception:\s*type=(\w+),\s*av_type=(\w+),\s*av_addr=([0-9a-fA-F]+),\s*native_code=([0-9a-fA-F_]+)/i))) {
-      o.summary.type = m[1]; o.summary.av_type = m[2]; o.summary.av_addr = m[3].toUpperCase();
-      o.summary.native = m[4].replace(/[^0-9a-f]/gi, "").slice(-8).toLowerCase();
-    }
-    var sm = t.match(/stack:\s*(\[\d+\]=.+)/i);
-    if (sm) sm[1].replace(/\[\d+\]=([0-9a-fA-F]+)/gi, function (_, v) { o.stack.push(v.toUpperCase()); return ""; });
-    var g = new RegExp("guest\\s+(\\S+)\\[0\\]:\\s*addr=(" + HEX + "+),\\s*off=(" + HEX + "+),\\s*(.*)", "gi");
-    while ((m = g.exec(t))) o.guest.push({ reg: m[1], addr: m[2].toUpperCase(), off: m[3].toUpperCase(), module: m[4].trim() });
-    if (t.indexOf("(Unpatched object)") >= 0) o.unpatched = true;
-    if ((m = t.match(/Access violation:\s*(\w+)\s*\[([0-9a-fA-F]+)\]/i))) {
-      o.summary.fatal = "Access violation — " + m[1] + " at " + m[2].toUpperCase();
-    } else if ((m = t.match(/Unknown exception!!!\s*\(([0-9a-fA-F]+)\)/i))) {
-      o.summary.fatal = "Unknown exception — " + m[1];
-    }
-
-    /* ---- common: registers and the guest stack walk (RuntimeLinker::StackTrace) ---- */
-    var re = new RegExp("\\b(rax|rbx|rcx|rdx|rsi|rdi|rbp|rsp|r8|r9|r10|r11|r12|r13|r14|r15)\\s*=\\s*(" + HEX + "+)", "gi");
-    while ((m = re.exec(t))) o.regs.push({ name: m[1], value: m[2].toUpperCase() });
-    var tr = new RegExp("\\[(\\d+)\\]\\s+(" + HEX + "+),\\s*off=(" + HEX + "+),\\s*(.*)", "g");
-    while ((m = tr.exec(t))) o.trace.push({ frame: +m[1], addr: m[2].toUpperCase(), off: m[3].toUpperCase(), module: m[4].trim() });
-    return o;
-  }
+  var parseCrash = A.parseCrash;
 
   function renderCrash(o, out) {
     if (!o.summary.addr && !o.summary.fatal && !o.trace.length && !o.summary.thread) {
@@ -1333,14 +1022,16 @@
 
     var out = $("#crash-out", root), drop = $("#crash-drop", root), file = $("#crash-file", root), ta = $("#crash-ta", root);
 
-    function run(text) { renderCrash(parseCrash(text), out); }
+    function run(text) { try { renderCrash(parseCrash(text), out); } catch(err) { showError(out,err); } }
     function pick(f) {
       if (!f) return;
+      if(f.size > A.MAX_TEXT) { showError(out,new Error("Text file exceeds the 2 MiB interactive limit. Extract a smaller artifact.")); return; }
       var r = new FileReader();
       r.onload = function () { run(String(r.result)); };
+      r.onerror = function () { showError(out,new Error("Could not read that file.")); };
       r.readAsText(f);
     }
-    drop.addEventListener("click", function () { file.click(); });
+    drop.addEventListener("click", function(e) { if(e.target !== file) file.click(); });
     drop.addEventListener("keydown", function (e) {
       if (e.key === "Enter" || e.key === " ") { e.preventDefault(); file.click(); }
     });
@@ -1360,7 +1051,7 @@
       if (!ta.hidden) ta.focus();
     });
     ta.addEventListener("input", function () {
-      if (ta.value.trim()) run(ta.value);
+      run(ta.value);
     });
   }
 
@@ -1373,229 +1064,7 @@
      rare encodings are reported with their family + raw fields.
      ============================================================ */
 
-  var RD_FAMILIES = ["Unknown", "SOP1", "SOP2", "SOPK", "SOPC", "SOPP", "VOP1", "VOP2", "VOP3", "VOP3P", "VOPC", "VINTRP", "SMEM", "MUBUF", "MTBUF", "FLAT", "DS", "MIMG", "EXP"];
 
-  var RD = {};
-  RD.SOP2 = { "0x00": "s_add_u32", "0x01": "s_sub_u32", "0x02": "s_add_i32", "0x03": "s_sub_i32", "0x04": "s_addc_u32", "0x05": "s_subb_u32", "0x06": "s_min_i32", "0x07": "s_min_u32", "0x08": "s_max_i32", "0x09": "s_max_u32", "0x0a": "s_cselect_b32", "0x0b": "s_cselect_b64", "0x0e": "s_and_b32", "0x0f": "s_and_b64", "0x10": "s_or_b32", "0x11": "s_or_b64", "0x12": "s_xor_b32", "0x13": "s_xor_b64", "0x14": "s_andn2_b32", "0x15": "s_andn2_b64", "0x16": "s_orn2_b32", "0x17": "s_orn2_b64", "0x18": "s_nand_b32", "0x19": "s_nand_b64", "0x1a": "s_nor_b32", "0x1b": "s_nor_b64", "0x1c": "s_xnor_b32", "0x1d": "s_xnor_b64", "0x1e": "s_lshl_b32", "0x1f": "s_lshl_b64", "0x20": "s_lshr_b32", "0x21": "s_lshr_b64", "0x22": "s_ashr_i32", "0x24": "s_bfm_b32", "0x25": "s_bfm_b64", "0x26": "s_mul_i32", "0x27": "s_bfe_u32", "0x29": "s_bfe_u64", "0x2e": "s_lshl1_add_u32", "0x2f": "s_lshl2_add_u32", "0x30": "s_lshl3_add_u32", "0x31": "s_lshl4_add_u32", "0x32": "s_pack_ll_b32_b16", "0x33": "s_pack_lh_b32_b16", "0x34": "s_pack_hh_b32_b16", "0x35": "s_mul_hi_u32" };
-  RD.SOP1 = { "0x03": "s_mov_b32", "0x04": "s_mov_b64", "0x07": "s_not_b32", "0x08": "s_not_b64", "0x0a": "s_wqm_b64", "0x0b": "s_brev_b32", "0x0f": "s_bcnt1_i32_b32", "0x10": "s_bcnt1_i32_b64", "0x13": "s_ff1_i32_b32", "0x16": "s_flbit_i32_b64", "0x1b": "s_bitset0_b32", "0x1d": "s_bitset1_b32", "0x1f": "s_getpc_b64", "0x20": "s_setpc_b64", "0x24": "s_and_saveexec_b64", "0x28": "s_orn2_saveexec_b64", "0x34": "s_abs_i32", "0x37": "s_andn1_saveexec_b64", "0x3b": "s_bitreplicate_b64_b32", "0x3c": "s_and_saveexec_b32", "0x44": "s_andn1_saveexec_b32" };
-  RD.SOPC = { "0x00": "s_cmp_eq_i32", "0x01": "s_cmp_lg_i32", "0x02": "s_cmp_gt_i32", "0x03": "s_cmp_ge_i32", "0x04": "s_cmp_lt_i32", "0x05": "s_cmp_le_i32", "0x06": "s_cmp_eq_u32", "0x07": "s_cmp_lg_u32", "0x08": "s_cmp_gt_u32", "0x09": "s_cmp_ge_u32", "0x0a": "s_cmp_lt_u32", "0x0b": "s_cmp_le_u32", "0x0c": "s_bitcmp0_b32", "0x0d": "s_bitcmp1_b32", "0x12": "s_cmp_eq_u64", "0x13": "s_cmp_lg_u64" };
-  RD.SOPK = { "0x00": "s_movk_i32", "0x03": "s_cmpk_eq_i32", "0x04": "s_cmpk_lg_i32", "0x05": "s_cmpk_gt_i32", "0x06": "s_cmpk_ge_i32", "0x07": "s_cmpk_lt_i32", "0x08": "s_cmpk_le_i32", "0x09": "s_cmpk_eq_u32", "0x0a": "s_cmpk_lg_u32", "0x0b": "s_cmpk_gt_u32", "0x0c": "s_cmpk_ge_u32", "0x0d": "s_cmpk_lt_u32", "0x0e": "s_cmpk_le_u32", "0x0f": "s_addk_i32", "0x10": "s_mulk_i32", "0x13": "s_setreg_b32", "0x17": "s_waitcnt", "0x18": "s_waitcnt", "0x19": "s_waitcnt", "0x1a": "s_waitcnt" };
-  RD.SOPP = { "0x00": "s_nop", "0x01": "s_endpgm", "0x02": "s_branch", "0x04": "s_cbranch_scc0", "0x05": "s_cbranch_scc1", "0x06": "s_cbranch_vccz", "0x07": "s_cbranch_vccnz", "0x08": "s_cbranch_execz", "0x09": "s_cbranch_execnz", "0x0a": "s_barrier", "0x0c": "s_waitcnt", "0x0e": "s_sleep", "0x10": "s_sendmsg", "0x16": "s_tracdata", "0x20": "s_inst_prefetch" };
-  RD.VOP2 = { "0x01": "v_cndmask_b32", "0x02": "v_dot2c_f32_f16", "0x03": "v_add_f32", "0x04": "v_sub_f32", "0x05": "v_subrev_f32", "0x08": "v_mul_f32", "0x09": "v_mul_i32_i24", "0x0b": "v_mul_u32_u24", "0x0f": "v_min_f32", "0x10": "v_max_f32", "0x11": "v_min_i32", "0x12": "v_max_i32", "0x13": "v_min_u32", "0x14": "v_max_u32", "0x15": "v_lshr_b32", "0x16": "v_lshrrev_b32", "0x17": "v_ashr_i32", "0x18": "v_ashrrev_i32", "0x19": "v_lshl_b32", "0x1a": "v_lshlrev_b32", "0x1b": "v_and_b32", "0x1c": "v_or_b32", "0x1d": "v_xor_b32", "0x1e": "v_xnor_b32", "0x1f": "v_mac_f32", "0x20": "v_madmk_f32", "0x21": "v_madak_f32", "0x22": "v_bcnt_u32_b32", "0x23": "v_mbcnt_lo_u32_b32", "0x24": "v_mbcnt_hi_u32_b32", "0x25": "v_add_nc_u32", "0x26": "v_sub_nc_u32", "0x27": "v_subrev_nc_u32", "0x28": "v_addc_u32", "0x2f": "v_cvt_pkrtz_f16_f32", "0x32": "v_add_f16", "0x33": "v_sub_f16", "0x34": "v_subrev_f16", "0x35": "v_mul_f16", "0x36": "v_fmac_f16", "0x37": "v_fmamk_f16", "0x38": "v_fmaak_f16", "0x39": "v_max_f16", "0x3a": "v_min_f16", "0x3c": "v_pk_fmac_f16" };
-  RD.VOP1 = { "0x00": "v_nop", "0x01": "v_mov_b32", "0x02": "v_readfirstlane_b32", "0x05": "v_cvt_f32_i32", "0x06": "v_cvt_f32_u32", "0x07": "v_cvt_u32_f32", "0x08": "v_cvt_i32_f32", "0x0a": "v_cvt_f16_f32", "0x0b": "v_cvt_f32_f16", "0x0c": "v_cvt_rpi_i32_f32", "0x0d": "v_cvt_flr_i32_f32", "0x0e": "v_cvt_off_f32_i4", "0x11": "v_cvt_f32_ubyte0", "0x12": "v_cvt_f32_ubyte1", "0x13": "v_cvt_f32_ubyte2", "0x14": "v_cvt_f32_ubyte3", "0x20": "v_fract_f32", "0x21": "v_trunc_f32", "0x22": "v_ceil_f32", "0x23": "v_rndne_f32", "0x24": "v_floor_f32", "0x25": "v_exp_f32", "0x27": "v_log_f32", "0x2a": "v_rcp_f32", "0x2e": "v_rsq_f32", "0x33": "v_sqrt_f32", "0x35": "v_sin_f32", "0x36": "v_cos_f32", "0x37": "v_not_b32", "0x38": "v_bfrev_b32", "0x39": "v_ffbh_u32", "0x3a": "v_ffbl_b32", "0x42": "v_movreld_b32", "0x43": "v_movrels_b32", "0x50": "v_cvt_f16_u16", "0x51": "v_cvt_f16_i16", "0x52": "v_cvt_u16_f16", "0x53": "v_cvt_i16_f16", "0x54": "v_rcp_f16", "0x55": "v_sqrt_f16", "0x56": "v_rsq_f16", "0x57": "v_log_f16", "0x58": "v_exp_f16", "0x5b": "v_floor_f16", "0x5c": "v_ceil_f16", "0x5d": "v_trunc_f16", "0x5e": "v_rndne_f16" };
-  RD.VOPC = { "0x00": "v_cmp_f_f32", "0x01": "v_cmp_lt_f32", "0x02": "v_cmp_eq_f32", "0x03": "v_cmp_le_f32", "0x04": "v_cmp_gt_f32", "0x05": "v_cmp_lg_f32", "0x06": "v_cmp_ge_f32", "0x07": "v_cmp_o_f32", "0x08": "v_cmp_u_f32", "0x09": "v_cmp_nge_f32", "0x0a": "v_cmp_nlg_f32", "0x0b": "v_cmp_ngt_f32", "0x0c": "v_cmp_nle_f32", "0x0d": "v_cmp_neq_f32", "0x0e": "v_cmp_nlt_f32", "0x0f": "v_cmp_tru_f32", "0x80": "v_cmp_f_i32", "0x81": "v_cmp_lt_i32", "0x82": "v_cmp_eq_i32", "0x83": "v_cmp_le_i32", "0x84": "v_cmp_gt_i32", "0x85": "v_cmp_ne_i32", "0x86": "v_cmp_ge_i32", "0x87": "v_cmp_t_i32", "0x88": "v_cmp_class_f32", "0xc0": "v_cmp_f_u32", "0xc1": "v_cmp_lt_u32", "0xc2": "v_cmp_eq_u32", "0xc3": "v_cmp_le_u32", "0xc4": "v_cmp_gt_u32", "0xc5": "v_cmp_ne_u32", "0xc6": "v_cmp_ge_u32", "0xc7": "v_cmp_t_u32" };
-  RD.SMEM = { "0x00": "s_load_dword", "0x01": "s_load_dwordx2", "0x02": "s_load_dwordx4", "0x03": "s_load_dwordx8", "0x04": "s_load_dwordx16", "0x05": "s_load_ubyte", "0x06": "s_load_sbyte", "0x07": "s_load_short", "0x08": "s_load_ushort", "0x09": "s_load_ubyte_dword", "0x0a": "s_load_sbyte_dword", "0x0b": "s_load_short_dword", "0x0c": "s_load_ushort_dword", "0x0d": "s_load_dword_glc", "0x10": "s_store_dword", "0x11": "s_store_dwordx2", "0x12": "s_store_dwordx4", "0x13": "s_store_dwordx8", "0x14": "s_store_dwordx16", "0x15": "s_store_ubyte", "0x16": "s_store_sbyte", "0x17": "s_store_short", "0x18": "s_store_ushort", "0x1e": "s_buffer_load_dword", "0x1f": "s_buffer_load_dwordx2", "0x20": "s_buffer_load_dwordx4", "0x21": "s_buffer_load_dwordx8", "0x22": "s_buffer_load_dwordx16", "0x23": "s_buffer_load_ubyte", "0x24": "s_buffer_load_sbyte", "0x25": "s_buffer_load_short", "0x26": "s_buffer_load_ushort", "0x30": "s_buffer_store_dword", "0x31": "s_buffer_store_dwordx2", "0x32": "s_buffer_store_dwordx4", "0x33": "s_buffer_store_dwordx8", "0x34": "s_buffer_store_dwordx16", "0x35": "s_buffer_store_ubyte", "0x36": "s_buffer_store_sbyte", "0x37": "s_buffer_store_short", "0x38": "s_buffer_store_ushort", "0x3c": "s_scratch_load_dword", "0x3e": "s_scratch_load_dwordx2", "0x40": "s_scratch_load_dwordx4", "0x50": "s_scratch_store_dword", "0x52": "s_scratch_store_dwordx2", "0x54": "s_scratch_store_dwordx4", "0x58": "s_dcache_inv_vol", "0x59": "s_memtime", "0x5a": "s_memrealtime" };
-
-  function rdName(table, key) {
-    var n = table[key];
-    return n || (key === "0x3e" ? "v_cmp_* (VOPC)" : key === "0x3f" ? "v_* (VOP1)" : null);
-  }
-  function rdKey(n) { return "0x" + ("00" + n.toString(16)).slice(-2); }
-
-  function scalarName(n) {
-    if (n < 106) return "s" + n;
-    if (n === 106) return "vcc_lo"; if (n === 107) return "vcc_hi";
-    if (n === 108) return "exec_lo"; if (n === 109) return "exec_hi";
-    if (n >= 110 && n <= 123) return "s" + n;
-    if (n === 124) return "tba_lo"; if (n === 125) return "tba_hi";
-    if (n === 126) return "tma_lo"; if (n === 127) return "tma_hi";
-    if (n >= 128 && n <= 143) return "" + (n - 128);
-    if (n >= 144 && n <= 159) return "" + (n - 160);
-    var FRAC = { 160: "0.5", 161: "-0.5", 162: "1.0", 163: "-1.0", 164: "2.0", 165: "-2.0", 166: "4.0", 167: "-4.0", 168: "1/(2π)", 169: "1/π", 170: "2/π", 171: "1/(2√π)", 172: "1/√π", 173: "2/√π", 174: "√(2/π)", 175: "√(π/2)", 176: "1/(2π)", 177: "1/π", 178: "2/π", 179: "1/(2√π)", 180: "1/√π", 181: "2/√π", 182: "√(2/π)", 183: "√(π/2)" };
-    if (FRAC[n]) return FRAC[n];
-    if (n === 192) return "literal";
-    if (n === 253) return "vccz"; if (n === 254) return "execz"; if (n === 255) return "scc";
-    return "s" + n;
-  }
-  function vopSrc(n) { return n < 256 ? "v" + n : scalarName(n - 256); }
-
-  function rdDecode(w0, w1) {
-    var r = { w0: w0, w1: w1, words: 1, family: "?", name: "?", opcode: 0, operands: [], fields: [], dispatch: "?" };
-    var top2 = (w0 & 0xc0000000) >>> 0;
-
-    if ((w0 & 0x80000000) === 0) {
-      r.dispatch = "bit31 = 0 → vector ALU family";
-      var op = (w0 >>> 25) & 0x3f;
-      var vdst = (w0 >>> 17) & 0xff, src0 = w0 & 0x1ff, vsrc1 = (w0 >>> 9) & 0xff;
-      if (op === 0x3e) { // VOPC
-        r.family = "VOPC"; r.opcode = (w0 >>> 17) & 0xff;
-        r.name = rdName(RD.VOPC, rdKey(r.opcode)) || "v_cmp_*";
-        r.operands = [vopSrc(src0), "v" + vsrc1, "→ vcc"];
-        r.fields = [
-          { n: "src0", b: "0–8", v: vopSrc(src0) }, { n: "vsrc1", b: "9–16", v: "v" + vsrc1 },
-          { n: "opcode", b: "17–24", v: "0x" + r.opcode.toString(16) }, { n: "enc", b: "25–31", v: "0x3e (VOPC)" }
-        ];
-      } else if (op === 0x3f) { // VOP1
-        r.family = "VOP1"; r.opcode = (w0 >>> 9) & 0xff;
-        r.name = rdName(RD.VOP1, rdKey(r.opcode)) || "v_*";
-        r.operands = [vopSrc(src0), "v" + vdst];
-        r.fields = [
-          { n: "src0", b: "0–8", v: vopSrc(src0) }, { n: "opcode", b: "9–16", v: "0x" + r.opcode.toString(16) },
-          { n: "vdst", b: "17–24", v: "v" + vdst }, { n: "enc", b: "25–31", v: "0x3f (VOP1)" }
-        ];
-      } else { // VOP2
-        r.family = "VOP2"; r.opcode = op;
-        r.name = rdName(RD.VOP2, rdKey(op)) || "v_* (VOP2)";
-        r.operands = [vopSrc(src0), "v" + vsrc1, "→ v" + vdst];
-        r.fields = [
-          { n: "src0", b: "0–8", v: vopSrc(src0) }, { n: "vsrc1", b: "9–16", v: "v" + vsrc1 },
-          { n: "vdst", b: "17–24", v: "v" + vdst }, { n: "opcode", b: "25–30", v: "0x" + op.toString(16) }
-        ];
-      }
-      return r;
-    }
-
-    if (top2 === 0x80000000) {
-      r.dispatch = "top bits 10 → scalar ALU family";
-      var sop = (w0 >>> 23) & 0x7f;
-      var sdst = (w0 >>> 16) & 0x7f;
-      if (sop === 0x7d) { // SOP1
-        var sop1op = (w0 >>> 8) & 0xff, ssrc0 = w0 & 0xff;
-        r.family = "SOP1"; r.opcode = sop1op;
-        r.name = rdName(RD.SOP1, rdKey(sop1op)) || "s_*";
-        r.operands = [scalarName(ssrc0), "→ " + scalarName(sdst)];
-        r.fields = [
-          { n: "ssrc0", b: "0–7", v: scalarName(ssrc0) }, { n: "opcode", b: "8–15", v: "0x" + sop1op.toString(16) },
-          { n: "sdst", b: "16–22", v: scalarName(sdst) }, { n: "enc", b: "23–30", v: "0x7d (SOP1)" }
-        ];
-      } else if (sop === 0x7e) { // SOPC
-        var sopcop = (w0 >>> 16) & 0x7f, a0 = w0 & 0xff, a1 = (w0 >>> 8) & 0xff;
-        r.family = "SOPC"; r.opcode = sopcop;
-        r.name = rdName(RD.SOPC, rdKey(sopcop)) || "s_cmp_*";
-        r.operands = [scalarName(a0), scalarName(a1), "→ scc"];
-        r.fields = [
-          { n: "ssrc0", b: "0–7", v: scalarName(a0) }, { n: "ssrc1", b: "8–15", v: scalarName(a1) },
-          { n: "opcode", b: "16–22", v: "0x" + sopcop.toString(16) }, { n: "enc", b: "23–30", v: "0x7e (SOPC)" }
-        ];
-      } else if (sop === 0x7f) { // SOPP
-        var soppop = (w0 >>> 16) & 0x7f, simm = w0 & 0xffff;
-        r.family = "SOPP"; r.opcode = soppop;
-        r.name = rdName(RD.SOPP, rdKey(soppop)) || "s_*";
-        var signed16 = simm << 16 >> 16;
-        r.operands = soppop === 0x01 ? [] : [simm];
-        if (soppop === 0x02 || (soppop >= 0x04 && soppop <= 0x09)) {
-          r.operands = ["pc+4 + " + (signed16 * 4) + " (" + signed16 + "×4)"];
-        }
-        r.fields = [
-          { n: "simm16", b: "0–15", v: "0x" + simm.toString(16) + " (" + signed16 + ")" },
-          { n: "opcode", b: "16–22", v: "0x" + soppop.toString(16) }, { n: "enc", b: "23–30", v: "0x7f (SOPP)" }
-        ];
-      } else if (sop >= 0x60) { // SOPK
-        var sopkop = (w0 >>> 23) & 0x1f, ksdst = (w0 >>> 16) & 0x7f, kimm = (w0 & 0xffff) << 16 >> 16;
-        r.family = "SOPK"; r.opcode = sopkop;
-        r.name = rdName(RD.SOPK, rdKey(sopkop)) || "s_*k_*";
-        r.operands = ["" + kimm, "→ " + scalarName(ksdst)];
-        r.fields = [
-          { n: "simm16", b: "0–15", v: kimm }, { n: "sdst", b: "16–22", v: scalarName(ksdst) },
-          { n: "opcode", b: "23–27", v: "0x" + sopkop.toString(16) }, { n: "enc", b: "28–30", v: "SOPK" }
-        ];
-      } else { // SOP2
-        var sop2op = sop, s0 = w0 & 0xff, s1 = (w0 >>> 8) & 0xff;
-        r.family = "SOP2"; r.opcode = sop2op;
-        r.name = rdName(RD.SOP2, rdKey(sop2op)) || "s_*";
-        r.operands = [scalarName(s0), scalarName(s1), "→ " + scalarName(sdst)];
-        r.fields = [
-          { n: "ssrc0", b: "0–7", v: scalarName(s0) }, { n: "ssrc1", b: "8–15", v: scalarName(s1) },
-          { n: "sdst", b: "16–22", v: scalarName(sdst) }, { n: "opcode", b: "23–30", v: "0x" + sop2op.toString(16) }
-        ];
-      }
-      return r;
-    }
-
-    // 64-bit / other families selected by bits 26-31
-    r.words = 2; r.dispatch = "top bits 11 → memory / 64-bit family by bits 26–31";
-    var fam = w0 >>> 26;
-    if (fam === 0x35 && w1 !== undefined) { // VOP3
-      r.family = "VOP3";
-      r.opcode = (w0 >>> 16) & 0x3ff;
-      r.name = "v_* (VOP3)";
-      r.operands = [vopSrc(w1 & 0x1ff), vopSrc((w1 >>> 9) & 0x1ff), vopSrc((w1 >>> 18) & 0x1ff), "→ v" + (w0 & 0xff)];
-      r.fields = [
-        { n: "vdst", b: "w0 0–7", v: "v" + (w0 & 0xff) }, { n: "sdst", b: "w0 8–14", v: scalarName((w0 >>> 8) & 0x7f) },
-        { n: "opcode", b: "w0 16–25", v: "0x" + r.opcode.toString(16) },
-        { n: "src0", b: "w1 0–8", v: vopSrc(w1 & 0x1ff) }, { n: "src1", b: "w1 9–17", v: vopSrc((w1 >>> 9) & 0x1ff) },
-        { n: "src2", b: "w1 18–26", v: vopSrc((w1 >>> 18) & 0x1ff) }
-      ];
-    } else if (fam === 0x3d && w1 !== undefined) { // SMEM
-      r.family = "SMEM";
-      r.opcode = (w0 >>> 18) & 0xff;
-      r.name = rdName(RD.SMEM, rdKey(r.opcode)) || "s_*";
-      r.operands = ["s[" + (w1 & 0x7f) + "]", "off " + ((w1 >>> 8) & 0x1ffff), "→ " + scalarName((w0 >>> 6) & 0x7f)];
-      r.fields = [
-        { n: "sdst", b: "w0 6–12", v: scalarName((w0 >>> 6) & 0x7f) }, { n: "glc", b: "w0 16", v: (w0 >>> 16) & 1 },
-        { n: "opcode", b: "w0 18–25", v: "0x" + r.opcode.toString(16) },
-        { n: "sbase", b: "w1 0–6", v: "s[" + (w1 & 0x7f) + "]" }, { n: "offset", b: "w1 8–24", v: (w1 >>> 8) & 0x1ffff },
-        { n: "soffset", b: "w1 25–31", v: scalarName((w1 >>> 25) & 0x7f) }
-      ];
-    } else if (fam === 0x38 && w1 !== undefined) { // MUBUF
-      r.family = "MUBUF";
-      r.opcode = ((w0 >>> 18) & 0x7f) | (((w0 >>> 25) & 1) << 7);
-      r.name = "buffer_*";
-      r.operands = ["v" + ((w1 >>> 8) & 0xff), "s[" + ((w1 >>> 16) & 0x1f) + "]", "off " + ((w1 >>> 24) & 0xff)];
-      r.fields = [
-        { n: "offen/idxen", b: "w0 12–13", v: ((w0 >>> 12) & 3) }, { n: "glc", b: "w0 14", v: (w0 >>> 14) & 1 },
-        { n: "opcode", b: "w0 18–25", v: "0x" + r.opcode.toString(16) },
-        { n: "vaddr", b: "w1 0–7", v: "v" + (w1 & 0xff) }, { n: "vdata", b: "w1 8–15", v: "v" + ((w1 >>> 8) & 0xff) },
-        { n: "srsrc", b: "w1 16–20", v: "s[" + ((w1 >>> 16) & 0x1f) + "]" }, { n: "soffset", b: "w1 24–31", v: scalarName((w1 >>> 24) & 0xff) }
-      ];
-    } else if (fam === 0x36 && w1 !== undefined) { // DS
-      r.family = "DS";
-      r.opcode = (w0 >>> 18) & 0x7f;
-      r.name = "ds_*";
-      r.operands = ["v" + ((w1 >>> 24) & 0xff), "s" + ((w1 >>> 16) & 0x7f), "v" + ((w1 >>> 8) & 0xff)];
-      r.fields = [
-        { n: "opcode", b: "w0 18–24", v: "0x" + r.opcode.toString(16) },
-        { n: "data", b: "w1 8–15", v: "v" + ((w1 >>> 8) & 0xff) }, { n: "saddr", b: "w1 16–22", v: "s" + ((w1 >>> 16) & 0x7f) },
-        { n: "vdst", b: "w1 24–31", v: "v" + ((w1 >>> 24) & 0xff) }
-      ];
-    } else if (fam === 0x37 && w1 !== undefined) { // FLAT
-      r.family = "FLAT";
-      r.opcode = (w0 >>> 18) & 0xff;
-      r.name = "flat_*";
-      r.operands = ["v" + ((w1 >>> 24) & 0xff), "v" + ((w1 >>> 8) & 0xff), "off " + ((w0 >>> 8) & 0xff)];
-      r.fields = [
-        { n: "offset1", b: "w0 8–15", v: (w0 >>> 8) & 0xff }, { n: "opcode", b: "w0 18–25", v: "0x" + r.opcode.toString(16) },
-        { n: "data0", b: "w1 8–15", v: "v" + ((w1 >>> 8) & 0xff) }, { n: "data1", b: "w1 16–23", v: "v" + ((w1 >>> 16) & 0xff) },
-        { n: "vdst", b: "w1 24–31", v: "v" + ((w1 >>> 24) & 0xff) }
-      ];
-    } else if (fam === 0x3e && w1 !== undefined) { // EXP
-      r.family = "EXP";
-      r.opcode = (w0 >>> 4) & 0x3f;
-      r.name = "exp";
-      r.operands = ["target " + r.opcode + (r.opcode === 0x3f ? " (null)" : ""), "en " + (w0 & 0xf), "compr " + ((w0 >>> 10) & 1)];
-      r.fields = [
-        { n: "en", b: "w0 0–3", v: w0 & 0xf }, { n: "target", b: "w0 4–9", v: "0x" + r.opcode.toString(16) },
-        { n: "compr", b: "w0 10", v: (w0 >>> 10) & 1 }, { n: "done", b: "w0 11", v: (w0 >>> 11) & 1 }, { n: "vm", b: "w0 12", v: (w0 >>> 12) & 1 },
-        { n: "vsrc0..3", b: "w1 0–31", v: ["v" + (w1 & 0xff), "v" + ((w1 >>> 8) & 0xff), "v" + ((w1 >>> 16) & 0xff), "v" + ((w1 >>> 24) & 0xff)].join(" ") }
-      ];
-    } else if (fam === 0x3a && w1 !== undefined) { // MTBUF
-      r.family = "MTBUF";
-      r.opcode = ((w0 >>> 16) & 0x7) | (((w1 >>> 21) & 1) << 3);
-      r.name = "tbuffer_*";
-      r.operands = ["v" + ((w1 >>> 8) & 0xff), "s[" + ((w1 >>> 16) & 0x1f) + "]", "dfmt " + ((w0 >>> 19) & 0xf), "nfmt " + ((w0 >>> 23) & 0x7)];
-      r.fields = [
-        { n: "opcode", b: "w0 16–18", v: "0x" + r.opcode.toString(16) }, { n: "dfmt", b: "w0 19–22", v: (w0 >>> 19) & 0xf },
-        { n: "nfmt", b: "w0 23–25", v: (w0 >>> 23) & 0x7 }, { n: "vdata", b: "w1 8–15", v: "v" + ((w1 >>> 8) & 0xff) },
-        { n: "srsrc", b: "w1 16–20", v: "s[" + ((w1 >>> 16) & 0x1f) + "]" }
-      ];
-    } else if (fam === 0x33 || fam === 0x32) { // VOP3P / VINTRP
-      r.family = fam === 0x33 ? "VOP3P" : "VINTRP";
-      r.opcode = (w0 >>> 16) & 0x3ff;
-      r.name = fam === 0x33 ? "v_* (VOP3P)" : "v_interp_*";
-      r.operands = [];
-      r.fields = [{ n: "opcode", b: "w0 16–25", v: "0x" + r.opcode.toString(16) }];
-    } else if (fam === 0x3c && w1 !== undefined) { // MIMG
-      r.family = "MIMG";
-      r.opcode = (w0 >>> 18) & 0xff;
-      r.name = "image_*";
-      r.operands = [];
-      r.fields = [{ n: "opcode", b: "w0 18–25", v: "0x" + r.opcode.toString(16) }];
-    } else {
-      r.family = "UNKNOWN"; r.name = "?";
-      r.fields = [{ n: "bits 26–31", b: "26–31", v: "0x" + fam.toString(16) }];
-    }
-    return r;
-  }
 
   function rdFmt(r, pc) {
     var s = "0x" + ("00000000" + (pc >>> 0).toString(16)).slice(-8) + ": " + r.name;
@@ -1609,7 +1078,7 @@
       '<div class="pg-controls">' +
       '<label class="pg-mini" style="flex:1">32-bit instruction words (hex, one per line)<br>' +
       '<textarea id="isa-ta" class="pg-ta" rows="10" spellcheck="false" ' +
-      'placeholder="0xBE800380&#10;0x7E0602A2&#10;…"></textarea></label>' +
+      'placeholder="0xBE800380&#10;0x7E0602F2&#10;…"></textarea></label>' +
       "</div>" +
       '<div class="pg-row">' +
       '<button type="button" class="pg-btn pg-demo" id="isa-demo">▶ Run demo shader</button>' +
@@ -1620,34 +1089,20 @@
 
     var ta = $("#isa-ta", root), out = $("#isa-out", root), selIdx = 0;
 
-    function parseWords(text) {
-      var toks = String(text).split(/[^0-9a-fA-FxX]+/).filter(Boolean);
-      var ws = [];
-      toks.forEach(function (t) {
-        var v = t.replace(/^0[xX]/, "");
-        if (!/^[0-9a-fA-F]{1,8}$/.test(v)) return;
-        ws.push(parseInt(v, 16) >>> 0);
-      });
-      return ws;
-    }
+    var parseWords = A.parseWords;
 
     function render() {
-      var ws = parseWords(ta.value);
+      var ws, rows; try { ws = parseWords(ta.value); rows = A.decodeIsa(ws); } catch(err) { showError(out,err); return; }
       if (!ws.length) {
         out.innerHTML = '<p class="pg-hint pg-warntext">No 32-bit hex words found.</p>';
         return;
       }
-      var rows = [], i = 0;
-      while (i < ws.length) {
-        var w1 = i + 1 < ws.length ? ws[i + 1] : undefined;
-        var dec = rdDecode(ws[i], w1);
-        var pc = i * 4;
-        rows.push({ pc: pc, dec: dec, raw: [ws[i]].concat(dec.words > 1 && w1 !== undefined ? [w1] : []) });
-        i += dec.words;
-      }
+
+
       if (selIdx >= rows.length) selIdx = 0;
-      var h = '<p class="pg-sum">Decoded ' + rows.length + " instruction" + (rows.length === 1 ? "" : "s") +
-        " (" + ws.length + " words). Click a row for the bit fields.</p>";
+      var last = rows[rows.length-1];
+      var h = '<p class="pg-sum">Inspected ' + rows.length + ' encoding record(s) from ' + ws.length + ' words. Select a row for fields. Register-pair widths, implicit operands and execution semantics are not expanded.</p>';
+      if (last.dec.stop) h += '<p class="pg-hint pg-warntext">Stopped at byte ' + last.pc + ': ' + esc(last.dec.warning) + ' Remaining words are not decoded.</p>';
       h += '<table class="pg-table" id="isa-rows"><thead><tr><th>pc</th><th>raw words</th><th>family</th><th>decoded</th></tr></thead><tbody>';
       rows.forEach(function (r, k) {
         h += '<tr data-k="' + k + '"' + (k === selIdx ? ' class="pg-hl"' : "") + "><td>" + r.pc + '</td><td><code>' +
@@ -1667,13 +1122,14 @@
       h += "</tbody></table>";
       h += '<p class="pg-src">Dispatch logic from <code>ShaderDecoder.cpp</code>; opcode tables from ' +
         "<code>ScalarAluOps.cpp</code>, <code>VectorAluOps.cpp</code>, <code>MemoryOps.cpp</code>, <code>ExportOps.cpp</code>. " +
-        "SDWA/DPP modifiers and some rare encodings are elided — the family and operands are still right.</p>";
+        "This tool decodes base scalar/vector ALU fields and literal words. Extended and memory families stop with an explicit scope message; use the recompiler’s decoded log for complete instructions.</p>";
 
       out.innerHTML = h;
       Array.prototype.forEach.call(out.querySelectorAll("#isa-rows tbody tr"), function (tr) {
-        tr.addEventListener("click", function () {
-          selIdx = +tr.dataset.k; render();
-        });
+        tr.tabIndex = 0; tr.setAttribute("aria-label", "Inspect instruction at byte " + rows[+tr.dataset.k].pc);
+        function select() { selIdx = +tr.dataset.k; render(); out.querySelectorAll("#isa-rows tbody tr")[selIdx].focus({preventScroll:true}); }
+        tr.addEventListener("click", select);
+        tr.addEventListener("keydown", function(e) { if(e.key === "Enter" || e.key === " ") { e.preventDefault(); select(); } });
       });
     }
 
@@ -1681,7 +1137,7 @@
       ta.value = [
         "0xBE800380", // s_mov_b32 s0, 0        (SOP1, inline 0)
         "0xBE820304", // s_mov_b32 s2, s4
-        "0x7E0603A2", // v_mov_b32 v3, 1.0      (VOP1, inline 1.0 = src0 418)
+        "0x7E0602F2", // v_mov_b32 v3, 1.0 (inline selector 242)
         "0x06000200", // v_add_f32 v0, v0, v1   (VOP2)
         "0x10040200", // v_mul_f32 v2, v0, v1
         "0x7C020200", // v_cmp_lt_f32 vcc, v0, v1 (VOPC)
@@ -1691,10 +1147,7 @@
       render();
     });
     $("#isa-paste", root).addEventListener("click", function () {
-      var t = ta.value;
-      var m = t.match(/0x[0-9a-fA-F]{8}/g);
-      if (m && m.length) { ta.value = m.join("\n"); render(); }
-      else render();
+      render(); ta.focus();
     });
     ta.addEventListener("input", render);
     $("#isa-demo", root).click();
@@ -1702,33 +1155,14 @@
 
   /* ============================================================
      E. C++ primer — shader artifact reader
-     Accepts what --shader-log-direction File actually produces:
-       .rdna2  the decoded input ISA text (shader.cpp)
-       .spvasm the SPIR-V disassembly (shader.cpp)
+     Accepts current binary artifacts, decoded log excerpts and imported text:
+       .rdna2  decoded input ISA text (or the corresponding run-log excerpt)
+       .spvasm disassembly produced by an external SPIR-V tool
        .spv    the SPIR-V binary
        raw 32-bit ISA words
      ============================================================ */
 
-  var SPV_OPS = {
-    0: "OpNop", 1: "OpUndef", 3: "OpSource", 5: "OpName", 6: "OpMemberName", 7: "OpString",
-    10: "OpExtension", 11: "OpExtInstImport", 12: "OpExtInst", 14: "OpMemoryModel", 15: "OpEntryPoint",
-    16: "OpExecutionMode", 17: "OpCapability", 19: "OpTypeVoid", 20: "OpTypeBool", 21: "OpTypeInt",
-    22: "OpTypeFloat", 23: "OpTypeVector", 24: "OpTypeMatrix", 25: "OpTypeImage", 27: "OpTypeSampledImage",
-    28: "OpTypeArray", 29: "OpTypeRuntimeArray", 30: "OpTypeStruct", 32: "OpTypePointer", 33: "OpTypeFunction",
-    36: "OpConstantTrue", 37: "OpConstantFalse", 38: "OpConstant", 39: "OpConstantComposite", 41: "OpConstantNull",
-    49: "OpFunction", 50: "OpFunctionParameter", 51: "OpFunctionEnd", 52: "OpFunctionCall", 53: "OpVariable",
-    55: "OpLoad", 56: "OpStore", 57: "OpCopyMemory", 59: "OpAccessChain", 60: "OpInBoundsAccessChain",
-    65: "OpDecorate", 66: "OpMemberDecorate", 71: "OpVectorShuffle", 73: "OpCompositeConstruct",
-    74: "OpCompositeExtract", 76: "OpCopyObject", 79: "OpImageSampleImplicitLod", 80: "OpImageSampleExplicitLod",
-    82: "OpImageSampleDrefExplicitLod", 87: "OpImageFetch", 88: "OpImageGather", 90: "OpImageRead", 91: "OpImageWrite",
-    118: "OpIAdd", 119: "OpFAdd", 120: "OpISub", 121: "OpFSub", 122: "OpIMul", 123: "OpFMul", 124: "OpUDiv",
-    126: "OpFDiv", 138: "OpDot", 158: "OpSelect", 159: "OpIEqual", 161: "OpUGreaterThan", 166: "OpSLessThan",
-    169: "OpFOrdEqual", 171: "OpFOrdNotEqual", 173: "OpFOrdLessThan", 175: "OpFOrdGreaterThan",
-    184: "OpBitwiseOr", 185: "OpBitwiseXor", 186: "OpBitwiseAnd", 187: "OpNot",
-    227: "OpAtomicLoad", 228: "OpAtomicStore", 245: "OpPhi", 246: "OpLoopMerge", 247: "OpSelectionMerge",
-    248: "OpLabel", 249: "OpBranch", 250: "OpBranchConditional", 251: "OpSwitch", 253: "OpReturn",
-    254: "OpReturnValue", 255: "OpUnreachable"
-  };
+  var SPV_OPS = A.data.spirv;
 
   function renderTop(list, n) {
     var h = "<h4>Top " + n + " " + (list.length === 1 ? "op" : "ops") + "</h4>";
@@ -1748,9 +1182,9 @@
   function summaryRdna2(text) {
     var counts = {}, total = 0, control = 0, memory = 0;
     text.split(/\n/).forEach(function (line) {
-      var m = line.match(/^\s*0x[0-9a-f]{8}:\s*([a-z_][a-z0-9_]*)/);
+      var m = line.match(/^\s*0x[0-9a-f]{8}:\s*([a-z_][a-z0-9_]*)/i);
       if (!m) return;
-      var op = m[1];
+      var op = m[1].toLowerCase();
       counts[op] = (counts[op] || 0) + 1; total++;
       if (/^(s_branch|s_cbranch)/.test(op)) control++;
       if (/^(buffer_|image_|ds_|flat_|tbuffer_|s_buffer_|s_load|s_store|s_scratch)/.test(op)) memory++;
@@ -1759,7 +1193,7 @@
       '<span class="pg-stat-n">' + total + "</span></div>" +
       '<div class="pg-stat"><span class="pg-stat-l">control flow</span><span class="pg-stat-n">' + control + "</span></div>" +
       '<div class="pg-stat"><span class="pg-stat-l">memory ops</span><span class="pg-stat-n">' + memory + "</span></div></div>";
-    h += '<p class="pg-why">This is the <strong>decoded input ISA</strong> (<code>*.rdna2</code>) — what the recompiler ' +
+    h += '<p class="pg-why">This is the <strong>decoded input ISA</strong> (a recompiler log excerpt or imported <code>*.rdna2</code>) — what the recompiler ' +
       "starts from. Control-flow instructions (<code>s_branch*</code>) are the reason the structuriser has to " +
       "recover block structure; memory ops are the ones that need descriptors.</p>";
     if (total) h += renderTop(freqCount(counts), 10);
@@ -1769,7 +1203,7 @@
   function summarySpvasm(text) {
     var counts = {}, total = 0, funcs = 0, labels = 0, entry = 0;
     text.split(/\n/).forEach(function (line) {
-      var m = line.match(/\b(Op[A-Za-z0-9]+)\b/);
+      var m = line.match(/^\s*(?:%[A-Za-z0-9_]+\s*=\s*)?(Op[A-Za-z0-9]+)\b/);
       if (!m) return;
       var op = m[1];
       counts[op] = (counts[op] || 0) + 1; total++;
@@ -1783,59 +1217,24 @@
       '<div class="pg-stat"><span class="pg-stat-l">labels (blocks)</span><span class="pg-stat-n">' + labels + "</span></div>" +
       '<div class="pg-stat"><span class="pg-stat-l">entry points</span><span class="pg-stat-n">' + entry + "</span></div></div>";
     h += '<p class="pg-why">This is the <strong>SPIR-V disassembly</strong> (<code>*.spvasm</code>) — what Vulkan will ' +
-      "actually run. The labels are structured control-flow blocks; count them against the <code>s_branch</code>s in the " +
-      "input ISA to see how much structure the recompiler had to recover.</p>";
+      "receive as compiler input. Labels identify basic blocks; compare them with the branches in the " +
+      "input ISA while following how the recompiler restructures control flow. Counts alone do not establish correctness.</p>";
     if (total) h += renderTop(freqCount(counts), 12);
     return h;
   }
 
   function summarySpvBin(words) {
-    var version = words[1] >>> 0, bound = words[3] >>> 0;
-    var ver = (version >>> 16) + "." + ((version >>> 8) & 0xff);
-    var counts = {}, total = 0, i = 5, bad = 0;
-    while (i < words.length) {
-      var w = words[i] >>> 0;
-      var wc = w & 0xffff, op = w >>> 16;
-      if (wc === 0 || i + wc > words.length) { bad++; break; }
-      var name = SPV_OPS[op] || "Op_" + op;
-      counts[name] = (counts[name] || 0) + 1; total++;
-      i += wc;
-    }
-    var h = '<div class="pg-stats"><div class="pg-stat"><span class="pg-stat-l">format</span>' +
-      '<span class="pg-stat-n">SPIR-V ' + ver + "</span></div>" +
-      '<div class="pg-stat"><span class="pg-stat-l">bound</span><span class="pg-stat-n">' + bound + "</span></div>" +
-      '<div class="pg-stat"><span class="pg-stat-l">instructions</span><span class="pg-stat-n">' + total + "</span></div></div>";
-    h += '<p class="pg-why">This is the <strong>SPIR-V binary</strong> (<code>*.spv</code>). Each instruction starts ' +
-      "with a word whose low 16 bits are its length and high 16 its opcode — walking that stream is how Vulkan consumes it.</p>";
-    if (total) h += renderTop(freqCount(counts), 12);
-    return h;
+    var parsed=A.parseSpirv(words),counts={};
+    parsed.instructions.forEach(function(i) { var name=SPV_OPS[i.opcode] || 'Op_'+i.opcode; counts[name]=(counts[name]||0)+1; });
+    return '<p class="pg-sum">SPIR-V '+parsed.version+' · ID bound '+parsed.bound+' · '+parsed.instructions.length+' instructions</p>' +
+      '<p>Instruction headers store word count in the high 16 bits and opcode in the low 16 bits. Structural inspection does not validate types, control flow or Vulkan compatibility.</p>'+renderTop(freqCount(counts),12);
   }
-
   function summaryWords(text) {
-    var ws = [];
-    String(text).split(/[^0-9a-fA-FxX]+/).forEach(function (t) {
-      var v = t.replace(/^0[xX]/, "");
-      if (!/^[0-9a-fA-F]{1,8}$/.test(v)) return;
-      ws.push(parseInt(v, 16) >>> 0);
-    });
-    if (!ws.length) return '<p class="pg-hint pg-warntext">No hex words found.</p>';
-    var fam = {}, names = {}, total = 0, rows = "", i = 0;
-    while (i < ws.length) {
-      var w1 = i + 1 < ws.length ? ws[i + 1] : undefined;
-      var d = rdDecode(ws[i], w1);
-      fam[d.family] = (fam[d.family] || 0) + 1;
-      names[d.name] = (names[d.name] || 0) + 1; total++;
-      rows += "<tr><td>" + i * 4 + '</td><td><code>' + esc(rdFmt(d, i * 4)) + "</code></td></tr>";
-      i += d.words;
-    }
-    var h = '<div class="pg-stats"><div class="pg-stat"><span class="pg-stat-l">instructions</span>' +
-      '<span class="pg-stat-n">' + total + "</span></div>" +
-      '<div class="pg-stat"><span class="pg-stat-l">encodings</span><span class="pg-stat-n">' +
-      Object.keys(fam).length + "</span></div></div>";
-    h += "<h4>Encodings present</h4>";
-    h += renderTop(freqCount(fam), 10);
-    h += "<h4>Decoded instructions</h4><table class='pg-table pg-narrow'><tbody>" + rows + "</tbody></table>";
-    return h;
+    var ws=Array.isArray(text)?text:A.parseWords(text),rows=A.decodeIsa(ws);
+    if(!ws.length)throw new Error('No hex words found.');
+    var last=rows[rows.length-1],h='<p class="pg-sum">'+rows.length+' encoding record(s) inspected.</p>';
+    if(last.dec.stop)h+='<p class="pg-hint pg-warntext">Stopped at byte '+last.pc+': '+esc(last.dec.warning)+'</p>';
+    return h+'<table class="pg-table"><thead><tr><th>Byte offset</th><th>Encoding</th></tr></thead><tbody>'+rows.map(function(r) { return '<tr><td>'+r.pc+'</td><td>'+esc(rdFmt(r.dec,r.pc))+'</td></tr>'; }).join('')+'</tbody></table>';
   }
 
   var DEMO_SPVASM = [
@@ -1869,9 +1268,9 @@
 
   var DEMO_RDNA2 = [
     "0x00000000: s_mov_b32 s0, 0 ; family=SOP1 opcode=0x03 raw=[0xbe800380]",
-    "0x00000004: v_mov_b32 v3, 1.0 ; family=VOP1 opcode=0x01 raw=[0x7e0603a2]",
+    "0x00000004: v_mov_b32 v3, 1.0 ; family=VOP1 opcode=0x01 raw=[0x7e0602f2]",
     "0x00000008: v_add_f32 v0, v0, v1 ; family=VOP2 opcode=0x03 raw=[0x06000200]",
-    "0x0000000c: v_mul_f32 v2, v0, v1 ; family=VOP2 opcode=0x08 raw=[0x10100200]",
+    "0x0000000c: v_mul_f32 v2, v0, v1 ; family=VOP2 opcode=0x08 raw=[0x10040200]",
     "0x00000010: v_cmp_lt_f32 vcc, v0, v1 ; family=VOPC opcode=0x01 raw=[0x7c020200]",
     "0x00000014: s_cbranch_vccz 0x0000001c ; family=SOPP opcode=0x06 raw=[0xbf860001]",
     "0x00000018: s_endpgm ; family=SOPP opcode=0x01 raw=[0xbf810000]",
@@ -1883,10 +1282,10 @@
       '<div class="pg-drop" id="shl-drop" tabindex="0" role="button">' +
       '<div class="pg-drop-i">⇩</div>' +
       "<div><strong>Drop a shader artifact here</strong><br>" +
-      '<span class="pg-dim">.rdna2 · .spvasm · .spv · or raw ISA words</span></div>' +
-      '<input type="file" id="shl-file" accept=".rdna2,.spvasm,.spv,.txt,.log,text/plain" hidden></div>' +
+      '<span class="pg-dim">.bin · .spv · decoded ISA text · .spvasm · raw hex words</span></div>' +
+      '<input type="file" id="shl-file" accept=".bin,.rdna2,.spvasm,.spv,.txt,.log,text/plain" hidden></div>' +
       '<div class="pg-row">' +
-      '<button type="button" class="pg-btn pg-demo" id="shl-demo-isa">▶ Demo: .rdna2</button>' +
+      '<button type="button" class="pg-btn pg-demo" id="shl-demo-isa">▶ Demo: decoded ISA</button>' +
       '<button type="button" class="pg-btn" id="shl-demo-spv">Demo: .spvasm</button>' +
       '<button type="button" class="pg-btn" id="shl-demo-words">Demo: raw words</button>' +
       '<button type="button" class="pg-btn" id="shl-paste">Paste text</button></div>' +
@@ -1894,50 +1293,47 @@
       'placeholder="Paste a shader artifact here…"></textarea>' +
       '<div class="pg-out" id="shl-out"><p class="pg-hint">Generate these with ' +
       "<code>--graphics-debug-dump true --shader-log-direction File --shader-log-folder _Shaders</code> " +
-      "— the <code>.spv</code>/<code>.spvasm</code> land in <code>_Shaders/</code>.</p></div>";
+      "— binary SPIR-V goes to <code>_Shaders/</code>, input ISA to <code>_Shaders/original/*.bin</code>. Decoded ISA and IR appear in the run log; SPIR-V text can be produced with spirv-dis.</p></div>";
 
     var out = $("#shl-out", root), drop = $("#shl-drop", root), file = $("#shl-file", root), ta = $("#shl-ta", root);
 
     function runText(text, name) {
+      try {
+      if(text.length>A.MAX_TEXT)throw new Error("Text exceeds the 2 MiB interactive limit.");
+      if(!text.trim()){out.textContent="Paste a shader artifact or choose a demo.";return;}
       var t = text.slice(0, 1200);
       var h = '<div class="pg-file">' + esc(name || "pasted text") + "</div>";
-      if (/\bOp(?:Function|Capability|MemoryModel)\b/.test(t)) h += summarySpvasm(text);
-      else if (/; family=/.test(t)) h += summaryRdna2(text);
-      else if (/0x[0-9a-fA-F]{8}/.test(t)) h += summaryWords(text);
-      else h += '<p class="pg-hint pg-warntext">Could not recognise this artifact. Expected a ' +
-        "<code>.rdna2</code> ISA dump, a <code>.spvasm</code> disassembly, or hex words.</p>";
+      if (/^\s*(?:%[A-Za-z0-9_]+\s*=\s*)?Op[A-Za-z0-9]+\b/m.test(t)) h += summarySpvasm(text);
+      else if (/^\s*0x[0-9a-f]{8}:\s*[a-z_][a-z0-9_]*/im.test(t)) h += summaryRdna2(text);
+      else h += summaryWords(text);
+
       out.innerHTML = h;
+      } catch(err) { showError(out,err); }
     }
-    function runBuf(buf, name) {
-      var dv = new DataView(buf);
-      if (buf.byteLength >= 4 && dv.getUint32(0, true) === 0x07230203) {
-        var words = [];
-        for (var i = 0; i < buf.byteLength; i += 4) words.push(dv.getUint32(i, true));
-        out.innerHTML = '<div class="pg-file">' + esc(name) + " (SPIR-V binary)</div>" + summarySpvBin(words);
-      } else {
-        var u8 = new Uint8Array(buf);
-        var hex = [];
-        for (var k = 0; k < buf.byteLength; k += 4) {
-          var w = u8[k] | (u8[k + 1] << 8) | (u8[k + 2] << 16) | (u8[k + 3] << 24);
-          hex.push("0x" + ("00000000" + (w >>> 0).toString(16)).slice(-8));
-        }
-        out.innerHTML = '<div class="pg-file">' + esc(name) + " (raw words)</div>" + summaryWords(hex.join("\n"));
-      }
+    function runBuf(buf, name, isIsa) {
+      try { var words=A.wordsFromBuffer(buf,!isIsa); out.innerHTML='<div class="pg-file">'+esc(name)+'</div>'+(isIsa?summaryWords(words):summarySpvBin(words)); }
+      catch(err) { showError(out,err); }
     }
+
     function pick(f) {
       if (!f) return;
+      if(f.size > A.MAX_FILE) { showError(out,new Error("File exceeds the 64 MiB interactive limit. Extract a smaller artifact.")); return; }
       var ext = (f.name.split(".").pop() || "").toLowerCase();
-      if (ext === "spv") {
+      var limit = ext === 'spv' || ext === 'bin' ? A.MAX_WORDS * 4 : A.MAX_TEXT;
+      if(f.size > limit) { showError(out,new Error('Shader artifact exceeds the interactive limit ('+limit+' bytes). Extract a smaller text block or use offline tools.')); return; }
+      if (ext === "spv" || ext === "bin") {
         var r = new FileReader();
-        r.onload = function () { runBuf(r.result, f.name); };
+        r.onload = function () { runBuf(r.result, f.name, ext === "bin"); };
+        r.onerror = function () { showError(out,new Error("Could not read that file.")); };
         r.readAsArrayBuffer(f);
       } else {
         var r2 = new FileReader();
         r2.onload = function () { runText(String(r2.result), f.name); };
+        r2.onerror = function () { showError(out,new Error("Could not read that file.")); };
         r2.readAsText(f);
       }
     }
-    drop.addEventListener("click", function () { file.click(); });
+    drop.addEventListener("click", function(e) { if(e.target !== file) file.click(); });
     drop.addEventListener("keydown", function (e) {
       if (e.key === "Enter" || e.key === " ") { e.preventDefault(); file.click(); }
     });
@@ -1951,23 +1347,22 @@
     drop.addEventListener("drop", function (e) {
       if (e.dataTransfer && e.dataTransfer.files[0]) pick(e.dataTransfer.files[0]);
     });
-    $("#shl-demo-isa", root).addEventListener("click", function () { runText(DEMO_RDNA2, "sample-shader.rdna2 (demo)"); });
+    $("#shl-demo-isa", root).addEventListener("click", function () { runText(DEMO_RDNA2, "decoded ISA with raw annotations (synthetic)"); });
     $("#shl-demo-spv", root).addEventListener("click", function () { runText(DEMO_SPVASM, "sample-vs.spvasm (demo)"); });
-    $("#shl-demo-words", root).addEventListener("click", function () { runText("0xBE800380 0x7E0602A2 0x06000200 0x10100200 0x7C020200 0xBF820001 0xBF810000", "raw words (demo)"); });
+    $("#shl-demo-words", root).addEventListener("click", function () { runText("0xBE800380 0x7E0602F2 0x06000200 0x10040200 0x7C020200 0xBF820001 0xBF810000", "raw words (demo)"); });
     $("#shl-paste", root).addEventListener("click", function () {
       ta.hidden = !ta.hidden;
       if (!ta.hidden) ta.focus();
     });
-    ta.addEventListener("input", function () { if (ta.value.trim()) runText(ta.value, "pasted text"); });
+    ta.addEventListener("input", function () { runText(ta.value, "pasted text"); });
   }
 
   /* ============================================================
      F. C++ primer — buffer & sampler descriptor decoder
      V# (buffer) layout verified against SrtWalker.cpp (stride =
-     (hi>>16)&0x3fff); T# (sampler) and the enums from gpu_defs.h.
+     (hi>>16)&0x3fff); S# (sampler), fields from shaderBindings.h and enums from gpu_defs.h.
      ============================================================ */
 
-  var BUF_FORMATS = { 0: "kInvalid", 1: "k8UNorm", 2: "k8SNorm", 5: "k8UInt", 6: "k8SInt", 7: "k16UNorm", 8: "k16SNorm", 11: "k16UInt", 12: "k16SInt", 13: "k16Float", 14: "k8_8UNorm", 15: "k8_8SNorm", 18: "k8_8UInt", 19: "k8_8SInt", 20: "k32UInt", 21: "k32SInt", 22: "k32Float", 23: "k16_16UNorm", 24: "k16_16SNorm", 27: "k16_16UInt", 28: "k16_16SInt", 29: "k16_16Float", 30: "k11_11_10UNorm", 34: "k11_11_10UInt", 35: "k11_11_10SInt", 36: "k11_11_10Float", 43: "k10_11_11Float", 44: "k2_10_10_10UNorm", 45: "k2_10_10_10SNorm", 48: "k2_10_10_10UInt", 49: "k2_10_10_10SInt", 56: "k8_8_8_8UNorm", 57: "k8_8_8_8SNorm", 60: "k8_8_8_8UInt", 61: "k8_8_8_8SInt", 62: "k8_8_8_8Srgb", 63: "k16_16_16_16UNorm", 64: "k16_16_16_16SNorm", 67: "k16_16_16_16UInt", 68: "k16_16_16_16SInt", 69: "k16_16_16_16Float", 70: "k32_32_32_32UInt", 71: "k32_32_32_32SInt", 72: "k32_32_32_32Float", 73: "k2_10_10_10UInt" };
   var CLAMPS = ["kWrap", "kMirror", "kClampLastTexel", "kMirrorOnceLastTexel", "kClampHalfBorder", "kMirrorOnceHalfBorder", "kClampBorder", "kMirrorOnceBorder"];
   var ANISO = ["kOne", "kTwo", "kFour", "kEight", "kSixteen"];
   var SFILT = ["kPoint", "kBilinear", "kAnisoPoint", "kAnisoLinear"];
@@ -1975,112 +1370,34 @@
   var BCOL = ["kTransBlack", "kOpaqueBlack", "kOpaqueWhite", "kFromTable"];
 
   function toolDesc(root) {
-    var kind = "V";
-    root.innerHTML =
-      '<div class="pg-controls">' +
-      '<label class="pg-mini" style="flex:1">Descriptor kind' +
-      '<select id="dc-kind" class="pg-sel"><option value="V">V# — buffer</option>' +
-      '<option value="T">T# — sampler</option></select></label>' +
-      '<label class="pg-mini" style="flex:2">Four dwords (WORD0 … WORD3)<br>' +
-      '<input id="dc-w0" class="pg-txt" spellcheck="false" value="0x00000000">' +
-      '<input id="dc-w1" class="pg-txt" spellcheck="false" value="0x00200100">' +
-      '<input id="dc-w2" class="pg-txt" spellcheck="false" value="0x0000012C">' +
-      '<input id="dc-w3" class="pg-txt" spellcheck="false" value="0x80000038"></label>' +
-      "</div>" +
-      '<div class="pg-row">' +
-      '<button type="button" class="pg-btn pg-demo" id="dc-demo-v">▶ Demo: V# vertex buffer</button>' +
-      '<button type="button" class="pg-btn" id="dc-demo-t">Demo: T# sampler</button></div>' +
-      '<div class="pg-out" id="dc-out"></div>' +
-      '<p class="pg-src">V# layout: base (W0 + W1[0:15]), stride (W1[16:29], as read at ' +
-      "<code>SrtWalker.cpp</code>), num_records (W2[0:29]), data_format (W3[0:5]). Enums from " +
-      "<code>gpu_defs.h</code>. The T# sampler has no address — it only describes filtering.</p>";
-
-    var kindSel = $("#dc-kind", root), w = [
-      $("#dc-w0", root), $("#dc-w1", root), $("#dc-w2", root), $("#dc-w3", root)
-    ], out = $("#dc-out", root);
-
-    function parseHex(v) {
-      var s = String(v).trim().replace(/^0[xX]/, "");
-      if (!/^[0-9a-fA-F]{1,8}$/.test(s)) return null;
-      return parseInt(s, 16) >>> 0;
+    root.innerHTML='<div class="pg-controls"><label class="pg-mini">Descriptor kind<select id="dc-kind" class="pg-sel"><option value="V">V# — buffer</option><option value="S">S# — sampler</option></select></label>'+
+      '<div class="pg-descriptor-words">'+[0,1,2,3].map(function(i){return '<label class="pg-mini">WORD'+i+'<input id="dc-w'+i+'" class="pg-txt" spellcheck="false" value="00000000"></label>';}).join('')+'</div></div>'+
+      '<div class="pg-row"><button type="button" class="pg-btn" id="dc-demo-v">Demo: V# vertex buffer</button> <button type="button" class="pg-btn" id="dc-demo-t">Demo: S# sampler</button></div><div class="pg-out" id="dc-out"></div>'+
+      '<p class="pg-src">Fields follow <code>src/graphics/shader/shaderBindings.h</code>, <code>ShaderBufferResource</code> / <code>ShaderSamplerResource</code>. Names come from <code>gpu_defs.h</code>. T# images use eight words and are outside this four-word inspector.</p>';
+    var kindSel=$('#dc-kind',root),out=$('#dc-out',root),inputs=[0,1,2,3].map(function(i){return $('#dc-w'+i,root);});
+    function name(table,id){return table[id]||'reserved / unknown ('+id+')';}
+    function render(){
+      try {
+        var w=inputs.map(function(input){if(!/^(?:0x)?[0-9a-f]{1,8}$/i.test(input.value.trim()))throw new Error('Enter one 32-bit hex word per field.');return Number(A.parseAddress(input.value))>>>0;}),rows=[],intro;
+        if(kindSel.value==='V'){
+          var d=A.bufferDescriptor(w);
+          intro='Base '+A.hex(d.base,12)+' · '+d.size.toLocaleString()+' bytes';
+          rows=[['base address','W0 + W1[0:15]',A.hex(d.base,12)],['stride','W1[16:29]',d.stride+' bytes'],['records','all 32 bits of W2',d.records],['byte range','stride == 0 ? records : stride × records',d.size],['format','W3[12:18]',name(A.data.bufferFormats,d.format)],['type','W3[30:31]',d.type],['out-of-bounds selector','W3[28:29]',d.outOfBounds],['swizzle enabled','W1[31]',d.swizzle?'yes':'no']];
+        }else{
+          var d=A.samplerDescriptor(w);intro='Clamp '+name(CLAMPS,d.clamp[0])+' · magnification '+name(SFILT,d.mag);
+          rows=[['clamp X / Y / Z','W0[0:2] / [3:5] / [6:8]',d.clamp.map(function(x){return name(CLAMPS,x);}).join(' / ')],['anisotropy','W0[9:11]',name(ANISO,d.aniso)],['comparison function','W0[12:14]',d.compare],['magnification / minification','W2[20:21] / [22:23]',name(SFILT,d.mag)+' / '+name(SFILT,d.min)],['mip filter','W2[26:27]',name(MFILT,d.mip)],['LOD range (raw U4.8)','W1[0:11] / [12:23]',d.minLod+' / '+d.maxLod+' → '+(d.minLod/256)+' / '+(d.maxLod/256)],['border color','W3[30:31]',name(BCOL,d.border)]];
+        }
+        out.innerHTML='<p class="pg-why">'+esc(intro)+'</p><table class="pg-table"><thead><tr><th>Field</th><th>Bits / rule</th><th>Value</th></tr></thead><tbody>'+rows.map(function(r){return '<tr>'+r.map(function(v){return '<td>'+esc(String(v))+'</td>';}).join('')+'</tr>';}).join('')+'</tbody></table>'+
+          '<p class="pg-sum">These are decoded fields, not proof that the descriptor is legal, mapped, bound or safe to use. Buffer addressing also depends on instruction modes, swizzling and bounds rules; a sampler contains filtering state, not an image address.</p>';
+      }catch(err){showError(out,err);}
     }
-
-    function render() {
-      var vals = w.map(function (e) { return parseHex(e.value); });
-      if (vals.some(function (v) { return v == null; })) {
-        out.innerHTML = '<p class="pg-hint pg-warntext">Enter four 32-bit hex words.</p>';
-        return;
-      }
-      var kind = kindSel.value, h = "";
-      if (kind === "V") {
-        var base = (vals[0] | 0) + (((vals[1] & 0xffff) >>> 0) * 4294967296);
-        var stride = (vals[1] >>> 16) & 0x3fff;
-        var num = vals[2] & 0x3fffffff;
-        var fmt = vals[3] & 0x3f;
-        var type = (vals[3] >>> 30) & 1;
-        var valid = (vals[3] >>> 31) & 1;
-        var totalBytes = num * stride;
-        h += '<div class="pg-stats"><div class="pg-stat"><span class="pg-stat-l">valid</span>' +
-          '<span class="pg-stat-n">' + (valid ? "yes" : "NO") + "</span></div>" +
-          '<div class="pg-stat"><span class="pg-stat-l">base address</span><span class="pg-stat-n" style="font-size:11px">0x' +
-          base.toString(16).toUpperCase() + "</span></div>" +
-          '<div class="pg-stat"><span class="pg-stat-l">stride × records</span><span class="pg-stat-n">' + stride + " × " + num + "</span></div>" +
-          '<div class="pg-stat"><span class="pg-stat-l">byte range</span><span class="pg-stat-n">' + totalBytes.toLocaleString() + "</span></div></div>";
-        h += '<table class="pg-table pg-narrow"><tbody>' +
-          "<tr><td>base address</td><td><code>W0 + W1[0:15]</code> → 0x" + base.toString(16).toUpperCase() + "</td></tr>" +
-          "<tr><td>stride</td><td><code>W1[16:29]</code> → " + stride + " bytes per element</td></tr>" +
-          "<tr><td>num_records</td><td><code>W2[0:29]</code> → " + num.toLocaleString() + "</td></tr>" +
-          "<tr><td>data_format</td><td><code>W3[0:5]</code> → <strong>" + esc(BUF_FORMATS[fmt] || "0x" + fmt.toString(16)) + "</strong></td></tr>" +
-          "<tr><td>type</td><td><code>W3[30]</code> → " + (type ? "SBUF" : "UBUF") + "</td></tr>" +
-          "<tr><td>valid</td><td><code>W3[31]</code> → " + (valid ? "1" : "0") + "</td></tr>" +
-          "</tbody></table>";
-        h += '<p class="pg-why">' + (valid ? "" : "Invalid — the shader must not bind this (it is a hole in the SRT). ") +
-          "A <code>buffer_load</code> reads element <code>i</code> at <code>base + i×stride</code>; " +
-          "the driver checks <code>num_records</code> for out-of-bounds. That is the whole V# story.</p>";
-      } else {
-        var cx = vals[0] & 3, cy = (vals[0] >>> 2) & 3, cz = (vals[0] >>> 4) & 3;
-        var aniso = (vals[0] >>> 6) & 0xf;
-        var cmp = (vals[0] >>> 10) & 3;
-        var mag = (vals[1] >>> 2) & 7, min = (vals[1] >>> 5) & 7, mip = (vals[1] >>> 8) & 7;
-        var minLod = (vals[1] >>> 16) & 0xf, maxLod = (vals[1] >>> 20) & 0xf;
-        var border = vals[2] & 3;
-        h += '<div class="pg-stats"><div class="pg-stat"><span class="pg-stat-l">clamp</span>' +
-          '<span class="pg-stat-n">' + (CLAMPS[cx] || cx) + "</span></div>" +
-          '<div class="pg-stat"><span class="pg-stat-l">filter</span><span class="pg-stat-n">' +
-          (SFILT[mag] || mag) + " / " + (SFILT[min] || min) + "</span></div>" +
-          '<div class="pg-stat"><span class="pg-stat-l">mip filter</span><span class="pg-stat-n">' + (MFILT[mip] || mip) + "</span></div>" +
-          '<div class="pg-stat"><span class="pg-stat-l">max aniso</span><span class="pg-stat-n">' + (ANISO[aniso] || aniso) + "</span></div></div>";
-        h += '<table class="pg-table pg-narrow"><tbody>' +
-          "<tr><td>clamp X / Y / Z</td><td>" + CLAMPS[cx] + " / " + CLAMPS[cy] + " / " + CLAMPS[cz] + "</td></tr>" +
-          "<tr><td>max aniso ratio</td><td><code>W0[6:9]</code> → " + (ANISO[aniso] || "0x" + aniso.toString(16)) + "</td></tr>" +
-          "<tr><td>mag / min filter</td><td><code>W1[2:4] / W1[5:7]</code> → " + (SFILT[mag] || "?") + " / " + (SFILT[min] || "?") + "</td></tr>" +
-          "<tr><td>mip filter</td><td><code>W1[8:10]</code> → " + (MFILT[mip] || "?") + "</td></tr>" +
-          "<tr><td>lod range</td><td><code>W1[16:19] / W1[20:23]</code> → " + minLod + " – " + maxLod + "</td></tr>" +
-          "<tr><td>border color</td><td><code>W2[0:1]</code> → " + (BCOL[border] || "?") + "</td></tr>" +
-          "</tbody></table>";
-        h += '<p class="pg-why">A sampler has no address and no data — it only says <em>how</em> to sample: ' +
-          "wrap or clamp, which filter, anisotropy, and the lod clamp. The game builds these from its own " +
-          "sampler state and hands them to the shader as a T# in the SRT.</p>";
-      }
-      out.innerHTML = h;
-    }
-
-    kindSel.addEventListener("change", render);
-    w.forEach(function (e) { e.addEventListener("input", render); });
-    $("#dc-demo-v", root).addEventListener("click", function () {
-      kindSel.value = "V";
-      w[0].value = "0x00000000"; w[1].value = "0x00200100"; w[2].value = "0x0000012C"; w[3].value = "0x80000038";
-      render();
-    });
-    $("#dc-demo-t", root).addEventListener("click", function () {
-      kindSel.value = "T";
-      w[0].value = "0x000000AA"; w[1].value = "0x00000224"; w[2].value = "0x00000000"; w[3].value = "0x00000000";
-      render();
-    });
-    render();
+    kindSel.addEventListener('change',render);inputs.forEach(function(i){i.addEventListener('input',render);});
+    function preset(kind,words){kindSel.value=kind;inputs.forEach(function(i,n){i.value=A.hex(words[n]);});render();}
+    $('#dc-demo-v',root).onclick=function(){preset('V',[0x80000000,0x00200001,300,0x00038000]);};
+    $('#dc-demo-t',root).onclick=function(){preset('S',[0x00000204,0x00400000,0x08500000,0x40000000]);};
+    $('#dc-demo-v',root).click();
   }
 
-  /* ---------------- boot ---------------- */
 
   var TOOLS = {
     "pg-pm4": toolPm4,

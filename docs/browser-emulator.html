@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="assets/app.css?v=20261007-7">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 <link rel="stylesheet" href="assets/browser-emulator.css?v=20261007">
+<link rel="stylesheet" href="assets/visual-tools.css?v=20261007-tools1">
 </head>
 <body>
 
@@ -30,7 +31,9 @@
     </div>
   </header>
 
-  <section class="be-machine" id="be-machine" aria-label="Playable browser micro-emulator">
+<section class="vt-guide" aria-label="Guided experiment"><h2 id="guided-experiment">Break and recover a GPU submission</h2><p><strong>Read first:</strong> <a href="b-machine.html">Instructions, addresses and the guest</a>. <a href="start.html">Return to the learning route</a>.</p><p><strong>Model boundary:</strong> An executable teaching machine: invented interpreted ISA, simulated threads and PM4-like packets, with a WebGL/Canvas renderer. KytyPS5 runs guest x86-64 natively and uses Vulkan.</p><p><button type="button" data-vt-action="micro">Prepare experiment</button> <span role="status"></span></p><ol><li>The boot sequence creates a preview frame, then pauses. Predict whether flushing a pipeline cache should kill the guest.</li><li>Prepare the experiment. Flush pipeline cache and Step frame; inspect the rebuild and verify the machine can continue.</li><li>Corrupt next PM4 header, then Step frame. Read the fault and compare it with Write to RX code after a Cold reboot.</li></ol><details><summary>Check your explanation</summary><p>A cache flush causes reconstruction on use. An unknown packet stops this teaching guest at the decoder; a protected-memory write fails at the memory boundary. These are distinct failure paths. Cold reboot restores the fixture; neither experiment establishes a behavior of real games. Click the game display before using WASD, arrows, P or N.</p></details></section>
+
+  <section class="be-machine" data-visual-workspace="Break and recover a GPU submission" id="be-machine" aria-label="Playable browser micro-emulator">
     <header class="be-toolbar">
       <div class="be-brand">
         <i id="be-power-led"></i>
@@ -250,10 +253,11 @@
   </section>
 </main>
 
-<script src="assets/topics.js?v=20261007-8" defer></script>
-<script src="assets/search-index.js?v=20261007-8" defer></script>
+<script src="assets/topics.js?v=20261007-tools1" defer></script>
+<script src="assets/search-index.js?v=20261007-tools1" defer></script>
 <script src="assets/app.js?v=20261007-7" defer></script>
 <script src="assets/highlight.js?v=20261007-6" defer></script>
-<script src="assets/browser-emulator.js?v=20261007" defer></script>
+<script src="assets/browser-emulator.js?v=20261007-tools1" defer></script>
+<script src="assets/visual-tools.js?v=20261007-tools1" defer></script>
 </body>
 </html>

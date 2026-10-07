@@ -3,11 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>The machine, running — KytyPS5</title>
+<title>Performance simulator — KytyPS5</title>
 <meta name="description" content="A live simulation of the emulator producing frames continuously. Change the parameters mid-run and watch pipeline-cache thrash, upload cost and serialised compute show up in the frame-time graph.">
 <link rel="stylesheet" href="assets/app.css?v=20261007-7">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 <link rel="stylesheet" href="assets/machine.css?v=20261007">
+<link rel="stylesheet" href="assets/visual-tools.css?v=20261007-tools1">
 </head>
 <body>
 
@@ -15,7 +16,7 @@
 
   <header class="mc-hero">
     <p class="topic-eyebrow">The whole thing · live simulation</p>
-    <h1 id="the-machine-running">The machine, running</h1>
+    <h1 id="the-machine-running">Performance simulator</h1>
     <p class="mc-lede">
       Everything else on this site explains the emulator. This one <b>runs</b> it — frame after
       frame, continuously, with a cost model behind each one. Change anything on the right while
@@ -28,7 +29,9 @@
     </p>
   </header>
 
-  <div class="mc-main">
+<section class="vt-guide" aria-label="Guided experiment"><h2 id="guided-experiment">Compare a baseline with one pathology</h2><p><strong>Read first:</strong> <a href="t-cpp-performance.html">Performance and design costs</a>. <a href="start.html">Return to the learning route</a>.</p><p><strong>Model boundary:</strong> Simulated costs are chosen for explanation. Use measurements from a real build to investigate real performance.</p><p><button type="button" data-vt-action="performance">Prepare experiment</button> <span role="status"></span></p><ol><li>Prepare the baseline, then step through several frames until its cache is warm. Note misses and uploaded bytes.</li><li>Choose Pipeline thrash and advance several more frames. Predict whether waiting longer will make this workload warm.</li><li>Choose Upload storm. Identify the changed cost component instead of using FPS alone to assign the cause.</li></ol><details><summary>Check your explanation</summary><p>Repeated eviction prevents a stable warm cache when the working set exceeds capacity. Upload storm increases bytes transferred as the write rate and watched region size grow. Both can slow a frame for different reasons. A real diagnosis needs CPU/GPU timelines and controlled comparisons.</p></details></section>
+
+  <div class="mc-main" data-visual-workspace="Compare a baseline with one pathology">
 
     <div class="mc-stage" id="machine"></div>
 
@@ -37,7 +40,7 @@
       <section class="mc-card">
         <h3>Run</h3>
         <div class="mc-buttons">
-          <button type="button" class="mc-btn" id="mc-pause">❙❙ Pause</button>
+          <button type="button" class="mc-btn" id="mc-pause">▶ Resume</button>
           <button type="button" class="mc-btn" id="mc-step">Step</button>
           <button type="button" class="mc-btn" id="mc-reset">Reset</button>
         </div>
@@ -139,11 +142,12 @@
 </main>
 
 <script src="assets/konva.min.js?v=20261007" defer></script>
-<script src="assets/topics.js?v=20261007-8" defer></script>
-<script src="assets/search-index.js?v=20261007-8" defer></script>
+<script src="assets/topics.js?v=20261007-tools1" defer></script>
+<script src="assets/search-index.js?v=20261007-tools1" defer></script>
 <script src="assets/app.js?v=20261007-7" defer></script>
 <script src="assets/highlight.js?v=20261007-6" defer></script>
-<script src="assets/machine.js?v=20261007" defer></script>
+<script src="assets/machine.js?v=20261007-tools1" defer></script>
+<script src="assets/visual-tools.js?v=20261007-tools1" defer></script>
 </body>
 </html>
 

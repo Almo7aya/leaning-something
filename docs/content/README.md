@@ -34,6 +34,8 @@ node scripts/build-search-index.cjs --write
 node scripts/build-docs.cjs
 node scripts/check-docs.cjs
 node scripts/check-doc-examples.cjs
+node scripts/build-artifact-data.cjs
+node scripts/check-artifacts.cjs
 node scripts/check-curriculum.cjs
 node scripts/check-beginner.cjs
 node scripts/build-search-index.cjs
@@ -59,3 +61,35 @@ Label source excerpts and schematic sequences. Preserve omitted-code markers;
 never imply an excerpt is a standalone program. Prefer named external lessons to
 chapter numbers that can drift. Keep claims about fixtures, static source reading,
 device execution and game behavior distinct.
+
+## Optional visual tools
+
+Each tool provides a related lesson, an explicit model boundary, a prepared
+experiment and a worked explanation. Keep these pages usable at desktop widths;
+do not change their desktop instruments to accommodate a mobile layout.
+
+`assets/artifact-parsers.js` owns the pure readers used by both the Playground and
+`scripts/check-artifacts.cjs`. Invalid or unsupported input must produce a visible
+explanation, never an invented decode or a silently truncated address. Parsing
+structure is separate from validating execution or Vulkan compatibility.
+
+`assets/artifact-data.js` is generated from the pinned KytyPS5 opcode tables,
+descriptor-format enums and vendored SPIR-V grammar. Regenerate it with
+`node scripts/build-artifact-data.cjs --write` when updating the source snapshot.
+Set `KYTY_SOURCE_DIR` for an alternate checkout at the manifest revision. Without
+the optional source checkout the table comparison is skipped; parser regressions
+still use the committed data. Keep tests for actual boundary failures alongside
+any parser changes. Text inspection is bounded to 2 MiB, word streams to 16,384
+words, and ELF files to 64 MiB; larger artifacts need offline tools.
+
+`assets/visual-tools.js` supplies expansion, diagram zoom, copied results and
+exercise preparation. Simulator shortcuts belong to the focused game display.
+Keep modeled timings, instruction sets and cache events labeled as simulations.
+
+For browser regression checks, serve `docs/`, install Playwright separately, then
+run `node scripts/check-visual-tools.cjs`. `PLAYWRIGHT_MODULE` can name an existing
+Playwright module, `BROWSER_EXECUTABLE` a browser executable, and `DOCS_URL` the
+server URL (default `http://127.0.0.1:8765`). The suite checks desktop widths
+1280/1440/1920 in both themes, exercises controls and writes screenshots under
+`_Build/curriculum/browser/visual-tools/`. Inspect these images as well as the
+assertions; browser checks do not prove native emulator behavior.

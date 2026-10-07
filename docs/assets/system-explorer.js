@@ -175,7 +175,7 @@
 
   var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   var sim = {
-    phase: "boot", step: 0, bootMax: 0, frame: 0, running: !reduceMotion, blocked: false,
+    phase: "boot", step: 0, bootMax: 0, frame: 0, running: false, blocked: false,
     speed: 1, elapsed: 0, selected: "loader", filter: "all", preset: "balanced",
     history: [], log: [], pages: new Array(PAGES).fill("clean"), cache: [], newPipelines: [],
     report: null, ringWrite: 0, ringRead: 0, audioFill: 23, hleRecent: [],
@@ -352,7 +352,7 @@
     sim.bootMax = 0;
     sim.frame = 0;
     sim.blocked = false;
-    sim.running = true;
+    sim.running = false;
     sim.elapsed = 0;
     sim.history = [];
     sim.log = [];
@@ -373,7 +373,7 @@
     sim.step = 0;
     sim.bootMax = BOOT.length - 1;
     sim.blocked = false;
-    sim.running = true;
+    sim.running = false;
     sim.frame = 0;
     sim.history = [];
     sim.pages = new Array(PAGES).fill("clean");
@@ -740,6 +740,7 @@
     $("mc-state").textContent = sim.blocked ? "Blocked on missing export" : sim.running ? (sim.phase === "boot" ? "Booting" : "Running frame loop") : "Paused";
     $("mc-clock").textContent = sim.phase === "boot" ? "startup · step " + (sim.step + 1) + " of " + BOOT.length : "frame " + sim.frame + " · event " + (sim.step + 1) + " of " + FRAME.length;
     $("mc-play").textContent = sim.blocked ? "Install stub & continue" : sim.running ? "Pause" : "Resume";
+    $("mc-step").textContent = sim.blocked ? "Install stub & step" : "Step event";
   }
 
   function renderSequence() {

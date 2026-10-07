@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="assets/app.css?v=20261007-7">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 <link rel="stylesheet" href="assets/system-explorer.css?v=20261007">
+<link rel="stylesheet" href="assets/visual-tools.css?v=20261007-tools1">
 </head>
 <body>
 
@@ -29,7 +30,9 @@
     </div>
   </header>
 
-  <section class="mc-machine" id="machine" aria-label="Interactive KytyPS5 emulator simulation">
+<section class="vt-guide" aria-label="Guided experiment"><h2 id="guided-experiment">Diagnose pipeline thrashing</h2><p><strong>Read first:</strong> <a href="t-program-cache.html">The program cache</a>. <a href="start.html">Return to the learning route</a>.</p><p><strong>Model boundary:</strong> A deterministic cost and state model. Its tiny LRU cache and chosen timings demonstrate behavior; they do not reproduce KytyPS5 cache policy or predict FPS.</p><p><button type="button" data-vt-action="explorer">Prepare experiment</button> <span role="status"></span></p><ol><li>Predict what happens when 20 pipeline keys cycle through a cache with only 4 slots.</li><li>Prepare the experiment, then use Step event through two frame loops. Inspect Graphics → pipeline cache and Overview → frame budget.</li><li>Increase Pipeline cache slots to 24, then step two more frames. Compare cold misses with repeated eviction.</li></ol><details><summary>Check your explanation</summary><p>With 4 slots and a cycling sequence of 20 keys, reuse arrives after eviction and compilation repeats. With enough slots, the first encounter is cold but later frames can reuse the entries. This illustrates working-set pressure; actual cache keys and lifetimes must be checked in the project source.</p></details></section>
+
+  <section class="mc-machine" data-visual-workspace="Diagnose pipeline thrashing" id="machine" aria-label="Interactive KytyPS5 emulator simulation">
     <noscript>
       <p class="mc-fail">This explorer needs JavaScript. The rest of the course remains readable without it.</p>
     </noscript>
@@ -261,10 +264,11 @@
 
 </main>
 
-<script src="assets/topics.js?v=20261007-8" defer></script>
-<script src="assets/search-index.js?v=20261007-8" defer></script>
+<script src="assets/topics.js?v=20261007-tools1" defer></script>
+<script src="assets/search-index.js?v=20261007-tools1" defer></script>
 <script src="assets/app.js?v=20261007-7" defer></script>
 <script src="assets/highlight.js?v=20261007-6" defer></script>
-<script src="assets/system-explorer.js?v=20261007-d2413fc2" defer></script>
+<script src="assets/system-explorer.js?v=20261007-tools1" defer></script>
+<script src="assets/visual-tools.js?v=20261007-tools1" defer></script>
 </body>
 </html>

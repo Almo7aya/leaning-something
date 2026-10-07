@@ -469,12 +469,15 @@ rg "LIB_DEFINE" src/libs/libSystemService.cpp</code></pre>
     <div class="ex-step">
       <h3 id="4-watch-it-happen"><span class="ex-s">4</span> Watch it happen</h3>
       <pre class="ex-pre"><code>.\_Build\windows-prod\kyty_emulator.exe --game "&lt;title&gt;" `
-  --shader-log-direction File</code></pre>
+  --redzone --printf-direction File --printf-output-file _kyty.txt `
+  --graphics-debug-dump true --shader-log-direction File --shader-log-folder _Shaders</code></pre>
       <p>
-        That fills <code>_Shaders/</code> with the input ISA, the IR, and the emitted SPIR-V for
-        every shader the title uses. Pick a small one — a fullscreen blit or a UI shader — and
-        read all three side by side. A descriptor log is emitted too, which tells you which
-        resources the shader expected.
+        At the pinned revision, graphics debug dumping saves input ISA to
+        <code>_Shaders/original/*.bin</code> and generated SPIR-V to <code>_Shaders/*.spv</code>.
+        Shader logging adds decoded ISA, IR and resource-binding details to the run log.
+        Inspect a small shader with the <a href="playground.html#shader-log">artifact reader</a>.
+        Dumps appear only when their code paths execute; these flags do not automatically
+        create <code>.rdna2</code> or <code>.spvasm</code> files.
       </p>
     </div>
 
@@ -570,8 +573,8 @@ constexpr uint32_t IT_SET_CONTEXT_REG = 0x69;
 
 </main>
 
-<script src="assets/search-index.js?v=20261007-8" defer></script>
-<script src="assets/topics.js?v=20261007-8" defer></script>
+<script src="assets/search-index.js?v=20261007-tools1" defer></script>
+<script src="assets/topics.js?v=20261007-tools1" defer></script>
 <script src="assets/app.js?v=20261007-7" defer></script>
 <script src="assets/highlight.js?v=20261007-6" defer></script>
 </body>

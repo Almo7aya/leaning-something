@@ -444,6 +444,7 @@
     var next = el("button", "lt-b", "Next ›");
     var play = el("button", "lt-b lt-play", "▶ Play");
     var reset = el("button", "lt-b", "Reset");
+    reset.id = "lt-reset";
     [prev, next, play, reset].forEach(function (b) { b.type = "button"; });
     var counter = el("span", "lt-count");
     var phase = el("span", "lt-phase");
@@ -610,6 +611,7 @@
     next.addEventListener("click", function () { stop(); go(i + 1); });
     play.addEventListener("click", function () { playing ? stop() : start(); });
     reset.addEventListener("click", function () { stop(); go(0); });
+    document.addEventListener("visibilitychange", function () { if (document.hidden) stop(); });
 
     wrap.addEventListener("keydown", function (e) {
       if (e.key === "ArrowLeft") { e.preventDefault(); stop(); go(i - 1); }

@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="assets/app.css?v=20261007-7">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 <link rel="stylesheet" href="assets/advanced-emulator.css?v=20261007">
+<link rel="stylesheet" href="assets/visual-tools.css?v=20261007-tools1">
 </head>
 <body>
 <main data-app-content class="ax-wrap">
@@ -22,11 +23,13 @@
     </p>
   </header>
 
-  <section class="ax-machine" id="ax-machine">
+<section class="vt-guide" aria-label="Guided experiment"><h2 id="guided-experiment">Separate program reuse from driver-cache help</h2><p><strong>Read first:</strong> <a href="t-program-cache.html">The program cache</a>. <a href="start.html">Return to the learning route</a>.</p><p><strong>Model boundary:</strong> A JavaScript interpreter drives a Canvas teaching model. Shader stages, Vulkan calls and disk-cache events are simulated; no native PS5 code or Vulkan compiler runs here.</p><p><button type="button" data-vt-action="intro">Prepare experiment</button> <span role="status"></span></p><ol><li>Prepare the experiment, wait for boot to finish, and use Step frame to request the initial effect. Let the displayed compilation finish, then step again.</li><li>Flush L1 cache and request another frame. Observe translation and specialization phases reappear.</li><li>Enable the simulated disk cache, warm it, flush L1 again, and repeat. Predict which work still has to happen.</li></ol><details><summary>Check your explanation</summary><p>A live program hit can reuse the translated/specialized result. The simulated disk cache represents driver pipeline data: it can assist host pipeline creation but cannot replace guest shader translation after L1 is lost. Its contents exist only in this page’s JavaScript state and can survive the model’s reboot, not a browser reload.</p></details></section>
+
+  <section class="ax-machine" data-visual-workspace="Separate program reuse from driver-cache help" id="ax-machine">
     <header class="ax-bar">
       <div class="ax-brand"><i id="ax-led"></i><b>ASTERIA · INTRO</b><small id="ax-sub">cold</small></div>
       <div class="ax-controls">
-        <button type="button" class="ax-btn ax-pri" id="ax-run">Pause</button>
+        <button type="button" class="ax-btn ax-pri" id="ax-run">Run</button>
         <button type="button" class="ax-btn" id="ax-frame">Step frame</button>
         <button type="button" class="ax-btn" id="ax-insn">Step insn</button>
         <button type="button" class="ax-btn" id="ax-reset">Cold reboot</button>
@@ -81,7 +84,7 @@
           <h2 id="ax-effect-name">plasma.fs</h2>
           <div class="ax-lights"><span id="ax-l-cpu">CPU</span><span id="ax-l-up">UPLOAD</span><span id="ax-l-gpu">GPU</span><span id="ax-l-flip">FLIP</span></div>
         </header>
-        <div class="ax-screen-shell" tabindex="0">
+        <div class="ax-screen-shell" tabindex="0" aria-label="Intro machine display. Focus here for WASD, arrows, P to run or pause, comma to step a frame, and period to step an instruction.">
           <canvas id="ax-screen" width="640" height="360"></canvas>
           <div class="ax-hud">
             <div><small>TICK</small><b id="ax-tick">0</b></div>
@@ -113,7 +116,7 @@
 
     <div class="ax-panels">
       <section class="ax-panel" data-tab="cpu">
-        <p class="ax-panel-lead">The guest's own code runs natively on two threads; it reads and writes a small guest address space. Nothing here is interpreted.</p>
+        <p class="ax-panel-lead">Two simulated threads execute an invented ISA in JavaScript and share a small guest address space. Real KytyPS5 executes supported guest x86-64 code on host threads.</p>
         <div class="ax-cards ax-cards-2">
           <section class="ax-card">
             <header><b>CPU · executed code</b><span id="ax-cpu-ip">raster / mixer</span></header>
@@ -135,7 +138,7 @@
       </section>
 
       <section class="ax-panel" data-tab="loader" hidden>
-        <p class="ax-panel-lead">At load time each import (a NID) is resolved into the GOT, and the TLS read is patched to <code>Call9</code>. At run time a <code>SYS</code> crosses into a hand-written native function.</p>
+        <p class="ax-panel-lead">At load time each import (a NID) is resolved into the GOT, and the TLS read is patched to <code>Call9</code>. In this model, <code>SYS</code> calls a JavaScript handler. Real KytyPS5 uses native C++ HLE implementations.</p>
         <div class="ax-cards ax-cards-2">
           <section class="ax-card">
             <header><b>GOT + TLS</b><span>resolve then patch</span></header>
@@ -143,7 +146,7 @@
             <pre id="ax-tls"></pre>
           </section>
           <section class="ax-card">
-            <header><b>HLE</b><span>NID → native function</span></header>
+            <header><b>HLE</b><span>NID → HLE handler</span></header>
             <div id="ax-hle"></div>
           </section>
         </div>
@@ -205,36 +208,33 @@
   <section class="ax-note">
     <h2 id="what-this-is">What you are looking at</h2>
     <p>
-      The raster thread only stores a handful of uniforms and submits one fullscreen draw.
-      The mixer thread writes an envelope into a tiny audio ring. Cold boot plays the loader
-      pipeline back one stage at a time — <em>reserve → map → relocate → TLS patch → protect →
-      threads → entry</em> — so you can watch the boundary the emulator actually crosses. Changing
-      the effect changes the specialisation key, so the cache misses and the frame <em>stalls</em>
-      while it walks <em>Decode → CFG → Translate → Materialize → Compile</em> — the same split as
-      <code>TranslateProgram</code> / <code>CompileProgram</code>, and the same first-encounter
-      stutter a real title shows. The <b>Shader recompiler</b> panel shows that program as it is
-      built — the decoded <b>RDNA&nbsp;2 ISA</b>, its control-flow graph, the typed IR, the
-      resource table and the emitted <b>SPIR-V</b> — and the <b>pace</b> control (learn / normal /
-      fast) slows the whole thing down so you can read each stage. Click any stage in either
-      pipeline to open a live inspector (memory map, GOT, TLS bytes, PM4 register writes, the IR
-      and SPIR-V…). The intros are uniforms visualised; Serpent, Breakout, Drift, Invaders, Flappy
-      and Pong are real guest-ticked programs. <b>Megademo</b> links two dozen parts at boot and
-      runs them back to back. <b>Nebula Run ✦</b> is the big one — a simple space shooter whose
-      background, ship, every enemy type, weapon, explosion and HUD is its own pipeline, compiled
-      <em>the first time it appears on screen</em> (streaming shader compilation, in the background,
-      so gameplay keeps running). Watch the <b>Shader recompiler</b> fill — click any cached
-      pipeline to read its RDNA&nbsp;2 → IR → SPIR-V — the <b>Vulkan</b> panel for the host
-      <code>vk*</code> calls, and the <b>Pipeline cache</b> for the two levels the emulator keeps:
-      an in-memory ProgramCache (L1) and the on-disk <code>VkPipelineCache</code> (L2). Flush L1 and
-      the next draws translate the shaders again while the disk cache may accelerate host pipeline creation; wipe the disk
-      cache and everything compiles cold, exactly like a first run of a game.
+      This page executes an invented guest ISA in JavaScript. A raster thread updates uniforms
+      and submits teaching packets; a mixer thread writes an audio envelope. The Canvas renderer
+      draws the result. Click the display before using game keys. Run, Step frame and Step insn
+      let you choose when execution advances; Cold reboot restores the teaching machine.
+    </p>
+    <p>
+      The loader and shader pipelines are explanations of KytyPS5 boundaries. Their RDNA2, IR,
+      SPIR-V and Vulkan panels contain illustrative text and simulated events. Changing an effect
+      or specialization can trigger a simulated compilation delay. The pace control slows those
+      stages so you can inspect the memory map, GOT, TLS bytes and resource state. These timings
+      do not measure the native emulator or your GPU.
+    </p>
+    <p>
+      The game scenes, Megademo and Nebula Run provide different workloads for the same model.
+      Nebula Run queues simulated background compilation as new effects appear. The L1 cache
+      represents reusable program results; the simulated driver cache represents help with host
+      pipeline creation. Flush L1 to request translation again. Wipe the driver cache to remove
+      that modeled assistance. Both caches live in this page’s memory; only the simulated driver
+      cache survives Cold reboot, and neither persists across a browser reload.
     </p>
   </section>
 </main>
-<script src="assets/topics.js?v=20261007-8" defer></script>
-<script src="assets/search-index.js?v=20261007-8" defer></script>
+<script src="assets/topics.js?v=20261007-tools1" defer></script>
+<script src="assets/search-index.js?v=20261007-tools1" defer></script>
 <script src="assets/app.js?v=20261007-7" defer></script>
 <script src="assets/highlight.js?v=20261007-6" defer></script>
-<script src="assets/advanced-emulator.js?v=20261007" defer></script>
+<script src="assets/advanced-emulator.js?v=20261007-tools1" defer></script>
+<script src="assets/visual-tools.js?v=20261007-tools1" defer></script>
 </body>
 </html>

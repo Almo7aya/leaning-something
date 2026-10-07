@@ -68,7 +68,7 @@
     asyncCompute: true, // compute queues run alongside graphics
     vsync: true,
     speed: 1,
-    paused: false
+    paused: true
   };
 
   /* ============================================================
@@ -752,10 +752,13 @@
   var resetBtn = document.getElementById("mc-reset");
   if (resetBtn) {
     resetBtn.addEventListener("click", function () {
+      P.paused = true; phase = 0;
+      if (pauseBtn) { pauseBtn.textContent = "▶ Resume"; pauseBtn.classList.add("on"); }
       sim.frame = 0; sim.history.length = 0;
       sim.totals = { frames: 0, misses: 0, uploadedMB: 0, stallMs: 0 };
       for (var i = 0; i < PAGES; i++) sim.pages[i] = 0;
       for (var c = 0; c < sim.cache.length; c++) sim.cache[c] = null;
+      report = computeFrame();
       paint();
     });
   }

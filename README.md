@@ -166,6 +166,8 @@ node scripts/build-search-index.cjs --write
 node scripts/build-docs.cjs
 node scripts/check-docs.cjs
 node scripts/check-doc-examples.cjs
+node scripts/build-artifact-data.cjs
+node scripts/check-artifacts.cjs
 node scripts/check-curriculum.cjs
 node scripts/check-beginner.cjs
 node scripts/build-search-index.cjs

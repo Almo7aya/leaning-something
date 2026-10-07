@@ -24,7 +24,7 @@
     "Jump to guest entry. From here the CPU runs intro code.",
     "Raster thread: sample knobs, bump tick, submit a fullscreen draw.",
     "Mixer thread: write the audio-ring envelope and optionally beep.",
-    "SYS crosses into HLE — a GOT slot becomes a native function.",
+    "SYS crosses into a JavaScript HLE handler via a simulated GOT slot.",
     "PM4: SET_USER_DATA, SET_PIPELINE, DRAW_FULLSCREEN, PRESENT.",
     "Shader cache: TranslateProgram once, CompileProgram per permutation.",
     "Upload dirty pages the GPU still thinks are current.",
@@ -57,9 +57,9 @@
   var SH_MAP = [
     "recompiler/frontend/decode/ShaderDecoder.cpp",
     "recompiler/frontend/cfg/ShaderCFG.cpp",
-    "recompiler/ShaderRecompiler.cpp · TranslateProgram (485)",
+    "recompiler/ShaderRecompiler.cpp · TranslateProgram",
     "recompiler/ir/passes · resource plan vs draw-time snapshot",
-    "recompiler/ShaderRecompiler.cpp · CompileProgram (615) → SPIR-V"
+    "recompiler/ShaderRecompiler.cpp · CompileProgram → SPIR-V"
   ];
   var FX = ["plasma.fs", "tunnel.fs", "constellation.fs", "fire.fs", "starfield.fs", "moire.fs", "hexrain.fs", "kaleido.fs", "metaballs.fs", "voronoi.fs"];
   FX[10] = "serpent.game"; FX[11] = "breakout.game"; FX[12] = "drift.game";
@@ -257,7 +257,7 @@
     this.keys = new Set(); this.pressedEdge = new Set();
     this.game = null; this.stars = []; this.fire = null;
     this.vk = [];                              // host Vulkan event log
-    this.disk = {};                            // L2: on-disk VkPipelineCache (hash → 1)
+    this.disk = {};                            // L2: simulated driver-cache entries in page memory (hash → 1)
     this.diskBytes = 0; this.diskEnabled = false;   // L2 off by default
     this.draws = [];                           // current frame's draw list (multi-draw)
     this.focusKey = null; this.shTab = 0;      // recompiler UI: expanded shader + tab
@@ -283,7 +283,7 @@
     this.code = [buildRaster(), buildMixer()];
     this.compileAnim = null; this.inspect = null; this.focusKey = null;
     this.pipeOn = 0;
-    // the host GPU comes up; the on-disk VkPipelineCache (L2) survives a reboot
+    // the host GPU comes up; the simulated driver cache survives a model reboot within this page
     var diskN = Object.keys(this.disk).length;
     this.vklog("vkCreateInstance", "VK_API_VERSION_1_3");
     this.vklog("vkCreateDevice", "AMD RDNA host GPU + VMA");
@@ -1034,7 +1034,7 @@
       case 3: return "<pre class='ax-ins-pre'>on disk : " + this.tls.before + "\nin memory: " + (this.tls.after || "—") + "</pre><p class='ax-ins-note'>REX.W near-call + mov rax,rax neutralises a stray 0x66 prefix on AMD.</p>";
       case 4: { var rx = 0, rw = 0; for (var p = 0; p < PAGES; p++) { if (!m.pages[p].on) continue; if (m.pages[p].perm & PERM.X) rx++; else if (m.pages[p].perm & PERM.W) rw++; } return tbl([["R+X pages", rx + " (code, GOT)"], ["R+W pages", rw + " (data, ring)"], ["W-on-X?", "denied → fault"]]); }
       case 5: return tbl(this.th.map(function (t) { return [t.name, "pc 0x" + hex(t.base + t.pc * 8)]; }));
-      case 6: return tbl([["entry", "0x" + hex(CODE)], ["first op", this.th[0] ? dis(this.th[0].ins[0]) : "—"], ["mode", "native — no interpreter"]]);
+      case 6: return tbl([["entry", "0x" + hex(CODE)], ["first op", this.th[0] ? dis(this.th[0].ins[0]) : "—"], ["mode", "interpreted teaching ISA"]]);
       case 7: { var t = this.th[0]; return tbl([["pc", "0x" + hex(t.base + t.pc * 8)], ["r1 (tick)", hex(t.r[1])], ["next", dis(t.ins[t.pc])]]); }
       case 8: { var vals = []; for (var k = 0; k < 8; k++) vals.push(m.peek(ARING + k * 4)); return tbl([["audio ring", vals.join(" ")], ["bass", m.peek(U.bass)], ["beep", this.audioOn ? "on" : "off"]]); }
       case 9: return tbl(this.hle.map(function (h) { return [h.name, h.nid + " · " + h.calls + " calls"]; }));
@@ -1281,8 +1281,8 @@
     $("ax-cache").innerHTML =
       "<div class='ax-cache-row'><b>L1 · Kyty ProgramCache</b><span>in-memory std::unordered_map&lt;key,Program&gt;</span></div>" +
       "<div class='ax-cache-kv'><span>entries</span><code>" + l1 + "</code><span>hits / misses</span><code>" + emu.shaders.hits + " / " + emu.shaders.misses + "</code></div>" +
-      "<div class='ax-cache-row'><b>L2 · VkPipelineCache</b><span>" + (l2on ? "~/.kyty/CUSA00000/pipeline.cache" : "<em style='color:var(--k)'>disabled — nothing persists</em>") + "</span></div>" +
-      "<div class='ax-cache-kv'><span>pipelines</span><code>" + (l2on ? l2 : "—") + "</code><span>on disk</span><code>" + (l2on ? (emu.diskBytes / 1024 | 0) + " KB" : "off") + "</code></div>" +
+      "<div class='ax-cache-row'><b>L2 · simulated VkPipelineCache</b><span>" + (l2on ? "page memory · survives model reboot" : "<em style='color:var(--k)'>disabled</em>") + "</span></div>" +
+      "<div class='ax-cache-kv'><span>pipelines</span><code>" + (l2on ? l2 : "—") + "</code><span>modeled size</span><code>" + (l2on ? (emu.diskBytes / 1024 | 0) + " KB" : "off") + "</code></div>" +
       "<div class='ax-cache-flow'>this draw &nbsp;<code>0x" + (lastKey == null ? "—" : hex(hashOf(lastKey))) + "</code> &nbsp;→ &nbsp;<b>" + lookup + "</b></div>";
     $("ax-crash").textContent = emu.crash;
     var s = emu.m.st;
@@ -1298,7 +1298,7 @@
   };
   $("ax-frame").onclick = function () { emu.running = false; emu.stepFrame(); paint(); };
   $("ax-insn").onclick = function () { emu.running = false; emu.stepInsn(); paint(); };
-  $("ax-reset").onclick = function () { emu.running = false; emu.boot(); emu.running = true; paint(); };
+  $("ax-reset").onclick = function () { emu.running = false; emu.boot(); emu.running = false; paint(); };
   $("ax-sound").onclick = function () {
     var Ctx = window.AudioContext || window.webkitAudioContext;
     if (!emu.actx && Ctx) emu.actx = new Ctx();
@@ -1317,7 +1317,7 @@
     emu.knobMode = m; emu.knobVariant = 0; emu.demo = null;
     emu.focusKey = null; emu.focusPinned = false;
     emu.resetGame(m);
-    emu.running = true;
+    emu.running = false;
     paint();
   };
   Array.prototype.forEach.call(document.querySelectorAll("[data-th]"), function (b) {
@@ -1342,15 +1342,16 @@
     paint();
   };
   var diskChk = $("ax-disk");
-  if (diskChk) { diskChk.checked = false; diskChk.onchange = function () { emu.diskEnabled = this.checked; emu.log("gpu", this.checked ? "VkPipelineCache on disk enabled" : "disk cache disabled — every miss recompiles", this.checked ? "gpu" : ""); paint(); }; }
+  if (diskChk) { diskChk.checked = false; diskChk.onchange = function () { emu.diskEnabled = this.checked; emu.log("gpu", this.checked ? "simulated VkPipelineCache enabled" : "disk cache disabled — every miss recompiles", this.checked ? "gpu" : ""); paint(); }; }
   var wipeBtn = $("ax-wipe");
   if (wipeBtn) wipeBtn.onclick = function () {
     emu.shaders = new Cache(); emu.disk = {}; emu.diskBytes = 0; emu.focusKey = null;
-    emu.log("gpu", "wiped VkPipelineCache on disk — everything recompiles cold", "err");
-    emu.vklog("unlink", "~/.kyty/pipeline.cache", "err");
+    emu.log("gpu", "wiped simulated VkPipelineCache — everything recompiles cold", "err");
+    emu.vklog("simulated cache wipe", "driver-cache entries removed from page memory", "err");
     paint();
   };
   window.addEventListener("keydown", function (e) {
+    if (!e.target.closest || !e.target.closest('.ax-screen-shell') || e.ctrlKey || e.metaKey || e.altKey) return;
     var k = e.key.toLowerCase();
     if (["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d", " "].indexOf(k) >= 0) e.preventDefault();
     if (!emu.keys.has(k)) emu.pressedEdge.add(k);
@@ -1360,6 +1361,9 @@
     if (k === ",") { emu.running = false; emu.stepFrame(); }
   });
   window.addEventListener("keyup", function (e) { emu.keys.delete(e.key.toLowerCase()); });
+  window.addEventListener('blur', function() { emu.keys.clear(); emu.pressedEdge.clear(); });
+  document.addEventListener('focusin', function(e) { if (!e.target.closest('.ax-screen-shell')) { emu.keys.clear(); emu.pressedEdge.clear(); } });
+  root.querySelector('.ax-screen-shell').addEventListener('pointerdown', function() { this.focus({preventScroll:true}); });
 
   var acc = 0, last = performance.now();
   function tick(now) {
@@ -1381,6 +1385,6 @@
     requestAnimationFrame(tick);
   }
   emu.boot();
-  emu.running = true;
+  emu.running = false;
   requestAnimationFrame(tick);
 })();

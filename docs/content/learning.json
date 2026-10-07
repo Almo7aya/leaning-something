@@ -770,43 +770,7 @@
       "title": "One full run",
       "ready": true,
       "file": "lifetime.html",
-      "blurb": "The entire emulator in one animation, launch to first frame.",
-      "level": "project"
-    },
-    {
-      "id": "browser-emulator",
-      "n": "⬢",
-      "title": "Browser micro-emulator",
-      "ready": true,
-      "file": "browser-emulator.html",
-      "blurb": "A playable guest executable with interpreted CPU, virtual memory, HLE and WebGL GPU.",
-      "level": "project"
-    },
-    {
-      "id": "advanced-emulator",
-      "n": "⬢+",
-      "title": "Intro machine",
-      "ready": true,
-      "file": "advanced-emulator.html",
-      "blurb": "A two-thread demoscene cockpit: guest uniforms, shader permutations, PM4 and a live intro.",
-      "level": "project"
-    },
-    {
-      "id": "system-explorer",
-      "n": "◆",
-      "title": "KytyPS5 system explorer",
-      "ready": true,
-      "file": "system-explorer.html",
-      "blurb": "Inspect boot, native execution, HLE, memory, graphics and I/O while the model runs.",
-      "level": "project"
-    },
-    {
-      "id": "machine",
-      "n": "★",
-      "title": "The machine, running",
-      "ready": true,
-      "file": "machine.html",
-      "blurb": "A live simulation you can perturb while it runs.",
+      "blurb": "A guided overview from launch to first frame.",
       "level": "project"
     },
     {
@@ -837,12 +801,48 @@
       "level": "project"
     },
     {
+      "id": "system-explorer",
+      "n": "◆",
+      "title": "KytyPS5 system explorer",
+      "ready": true,
+      "file": "system-explorer.html",
+      "blurb": "Inspect boot, native execution, HLE, memory, graphics and I/O while the model runs.",
+      "level": "project"
+    },
+    {
+      "id": "machine",
+      "n": "★",
+      "title": "Performance simulator",
+      "ready": true,
+      "file": "machine.html",
+      "blurb": "An adjustable performance model for CPU, GPU, caches and uploads.",
+      "level": "project"
+    },
+    {
+      "id": "browser-emulator",
+      "n": "⬢",
+      "title": "Browser micro-emulator",
+      "ready": true,
+      "file": "browser-emulator.html",
+      "blurb": "A playable guest executable with interpreted CPU, virtual memory, HLE and WebGL GPU.",
+      "level": "project"
+    },
+    {
+      "id": "advanced-emulator",
+      "n": "⬢+",
+      "title": "Intro machine",
+      "ready": true,
+      "file": "advanced-emulator.html",
+      "blurb": "A two-thread demoscene cockpit: guest uniforms, shader permutations, PM4 and a live intro.",
+      "level": "project"
+    },
+    {
       "id": "playground",
       "n": "→",
       "title": "Playground",
       "ready": true,
       "file": "playground.html",
-      "blurb": "Decode your own command buffers, modules and logs.",
+      "blurb": "Inspect bounded module, PM4, shader and log artifacts, with guided exercises.",
       "level": "project"
     },
     {

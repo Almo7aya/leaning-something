@@ -12,6 +12,7 @@
   body { margin: 0; background: var(--p-bg); }
 </style>
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
+<link rel="stylesheet" href="assets/visual-tools.css?v=20261007-tools1">
 </head>
 <body>
 
@@ -24,30 +25,32 @@
       The <a href="lab.html">Lab</a> teaches concepts with synthetic inputs. This page is
       the other half: <strong>drop in artifacts your build actually produced</strong> — a module
       from a game you dumped, a command-buffer dump, your <code>_kyty.txt</code> — and read them
-      with the same constants the emulator uses. Every tool below cites the source file and line
-      its logic came from, and every one has a demo button so you can watch it work before you
+      with the same constants the emulator uses. The artifact readers cite their source files and state their supported subset, and every one has a demo button so you can watch it work before you
       supply anything.
     </p>
     <p class="pg-lede" style="font-size:15px;margin-top:14px;color:var(--p-ink-3)">
       Nothing you load here leaves your browser. There is no upload, no server, no analytics —
       the parsing all happens in this tab.
     </p>
+    <p class="pg-lede" style="font-size:15px">Inspection limits: 64 MiB per module, 2 MiB per text file, and 16,384 words per PM4 or shader stream. Extract a relevant block or use offline tools for larger artifacts.</p>
   </header>
+<nav class="vt-tool-index" aria-label="Choose a playground tool"><a href="#pm4-decoder">PM4</a><a href="#elf-inspector">Modules</a><a href="#log-triage">Log triage</a><a href="#id64">IDs</a><a href="#struct-layout">Struct layout</a><a href="#jit-patch">Relative calls</a><a href="#crash-log-reader">Crash evidence</a><a href="#shader-isa">ISA fields</a><a href="#shader-log">Shader artifacts</a><a href="#desc-decoder">Descriptors</a></nav>
 
   <!-- ------------------------------------------------------- -->
-  <section class="pg-tool">
+  <section class="pg-tool" data-visual-workspace="Predict the packet boundary">
     <h2 id="pm4-decoder">PM4 command decoder <span class="pg-badge b-kyty">GPU</span></h2>
     <p class="pg-sub">
-      The CPU never talks to the PS5 GPU directly — it fills a ring buffer with <em>PM4 packets</em>
+      The CPU records work for the PS5 GPU — it fills a ring buffer with <em>PM4 packets</em>
       and the command processor eats them. Every draw, every register write, every fence is one of
       these. Paste dwords from a command-buffer dump, or encode a packet from scratch and watch
       the bit layout fall out.
     </p>
     <div class="pg-body" id="pg-pm4"></div>
-  </section>
+  <div class="vt-guide"><h3>Predict the packet boundary</h3><p><a href="t-pm4.html">Related lesson →</a></p><p>Load the annotated draw. Predict its total length, then remove the last payload word.</p><p><button type="button" data-vt-action="pm4">Load exercise</button> <span role="status"></span></p><details><summary>Check your explanation</summary><p>One header plus two payload words is three dwords. Removing one produces a truncated-packet warning. Valid packet boundaries alone do not validate draw state.</p></details></div>
+</section>
 
   <!-- ------------------------------------------------------- -->
-  <section class="pg-tool">
+  <section class="pg-tool" data-visual-workspace="Separate bytes on disk from bytes in memory">
     <h2 id="elf-inspector">Module inspector <span class="pg-badge b-guest">Guest</span></h2>
     <p class="pg-sub">
       Sony modules are ELF files that a normal ELF reader refuses to load: the type is
@@ -56,10 +59,11 @@
       modules in and see exactly what the runtime linker sees.
     </p>
     <div class="pg-body" id="pg-elf"></div>
-  </section>
+  <div class="vt-guide"><h3>Separate bytes on disk from bytes in memory</h3><p><a href="t-elf-and-self.html">Related lesson →</a></p><p>Load the synthetic module and compare filesz and memsz for the writable PT_LOAD segment.</p><p><button type="button" data-vt-action="elf">Load exercise</button> <span role="status"></span></p><details><summary>Check your explanation</summary><p>Its larger memory size includes zero-filled storage. Sum of segment memory sizes and reserved address span are different quantities. SELF inspection reports headers only.</p></details></div>
+</section>
 
   <!-- ------------------------------------------------------- -->
-  <section class="pg-tool">
+  <section class="pg-tool" data-visual-workspace="Check a classification against its evidence">
     <h2 id="log-triage">Log triage <span class="pg-badge b-host">Host</span></h2>
     <p class="pg-sub">
       A failing run produces thousands of lines and maybe five that matter. This groups them by
@@ -68,10 +72,11 @@
       does not boot and you have a to-do list.
     </p>
     <div class="pg-body" id="pg-log"></div>
-  </section>
+  <div class="vt-guide"><h3>Check a classification against its evidence</h3><p><a href="t-reading-a-run.html">Related lesson →</a></p><p>Load a missing file and a missing symbol. Predict which category each belongs to, then open the original evidence.</p><p><button type="button" data-vt-action="log">Load exercise</button> <span role="status"></span></p><details><summary>Check your explanation</summary><p>The file error is an error, not an unresolved import. The symbol line is a resolution lead. Neither proves an implementation is missing; investigate the module, lookup and surrounding events.</p></details></div>
+</section>
 
   <!-- ------------------------------------------------------- -->
-  <section class="pg-tool">
+  <section class="pg-tool" data-visual-workspace="Cross an encoding boundary">
     <h2 id="id64">Module &amp; library id encoder <span class="pg-badge b-guest">Guest</span></h2>
     <p class="pg-sub">
       Symbol names in a PS5 module look like <code>pt2fEBBpEJk#A#A</code>. Those trailing tokens
@@ -79,7 +84,8 @@
       encoder, transcribed exactly — drag the slider and watch which branch the value takes.
     </p>
     <div class="pg-body" id="pg-id64"></div>
-  </section>
+  <div class="vt-guide"><h3>Cross an encoding boundary</h3><p><a href="t-nids.html">Related lesson →</a></p><p>Start at 63, then enter 64 and 4096. Predict how many characters each needs.</p><p><button type="button" data-vt-action="id">Load exercise</button> <span role="status"></span></p><details><summary>Check your explanation</summary><p>63 is “-”, 64 is “BA”, and 4096 is “BAA”. This encodes a 16-bit module/library ID, not the function NID. Out-of-range and noncanonical tokens are rejected.</p></details></div>
+</section>
 
   <!-- ------------------------------------------------------- -->
   <section class="pg-tool" style="margin-top:52px;background:transparent;box-shadow:none;border-style:dashed">
@@ -92,7 +98,7 @@
   </section>
 
   <!-- ------------------------------------------------------- -->
-  <section class="pg-tool">
+  <section class="pg-tool" data-visual-workspace="Predict padding before packing">
     <h2 id="struct-layout">Struct layout lab <span class="pg-badge b-appx">C++</span></h2>
     <p class="pg-sub">
       Padding is the difference between the size you guess and the size the compiler produces.
@@ -101,10 +107,11 @@
       <code>static_assert(sizeof(...))</code> does in <code>memory.h</code>.
     </p>
     <div class="pg-body" id="pg-layout"></div>
-  </section>
+  <div class="vt-guide"><h3>Predict padding before packing</h3><p><a href="t-cpp-language.html">Related lesson →</a></p><p>With the padding-trap preset, calculate offsets for u8, u64, u32, u8. Then enable pack(1).</p><p><button type="button" data-vt-action="layout">Load exercise</button> <span role="status"></span></p><details><summary>Check your explanation</summary><p>The unpacked offsets are 0, 8, 16, 20 and sizeof is 24. Packed offsets are 0, 1, 9, 13 and sizeof is 14. This selected x64 layout model does not cover every C++ ABI, bitfield rule or object-lifetime requirement.</p></details></div>
+</section>
 
   <!-- ------------------------------------------------------- -->
-  <section class="pg-tool">
+  <section class="pg-tool" data-visual-workspace="Check a signed displacement">
     <h2 id="jit-patch">Machine-code patch calculator <span class="pg-badge b-appx">C++</span></h2>
     <p class="pg-sub">
       The emulator writes its own import stubs, and every relative jump or call needs a
@@ -113,10 +120,11 @@
       including when the target is too far away.
     </p>
     <div class="pg-body" id="pg-jit"></div>
-  </section>
+  <div class="vt-guide"><h3>Check a signed displacement</h3><p><a href="t-cpp-asm.html">Related lesson →</a></p><p>Load the far-target example. Predict why a positive displacement of 2147483648 cannot fit rel32.</p><p><button type="button" data-vt-action="jit">Load exercise</button> <span role="status"></span></p><details><summary>Check your explanation</summary><p>Signed rel32 spans −2147483648 through 2147483647. The reference address is the next instruction, after the displacement. Truncating to four bytes does not make an unreachable target reachable.</p></details></div>
+</section>
 
   <!-- ------------------------------------------------------- -->
-  <section class="pg-tool">
+  <section class="pg-tool" data-visual-workspace="Distinguish fault evidence from cause">
     <h2 id="crash-log-reader">Crash-log reader <span class="pg-badge b-appx">C++</span></h2>
     <p class="pg-sub">
       Guest code runs natively, so a game crash is a real host exception — and the emulator writes
@@ -125,81 +133,77 @@
       bottom is the cause.
     </p>
     <div class="pg-body" id="pg-crash"></div>
-  </section>
+  <div class="vt-guide"><h3>Distinguish fault evidence from cause</h3><p><a href="t-reading-a-run.html">Related lesson →</a></p><p>Load the sample fault. Identify the instruction address, accessed address and access type. Decide what additional evidence would test a cause.</p><p><button type="button" data-vt-action="crash">Load exercise</button> <span role="status"></span></p><details><summary>Check your explanation</summary><p>The dump records where execution failed and how memory was accessed. Inspect instruction semantics, registers, module mappings and prior data flow. Candidate stack words or a resolved stack trace do not establish root cause by themselves.</p></details></div>
+</section>
 
   <!-- ------------------------------------------------------- -->
   <section class="pg-tool" style="margin-top:52px;background:transparent;box-shadow:none;border-style:dashed">
     <h2 id="shader-tools" class="pg-sec-h">Appendix · shaders</h2>
     <p class="pg-sub" style="margin-top:8px">
-      The shader recompiler's three artifacts, opened: decode the input ISA word by word, read
-      whatever the shader-log dump produced, and unpack the descriptors the shaders bind.
+      Inspect supported input-ISA encodings, summarize compiler artifacts, and unpack buffer and sampler descriptors. These readers expose evidence; they do not compile or execute shaders.
     </p>
   </section>
 
   <!-- ------------------------------------------------------- -->
-  <section class="pg-tool">
+  <section class="pg-tool" data-visual-workspace="Find the literal word">
     <h2 id="shader-isa">RDNA2 ISA word decoder <span class="pg-badge b-kyty">GPU</span></h2>
     <p class="pg-sub">
-      A shader is just 32-bit words until something decodes them. Paste any word from a shader's
-      input ISA and get the encoding family, the instruction name, the operands and the exact bit
-      fields — the same dispatch the recompiler runs, transcribed from
-      <code>ShaderDecoder.cpp</code>.
+      A shader is just 32-bit words until something decodes them. Inspect base scalar/vector ALU encodings and their literal words using fields from <code>ShaderDecoder.cpp</code>. Extended, modifier and memory families stop with a scope message. This is a field inspector, not a complete disassembler.
     </p>
     <div class="pg-body" id="pg-isa"></div>
-  </section>
+  <div class="vt-guide"><h3>Find the literal word</h3><p><a href="t-shaders.html">Related lesson →</a></p><p>Load the three words. Predict whether they encode two instructions or three.</p><p><button type="button" data-vt-action="isa">Load exercise</button> <span role="status"></span></p><details><summary>Check your explanation</summary><p>They encode s_mov_b32 with a following literal, then s_endpgm at byte 8. The literal is data owned by the first instruction. Unsupported extended families stop explicitly so later words are not misidentified.</p></details></div>
+</section>
 
   <!-- ------------------------------------------------------- -->
-  <section class="pg-tool">
+  <section class="pg-tool" data-visual-workspace="Read compiler output without executing it">
     <h2 id="shader-log">Shader artifact reader <span class="pg-badge b-kyty">GPU</span></h2>
     <p class="pg-sub">
-      Run with <code>--shader-log-direction File</code> and <code>_Shaders/</code> fills up with
-      the whole compilation: the decoded input ISA (<code>.rdna2</code>), the SPIR-V disassembly
-      (<code>.spvasm</code>) and the binary (<code>.spv</code>). Drop any of them in and it becomes
-      a summary — where the control flow is, what Vulkan will actually run.
+      With <code>--graphics-debug-dump true</code>, the pinned renderer saves input ISA as <code>_Shaders/original/*.bin</code> and generated SPIR-V as <code>_Shaders/*.spv</code>. Shader logging adds decoded ISA and IR to the run log. Import a decoded excerpt, binary artifact, or externally produced <code>.spvasm</code> to inspect its structure.
     </p>
     <div class="pg-body" id="pg-shl"></div>
-  </section>
+  <div class="vt-guide"><h3>Read compiler output without executing it</h3><p><a href="t-shaders.html">Related lesson →</a></p><p>Load the SPIR-V text sample. Find its entry point, function and block label. Compare with the input-ISA sample.</p><p><button type="button" data-vt-action="shader">Load exercise</button> <span role="status"></span></p><details><summary>Check your explanation</summary><p>The artifact reader summarizes compiler output; it does not compile or execute it. Binary SPIR-V stores word count in the high 16 bits and opcode in the low 16. A structurally readable module can still fail semantic or Vulkan validation.</p></details></div>
+</section>
 
   <!-- ------------------------------------------------------- -->
-  <section class="pg-tool">
+  <section class="pg-tool" data-visual-workspace="Decode a full address and byte range">
     <h2 id="desc-decoder">Buffer &amp; sampler descriptor decoder <span class="pg-badge b-kyty">GPU</span></h2>
     <p class="pg-sub">
       Every <code>buffer_load</code> and every <code>image_sample</code> reads its parameters from a
-      descriptor in the shader resource table. Give a V# (buffer) or a T# (sampler) its four dwords
-      and read back the address, stride, count, format — or the filtering rules — the way the tree
-      decodes them.
+      descriptor in the shader resource table. Give a V# (buffer) or an S# (sampler) its four dwords
+      and read back the address, stride, count, format — or the filtering rules — using <code>shaderBindings.h</code>. A T# is an eight-dword image descriptor and is outside this tool’s scope.
     </p>
     <div class="pg-body" id="pg-desc"></div>
-  </section>
+  <div class="vt-guide"><h3>Decode a full address and byte range</h3><p><a href="t-registers.html">Related lesson →</a></p><p>Load the buffer sample. Predict its 48-bit base and size from its four words, then try the sampler sample.</p><p><button type="button" data-vt-action="descriptor">Load exercise</button> <span role="status"></span></p><details><summary>Check your explanation</summary><p>The buffer base is 0x000180000000. A 32-byte stride and 300 records cover 9600 bytes. Zero stride uses the record count as bytes. Sampler filters come from WORD2; a sampler has no texture address.</p></details></div>
+</section>
 
   <!-- ------------------------------------------------------- -->
   <section class="pg-tool" style="background:transparent;box-shadow:none;border-style:dashed">
     <h2 id="generate">Don't have artifacts yet?</h2>
     <p class="pg-sub" style="margin-bottom:12px">
-      Your build can produce everything these tools want. Run a title you know works, let it reach
-      a menu, then quit:
+      From your KytyPS5 checkout, use a title configured for your build. Substitute your executable path if it differs from this example; see <a href="t-cpp-build.html">Building, linking &amp; debugging</a>:
     </p>
     <pre class="tu-pre" style="font-size:12.5px"><code>.\_Build\windows-prod\kyty_emulator.exe --game "&lt;your title&gt;" `
   --printf-direction File --printf-output-file _kyty.txt `
-  --command-buffer-dump true --shader-log-direction File</code></pre>
+  --redzone --command-buffer-dump true --graphics-debug-dump true `
+  --shader-log-direction File --shader-log-folder _Shaders</code></pre>
     <p class="pg-sub" style="margin:12px 0 0">
-      That fills <code>_Shaders/</code> and the command-buffer dumps, and gives you a
-      <code>_kyty.txt</code> to drop into the triage tool above. It is also the prerequisite for
-      levels 4 and 5 of the <a href="path.html">learning path</a>.
+      Paths are relative to the emulator’s working directory. Shaders are saved when those paths execute; a failed or cached run may not produce every artifact. Command-buffer dumps and
+      <code>_kyty.txt</code> can be inspected above. Use <code>spirv-dis input.spv -o output.spvasm</code> if SPIRV-Tools is installed. Each reader states its limits; files remain local to your browser.
     </p>
   </section>
 
 </main>
 
-<script src="assets/search-index.js?v=20261007-8" defer></script>
-<script src="assets/topics.js?v=20261007-8" defer></script>
+<script src="assets/search-index.js?v=20261007-tools1" defer></script>
+<script src="assets/topics.js?v=20261007-tools1" defer></script>
 <script src="assets/app.js?v=20261007-7" defer></script>
 <script src="assets/highlight.js?v=20261007-6" defer></script>
-<script src="assets/playground.js?v=20261007" defer></script>
+<script src="assets/artifact-data.js?v=20261007-tools1" defer></script>
+<script src="assets/artifact-parsers.js?v=20261007-tools1" defer></script>
+<script src="assets/playground.js?v=20261007-tools1" defer></script>
+<script src="assets/visual-tools.js?v=20261007-tools1" defer></script>
 </body>
 </html>
-
-
 
 
 

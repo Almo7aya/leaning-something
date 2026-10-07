@@ -586,12 +586,15 @@
     this.gamepad = "not connected";
     var self = this;
     window.addEventListener("keydown", function (e) {
+      if (!e.target.closest || !e.target.closest('#be-screen-shell') || e.ctrlKey || e.metaKey || e.altKey) return;
       var key = e.key.toLowerCase();
       if (["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d"].indexOf(key) >= 0) e.preventDefault();
       self.keys.add(key);
     });
     window.addEventListener("keyup", function (e) { self.keys.delete(e.key.toLowerCase()); });
     window.addEventListener("blur", function () { self.keys.clear(); });
+    document.addEventListener('focusin', function(e) { if (!e.target.closest('#be-screen-shell')) self.keys.clear(); });
+    $('be-screen-shell').addEventListener('pointerdown', function() { this.focus({preventScroll:true}); });
     Array.prototype.forEach.call(document.querySelectorAll("[data-touch]"), function (button) {
       var dir = button.dataset.touch;
       function down(e) { e.preventDefault(); self.touch[dir] = true; }
@@ -1325,7 +1328,9 @@
         self.booted = true;
         self.processAlive = true;
         self.running = true;
-        self.setBoundary("loader", "guest-main", "Entry PC loaded from the executable; native browser interpreter owns execution.", "RUN");
+        self.runGuestFrame();
+        self.running = false;
+        self.setBoundary("loader", "guest-main", "Teaching interpreter ready. The preview frame is complete; use Step frame or Run to continue.", "READY");
         self.event("EXEC", "jumped to guest entry at 0x" + hex(CODE_BASE), "ok");
         $("be-boot-screen").classList.add("is-hidden");
       }
@@ -1579,7 +1584,8 @@
       host.appendChild(row);
     }
     var active = host.querySelector(".is-pc");
-    if (active) active.scrollIntoView({ block: "center" });
+    // Follow the instruction inside its inspector without scrolling the page or workspace.
+    if (active) host.scrollTop += active.getBoundingClientRect().top - host.getBoundingClientRect().top - host.clientHeight / 2 + active.clientHeight / 2;
   }
 
   function dlPair(host, name, value) {
@@ -1896,7 +1902,7 @@
   });
 
   window.addEventListener("keydown", function (e) {
-    if (e.target && /input|select|textarea/i.test(e.target.tagName)) return;
+    if (!e.target.closest || !e.target.closest('#be-screen-shell') || e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.key.toLowerCase() === "p") {
       e.preventDefault();
       $("be-run").click();
