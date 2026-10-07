@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Instructions, addresses and the guest — KytyPS5</title>
 <meta name="description" content="Step a tiny invented CPU, then identify which parts of that model KytyPS5 implements differently.">
-<link rel="stylesheet" href="assets/app.css?v=20261007-5">
+<link rel="stylesheet" href="assets/app.css?v=20261007-7">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 <main class="topic" data-app-content>
-<p class="topic-eyebrow">Beginner · B4</p>
+<p class="topic-eyebrow">Step 04 · Machine essentials · B4</p>
 <h1 id="overview">Instructions, addresses and the guest</h1>
 <p class="topic-deck">Step a tiny invented CPU, then identify which parts of that model KytyPS5 implements differently.</p>
 <!-- prerequisites:beginner-machine -->
@@ -24,9 +24,9 @@
 <p><code>enum class Op</code> names the allowed operations. A <code>switch</code> chooses behavior by operation; <code>break</code> exits that switch, while <code>return</code> exits the function. <code>Cpu&amp;</code> lets run update the caller's Cpu object. A <code>bool</code> is true or false; here false reports an invalid program.</p>
 <div class="tw"><table><thead><tr><th>Instruction</th><th>Effect</th></tr></thead><tbody><tr><td>set 7</td><td>accumulator becomes 7</td></tr><tr><td>add 5</td><td>accumulator becomes 12</td></tr><tr><td>store 2</td><td>memory word 2 receives 12</td></tr><tr><td>halt</td><td>execution returns success</td></tr></tbody></table></div>
 <p>The loop fetches the instruction at pc, increments pc, then executes it. There are no jumps, calls, interrupts, caches or real instruction encodings in this model. Unsigned addition wraps at its type's width; this program only adds the small values 7 and 5.</p>
-<p class="filename">Complete runnable teaching program · <a href="labs/beginner/machine.cpp">machine.cpp</a></p>
+<div class="filename"><a href="labs/beginner/machine.cpp">machine.cpp</a></div>
 <!-- code:labs/beginner/machine.cpp -->
-<pre><code>#include &lt;array&gt;
+<pre data-lang="cpp"><code>#include &lt;array&gt;
 #include &lt;cstddef&gt;
 #include &lt;cstdint&gt;
 #include &lt;iostream&gt;
@@ -77,7 +77,7 @@ int main() {
 <pre>cmake --build _Build/curriculum/beginner --target machine
 ctest --test-dir _Build/curriculum/beginner -R '^beginner_machine$' --output-on-failure</pre>
 <p>To see the output directly in PowerShell, run <code>.\_Build\curriculum\beginner\machine.exe</code>; in a POSIX shell, run <code>./_Build/curriculum/beginner/machine</code>. Tests compare the full output and require a successful exit.</p><p>Expected output, with exit status <code>0</code>:</p><!-- output:labs/beginner/machine.txt -->
-<pre>pc=4 accumulator=12 memory[2]=12
+<pre data-lang="text">pc=4 accumulator=12 memory[2]=12
 out-of-range store and missing halt rejected</pre>
 <!-- /output -->
 <h2 id="guest-host">Guest versus host</h2>
@@ -91,9 +91,9 @@ out-of-range store and missing halt rejected</pre>
 <div class="check"><p class="check-h">Before moving on</p><ul class="check-list"><li class="check-item"><input type="checkbox"><label>I wrote the four state rows and explained the out-of-range case.</label></li><li class="check-item"><input type="checkbox"><label>I can distinguish interpreting guest instructions from executing mapped guest code natively.</label></li><li class="check-item"><input type="checkbox"><label>I can explain the purpose of a return address, ABI and virtual-memory mapping.</label></li></ul></div><p>Ticks record your own assessment. Keep your prediction, actual output and explanation; a tick alone is not evidence of understanding.</p>
 </div></section>
 </main>
-<script src="assets/topics.js?v=20261007-5" defer></script>
-<script src="assets/search-index.js?v=20261007-5" defer></script>
-<script src="assets/app.js?v=20261007-5" defer></script>
-<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/topics.js?v=20261007-8" defer></script>
+<script src="assets/search-index.js?v=20261007-8" defer></script>
+<script src="assets/app.js?v=20261007-7" defer></script>
+<script src="assets/highlight.js?v=20261007-6" defer></script>
 </body>
 </html>

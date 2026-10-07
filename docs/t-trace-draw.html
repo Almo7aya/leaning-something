@@ -8,22 +8,22 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-5">
+<link rel="stylesheet" href="assets/app.css?v=20261007-7">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 <main class="topic" data-app-content>
-<p class="topic-eyebrow">Developer curriculum · D3</p>
+<p class="topic-eyebrow">Step 32 · Graphics and performance · D3</p>
 <h1 id="overview">One draw: PM4 to GPU completion</h1>
 <p class="topic-deck">Trace a selected non-indexed draw through state, shader programs, resource bindings, Vulkan recording and completion.</p>
 <!-- prerequisites:trace-draw -->
-<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="t-vulkan.html">The Vulkan backend</a> · <a href="t-shaders.html">Shaders: RDNA 2 → SPIR-V</a> · <a href="t-pm4.html">PM4 &amp; the command processor</a>. <a href="start.html">View the learning route</a>.</p>
+<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="t-pm4.html">PM4 &amp; the command processor</a> · <a href="t-shaders.html">Shaders: RDNA 2 → SPIR-V</a> · <a href="t-program-cache.html">The program cache</a> · <a href="t-coherency.html">Page faults &amp; CPU/GPU coherency</a> · <a href="t-cpp-concurrency.html">Concurrency &amp; the memory model</a>. <a href="start.html">View the learning route</a>.</p>
 <!-- /prerequisites -->
 <section class="band band-read">
 <div class="band-h"><span class="band-t">Read, trace, prove</span></div>
 <div class="prose">
 
-<p>Prerequisites: <a href="t-pm4.html">PM4</a>, <a href="t-registers.html">register state</a>, <a href="t-shaders.html">shader translation</a> and <a href="t-coherency.html">coherency</a>. This source trace at <code>d2413fc2</code> follows an ordinary, non-indexed triangle-list draw with a vertex shader, an active pixel shader and a color target. It is not a standalone three-word program or a captured frame.</p>
+<p>Use the packet, register, shader, Vulkan and coherency explanations to follow one request across the graphics subsystem. This source trace at <code>d2413fc2</code> follows an ordinary, non-indexed triangle-list draw with a vertex shader, an active pixel shader and a color target. It is not a standalone three-word program or a captured frame.</p>
 <div class="callout k"><span class="lbl">Four different milestones</span>
 <p>Accepting a guest submission, recording a Vulkan draw, completing that submission on the GPU, and displaying an image are different events. A “DrawComplete” CPU log records progress through the host draw function; it is not a GPU fence and does not prove that any pixels were displayed.</p></div>
 
@@ -129,13 +129,13 @@ Image result / presentation evidence (separate):</pre>
 <li><code>src/graphics/host_gpu/renderer/pipeline/pipelineCache.cpp</code> and <code>src/graphics/host_gpu/renderer/pipeline/descriptors.cpp</code>: programs, pipelines and bindings.</li>
 <li><code>src/graphics/host_gpu/renderer/commandScheduler.cpp</code>, <code>src/graphics/host_gpu/renderer/masterSemaphore.h</code> and <code>src/graphics/host_gpu/renderer/masterSemaphore.cpp</code>: ticks, waiting and deferred work.</li>
 </ul>
-<p>Next: <a href="t-debugging-labs.html">reproduce and fix the native labs</a>. The <a href="developer-curriculum.html#coverage">coverage map</a> lists the branches this lesson does not teach in depth. For a missing-feature implementation plan, read <a href="t-ray-tracing.html">C11: ray tracing</a>; it is a roadmap, not an existing execution trace.</p>
+<p>Next: <a href="t-cpp-performance.html">connect this draw path to performance</a>, then review the contribution gates and learn diagnostics before the debugging labs. The <a href="developer-curriculum.html#coverage">coverage map</a> lists the branches this lesson does not teach in depth. For a missing-feature implementation plan, read <a href="t-ray-tracing.html">C11: ray tracing</a>; it covers the implemented software intersection path and optional host-query research.</p>
 
 </div></section>
 </main>
-<script src="assets/topics.js?v=20261007-5" defer></script>
-<script src="assets/search-index.js?v=20261007-5" defer></script>
-<script src="assets/app.js?v=20261007-5" defer></script>
-<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/topics.js?v=20261007-8" defer></script>
+<script src="assets/search-index.js?v=20261007-8" defer></script>
+<script src="assets/app.js?v=20261007-7" defer></script>
+<script src="assets/highlight.js?v=20261007-6" defer></script>
 </body>
 </html>

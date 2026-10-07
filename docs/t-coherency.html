@@ -8,14 +8,14 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-5">
+<link rel="stylesheet" href="assets/app.css?v=20261007-7">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
 <main class="topic" data-app-content>
 
-  <p class="topic-eyebrow">Memory · 10</p>
+  <p class="topic-eyebrow">Step 30 · Graphics and performance</p>
   <h1 id="page-faults-cpu-gpu-coherency">Page faults & CPU/GPU coherency</h1>
   <p class="topic-deck">
     CPU and GPU share buffers, and neither announces a write. With no interpreter to instrument, the emulator takes away page permissions and lets the hardware report the access. Faults stop being errors here and become the notification channel.
@@ -237,7 +237,7 @@ void InvalidateRegion(uint64_t vaddr, uint64_t size, Flush&amp;&amp; on_flush) {
     <li>The final <code>Unhandled host exception: type=… code=… pc=… access=… address=…</code> line: the exception type, the native code, the program counter, the access kind and the address that was touched.</li>
   </ul>
 
-  <p>This fault path prints guest context rather than a host stack walk. The guest frame-pointer walker is <code>RuntimeLinker::StackTrace()</code>, which prints <code>Stack trace [thread = N]:</code> followed by one <code>[i] address, off=…, module</code> line per frame, resolved against the loaded modules; the libc <code>abort</code> path calls it. Accepting a frame only when the return address lands inside a loaded module's segments is precisely what fixing the module layout in <a href="t-mapping.html">topic 06</a> buys.</p>
+  <p>This fault path prints guest context rather than a host stack walk. The guest frame-pointer walker is <code>RuntimeLinker::StackTrace()</code>, which prints <code>Stack trace [thread = N]:</code> followed by one <code>[i] address, off=…, module</code> line per frame, resolved against the loaded modules; the libc <code>abort</code> path calls it. Accepting a frame only when the return address lands inside a loaded module's segments is precisely what fixing the module layout in <a href="t-mapping.html">Mapping a program into memory</a> buys.</p>
 
 <pre>void RuntimeLinker::StackTrace(uint64_t frame_ptr, uint64_t stack_ptr) {
     void* stack[20];
@@ -316,15 +316,15 @@ void InvalidateRegion(uint64_t vaddr, uint64_t size, Flush&amp;&amp; on_flush) {
 
 </main>
 
-<script src="assets/topics.js?v=20261007-5" defer></script>
-<script src="assets/search-index.js?v=20261007-5" defer></script>
-<script src="assets/app.js?v=20261007-5" defer></script>
+<script src="assets/topics.js?v=20261007-8" defer></script>
+<script src="assets/search-index.js?v=20261007-8" defer></script>
+<script src="assets/app.js?v=20261007-7" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>
 <script src="assets/figs.js?v=20261007" defer></script>
 <script src="assets/figures.js?v=20261007" defer></script>
-<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007-6" defer></script>
 </body>
 </html>
 

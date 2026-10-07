@@ -15,9 +15,10 @@ you source. Use the link above.
 ## The platform
 
 `docs/index.html` is the front door. **[Start here](docs/start.html)** defines one
-core route: C++ essentials → machine behavior → emulation foundations → graphics
-→ source walkthroughs → a verified first contribution. Existing topic URLs and IDs
-remain stable; Previous/Next and home-page progress follow the core route.
+core route: C++ and machine essentials → emulation foundations → codebase/build →
+loading and boot trace → graphics and draw trace → diagnostics, logs, labs and a
+verified first contribution. Sidebar steps, page labels, Previous/Next and home
+progress follow this order. Existing topic IDs, reference codes and URLs remain stable.
 
 Five beginner lessons (B1–B5) include complete C++20 programs, build commands,
 expected output, boundary/error checks, exercises, hints and worked answers. They
@@ -25,7 +26,9 @@ need no emulator checkout or game. C1 adds a sixth runnable program for forwardi
 shared ownership and representation conversion.
 
 The project topics retain their source explanations, animations and tools. C++ and
-subsystem references are optional branches. The **[developer curriculum](docs/developer-curriculum.html)**
+subsystem lessons are integrated into the core route: syntax with project setup,
+pointers and assembly with loading, services after HLE, cache and synchronization
+with graphics, performance after the draw trace, and diagnosis after log reading. The **[developer curriculum](docs/developer-curriculum.html)**
 adds D1–D4: contribution gates, boot/draw source traces and three debugging labs.
 The coverage map distinguishes introductions, guided traces and executable work;
 completing the route does not imply mastery of every console behavior.

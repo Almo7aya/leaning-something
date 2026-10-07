@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Bytes, bits and bounded reads — KytyPS5</title>
 <meta name="description" content="Decode a four-byte value without reading past the buffer or confusing a value with an address.">
-<link rel="stylesheet" href="assets/app.css?v=20261007-5">
+<link rel="stylesheet" href="assets/app.css?v=20261007-7">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 <main class="topic" data-app-content>
-<p class="topic-eyebrow">Beginner · B2</p>
+<p class="topic-eyebrow">Step 02 · C++ essentials · B2</p>
 <h1 id="overview">Bytes, bits and bounded reads</h1>
 <p class="topic-deck">Decode a four-byte value without reading past the buffer or confusing a value with an address.</p>
 <!-- prerequisites:beginner-bytes -->
@@ -18,20 +18,54 @@
 <!-- /prerequisites -->
 <section class="band band-read"><div class="band-h"><span class="band-t">Learn, run, explain</span></div><div class="prose">
 
-<h2 id="before">Before you start</h2><p>Complete <a href="b-first-program.html">B1</a>: functions, arrays, loops and a working build. Here we use fixed-width unsigned integers so each field has a known number of bits.</p>
-<h2 id="numbers">The same value in three notations</h2>
-<p>A bit is 0 or 1; an eight-bit byte represents values 0 through 255. Decimal uses ten digits, binary two, hexadecimal sixteen. Thus <code>15 == 0b1111 == 0x0f</code>. A hexadecimal digit represents four bits, so two digits represent a byte. <code>std::uint32_t</code> is an unsigned 32-bit integer on the platforms used here. <code>std::size_t</code> is the unsigned type used for object sizes and indices; its width depends on the platform.</p>
-<p><code>value &gt;&gt; 8</code> shifts a value right by eight bits. <code>&amp; 0xffu</code> keeps its lowest eight bits. <code>|</code> combines bit fields; <code>|=</code> combines into the variable on its left. The <code>u</code> suffix makes a literal unsigned. Keep shift counts below the width of the shifted type; our loop uses only 0, 8, 16 and 24.</p>
-<h2 id="layout">Bytes have an order</h2>
+<h2 id="before">Before you start</h2>
+<p>Complete <a href="b-first-program.html">your first C++ program</a>. Work through the small predictions below before reading the complete byte reader. Each code fragment illustrates one part of that program; the complete source and build commands follow at the end.</p>
+<ol><li>Read an array by index and trace a counted loop.</li><li>Combine two bytes, then extend the calculation to four.</li><li>Reject an invalid range.</li><li>Read the view and result types used by the complete function.</li></ol>
+<h2 id="indices">1. Read positions and repeat a calculation</h2>
+<p>An array's first element has index 0. <code>bytes[1]</code> selects its second element; <code>bytes.size()</code> gives its element count. For five elements the valid indices are 0, 1, 2, 3 and 4. Index 5 is already outside the array.</p>
+<p>The complete reader uses this counted-loop fragment:</p>
+<pre data-lang="cpp"><code>for (std::size_t i = 0; i &lt; 4; ++i) {
+    // Use bytes[offset + i] here, after checking the range.
+}</code></pre>
+<p>Initialize <code>i</code> to 0 once; check <code>i &lt; 4</code> before each iteration; execute the body; then <code>++i</code> adds one. <code>std::size_t</code> is the unsigned integer type used for sizes and indices. Its width depends on the platform.</p>
+<p><strong>Predict:</strong> with <code>offset = 1</code>, list every index selected by this loop. Is <code>i == 4</code> ever used inside the body?</p>
+<details><summary>Check the loop trace</summary><p>The indices are 1, 2, 3 and 4. When i becomes 4, the condition is false, so the body does not execute again.</p></details>
+<h2 id="numbers">2. The same value in three notations</h2>
+<p>A bit is 0 or 1; an eight-bit byte represents values 0 through 255. Decimal uses ten digits, binary two, hexadecimal sixteen. <code>15</code>, <code>0b1111</code> and <code>0x0f</code> all represent the same value. The hexadecimal digits after 9 are a, b, c, d, e and f. Each digit represents four bits, so two hexadecimal digits represent a byte.</p>
+<p><code>std::uint32_t</code> is an unsigned 32-bit integer on the platforms used here. The <code>u</code> suffix in <code>0x12u</code> makes a literal unsigned. Here we combine small nonnegative values using shifts of 0, 8, 16 and 24, all below the width of a 32-bit value.</p>
+<h3 id="shifts">Combine just two bytes first</h3>
+<p><code>0x12u &lt;&lt; 8</code> shifts the value left eight bits, producing <code>0x1200</code>. Bitwise OR, <code>|</code>, sets a result bit when either input has that bit set. In this example the two byte fields do not overlap:</p>
+<pre data-lang="cpp"><code>0x34u | (0x12u &lt;&lt; 8);  // 0x1234
+(0x1234u &gt;&gt; 8) &amp; 0xffu;  // 0x12</code></pre>
+<p>The second expression shifts right to bring the high byte down, then <code>&amp; 0xffu</code> keeps only its lowest eight bits. <code>&amp;</code> is bitwise AND here: a bit survives only where both operands have a 1. <code>value |= part</code> means <code>value = value | part</code>.</p>
+<p><strong>Predict:</strong> combine low byte <code>0xabu</code> with high byte <code>0xcdu</code>. What does masking the combined value with <code>0xffu</code> keep?</p>
+<details><summary>Check the byte calculation</summary><p><code>0xabu | (0xcdu &lt;&lt; 8)</code> gives <code>0xcdab</code>. Masking with <code>0xffu</code> keeps <code>0xab</code>. Decimal addition is not the definition of bitwise OR; it gives the same result here because the fields do not overlap.</p></details>
+<h2 id="layout">3. Bytes have an order</h2>
+<p>Extend the same calculation to four bytes. The byte and contribution columns below use hexadecimal notation.</p>
 <div class="tw"><table><thead><tr><th>Offset</th><th>Byte</th><th>Contribution</th></tr></thead><tbody>
 <tr><td>0</td><td>78</td><td>0x00000078</td></tr><tr><td>1</td><td>56</td><td>0x00005600</td></tr><tr><td>2</td><td>34</td><td>0x00340000</td></tr><tr><td>3</td><td>12</td><td>0x12000000</td></tr></tbody></table></div>
-<p>The bytes <code>78 56 34 12</code> encode <code>0x12345678</code> in <strong>little-endian</strong> order: the least significant byte comes first. The explicit shifts below decode that order regardless of the host's byte order. An offset is a position within this buffer, not an absolute memory address.</p>
-<p><code>std::span&lt;const std::uint8_t&gt;</code> passes a read-only view of bytes and their count without copying them. B3 explains its lifetime. <code>std::optional&lt;T&gt;</code> contains either a value or no value. Check it before using <code>*value</code>; <code>std::nullopt</code> reports that no result exists.</p>
-<h2 id="bounds">Check a range before using it</h2>
-<p>A five-byte buffer has valid indices <code>[0, 5)</code>: include zero, exclude five. A four-byte read at offset 1 ends exactly at 5 and is valid; a read at 2 is truncated. First reject an offset larger than the size, then check the remaining byte count. This avoids an overflowing <code>offset + 4</code> calculation. <code>||</code> means logical OR and evaluates its right side only when the left side is false, so the subtraction happens only after the offset check succeeds.</p>
-<p class="filename">Complete runnable teaching program · <a href="labs/beginner/bytes.cpp">bytes.cpp</a></p>
+<p>The bytes <code>78 56 34 12</code> encode <code>0x12345678</code> in <strong>little-endian</strong> order: the least significant byte comes first. Explicit shifts decode that order regardless of the host's byte order. An offset is a position within this buffer, not an absolute memory address.</p>
+<p><strong>Predict:</strong> after combining the first two bytes, what is the accumulated value? What does the third byte add?</p>
+<details><summary>Check the four-byte trace</summary><p>The first two produce <code>0x00005678</code>. The third contributes <code>0x00340000</code>, making <code>0x00345678</code>. The fourth completes <code>0x12345678</code>.</p></details>
+<h2 id="bounds">4. Check a range before using it</h2>
+<p>A five-byte buffer has valid indices <code>[0, 5)</code>: include zero, exclude five. A four-byte read starting at 1 is valid; starting at 2 is truncated. Unsigned addition can wrap, so a huge <code>offset + 4</code> might become small. First reject an offset larger than the size, then check how many bytes remain.</p>
+<pre data-lang="cpp"><code>offset &gt; bytes.size() || bytes.size() - offset &lt; 4</code></pre>
+<p>This expression is true when the read must fail. <code>||</code> is logical OR: it evaluates the right side only when the left side is false. Thus the subtraction happens only after establishing <code>offset &lt;= bytes.size()</code>. This is different from bitwise <code>|</code>, which combines bits and does not provide this short-circuit guard.</p>
+<p><strong>Predict:</strong> for size 5, classify starts 0, 1, 2, 5 and 6. For which start is the subtraction skipped?</p>
+<details><summary>Check the boundary cases</summary><p>0 and 1 leave at least four bytes. Starts 2 and 5 leave three and zero bytes, so they fail. Start 6 fails the first comparison and skips subtraction. An empty buffer also fails because it has no four-byte range.</p></details>
+<h2 id="views">5. Read the input and the result separately</h2>
+<p><code>std::span&lt;const std::uint8_t&gt;</code> supplies a view of bytes and their count. It borrows existing storage. In this program the array stays alive throughout the function call, and the reader does not save the view. <a href="b-memory.html#borrows">The ownership lesson</a> explains what would invalidate it.</p>
+<p><code>std::optional&lt;std::uint32_t&gt;</code> carries either a decoded integer or no result. <code>std::nullopt</code> means no result. Test the optional before accessing its value with <code>*value</code>; a decoded zero is still a present value. The test does not ask whether the integer itself is nonzero.</p>
+<pre data-lang="cpp"><code>const auto value = read_u32(bytes, 0);
+if (!value || *value != 0x12345678u) return 1;</code></pre>
+<p><code>auto</code> lets the compiler deduce the variable's type from the initializer; here it is an optional integer. <code>!</code> negates a condition. The first part detects an absent result; short-circuit OR then prevents reading that absent value. In the decoding loop, <code>std::uint32_t{bytes[offset + i]}</code> converts the selected byte to the wider integer before shifting it.</p>
+<p><strong>Predict:</strong> should four zero bytes produce an absent optional or a present value of zero?</p>
+<details><summary>Check the result contract</summary><p>A present value of zero. Missing bytes cause failure; a particular decoded number does not. The complete program's comparison with <code>0x12345678u</code> is a test for its chosen input, not a rule of the reader.</p></details>
+<h2 id="program">Put the steps together</h2>
+<p>Trace the complete function in this order: validate the range, initialize the result, select each byte, widen and shift it, combine its bits, return a present result. <code>std::hex</code> formats subsequent integer output as hexadecimal. <code>std::numeric_limits&lt;std::size_t&gt;::max()</code> supplies the largest offset value for a failure check; <code>{}</code> supplies an empty view.</p>
+<div class="filename"><a href="labs/beginner/bytes.cpp">bytes.cpp</a></div>
 <!-- code:labs/beginner/bytes.cpp -->
-<pre><code>#include &lt;array&gt;
+<pre data-lang="cpp"><code>#include &lt;array&gt;
 #include &lt;cstddef&gt;
 #include &lt;cstdint&gt;
 #include &lt;iostream&gt;
@@ -70,7 +104,7 @@ int main() {
 <pre>cmake --build _Build/curriculum/beginner --target bytes
 ctest --test-dir _Build/curriculum/beginner -R '^beginner_bytes$' --output-on-failure</pre>
 <p>To see the output directly in PowerShell, run <code>.\_Build\curriculum\beginner\bytes.exe</code>; in a POSIX shell, run <code>./_Build/curriculum/beginner/bytes</code>. Tests compare the full output and require a successful exit.</p><p>Expected output, with exit status <code>0</code>:</p><!-- output:labs/beginner/bytes.txt -->
-<pre>word=0x12345678
+<pre data-lang="text">word=0x12345678
 field=0x56
 last valid offset=1
 truncated, end, huge and empty reads rejected</pre>
@@ -83,9 +117,9 @@ truncated, end, huge and empty reads rejected</pre>
 <div class="check"><p class="check-h">Before moving on</p><ul class="check-list"><li class="check-item"><input type="checkbox"><label>I decoded the offset-1 word and extracted one field by hand.</label></li><li class="check-item"><input type="checkbox"><label>I can explain half-open ranges and why the huge-offset case must be rejected.</label></li><li class="check-item"><input type="checkbox"><label>I can distinguish an integer value, a buffer offset and an address.</label></li></ul></div><p>Ticks record your own assessment. Keep your prediction, actual output and explanation; a tick alone is not evidence of understanding.</p>
 </div></section>
 </main>
-<script src="assets/topics.js?v=20261007-5" defer></script>
-<script src="assets/search-index.js?v=20261007-5" defer></script>
-<script src="assets/app.js?v=20261007-5" defer></script>
-<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/topics.js?v=20261007-8" defer></script>
+<script src="assets/search-index.js?v=20261007-8" defer></script>
+<script src="assets/app.js?v=20261007-7" defer></script>
+<script src="assets/highlight.js?v=20261007-6" defer></script>
 </body>
 </html>

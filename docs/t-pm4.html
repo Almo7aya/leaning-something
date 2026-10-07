@@ -8,14 +8,14 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-5">
+<link rel="stylesheet" href="assets/app.css?v=20261007-7">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
 <main class="topic" data-app-content>
 
-  <p class="topic-eyebrow">Graphics · 14</p>
+  <p class="topic-eyebrow">Step 25 · Graphics and performance</p>
   <h1 id="pm4-the-command-processor">PM4 &amp; the command processor</h1>
   <p class="topic-deck">
     The CPU never talks to the GPU directly. It writes <em>packets</em> into a ring buffer and
@@ -65,7 +65,7 @@ void Submit(std::span&lt;const uint32_t&gt; draw_commands,
 
 void SubmitCompute(uint32_t queue, std::span&lt;const uint32_t&gt; commands);</pre>
 
-  <p>Two buffers, not one — the draw stream and the constant stream, which correspond to the two engines described in <a href="t-pm4.html">topic 14</a>.</p>
+  <p>Two buffers, not one — the draw stream and the constant stream, which correspond to the two engines described in <a href="t-pm4.html">PM4 &amp; the command processor</a>.</p>
 
   <p data-shared="excerpt-119"><strong>The current implementation does not copy either stream.</strong> A submission stores
   borrowed <code>std::span</code> views into guest memory. This is closer to the hardware contract:
@@ -359,10 +359,10 @@ enum class Pm4ProcessResult { Complete, Blocked };
 
 </main>
 
-<script src="assets/topics.js?v=20261007-5" defer></script>
-<script src="assets/search-index.js?v=20261007-5" defer></script>
-<script src="assets/highlight.js?v=20261007" defer></script>
-<script src="assets/app.js?v=20261007-5" defer></script>
+<script src="assets/topics.js?v=20261007-8" defer></script>
+<script src="assets/search-index.js?v=20261007-8" defer></script>
+<script src="assets/highlight.js?v=20261007-6" defer></script>
+<script src="assets/app.js?v=20261007-7" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>

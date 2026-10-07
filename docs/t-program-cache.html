@@ -8,17 +8,17 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-5">
+<link rel="stylesheet" href="assets/app.css?v=20261007-7">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
 <main class="topic" data-app-content>
 
-  <p class="topic-eyebrow">Appendix · C9</p>
+  <p class="topic-eyebrow">Step 29 · Graphics and performance · C9</p>
   <h1 id="the-program-cache">The program cache</h1>
   <p class="topic-deck">
-    Topics 15–17 describe the split between plan and SPIR-V. This page reads the one function that actually does it on every draw: <code>ProgramCache::Get</code> in <code>pipelineCache.cpp</code>.
+    The register, shader and Vulkan lessons explain the inputs to a host program. Now follow how the renderer reuses or specializes that program through <code>ProgramCache::Get</code> in <code>pipelineCache.cpp</code>.
   </p>
 <!-- prerequisites:program-cache -->
 <p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="t-shaders.html">Shaders: RDNA 2 → SPIR-V</a> · <a href="t-vulkan.html">The Vulkan backend</a>. <a href="start.html">View the learning route</a>.</p>
@@ -72,7 +72,7 @@ return permutation-&gt;handle;</pre>
   <p>Handle <code>1</code> is the only pad. The HIDAPI driver then drives the real DualSense. <code>PadSetTriggerEffect</code> is the same shape: validate handle and pointer, forward the struct, map a failed host call to <code>PAD_ERROR_INVALID_ARG</code>. The NIDs are <code>RR4novUEENY</code> (light bar) and <code>2JgFB2n9oUM</code> (triggers) in <code>libPad.cpp</code>.</p>
 
   <h5 id="libces">libCes — a whole module in one file</h5>
-  <p><code>libCes.cpp</code> implements CP932 / Shift-JIS ↔ UTF-8 conversion, registered as <code>LIB_VERSION("Ces", 1, "Ces", 1, 1)</code>. <code>CesDecodeUtf8</code> is a textbook UTF-8 decoder with the replacement character <code>0xfffd</code> on a truncated or invalid sequence. If you want a first HLE file to read that is not inlined inside <code>libs.cpp</code>, start here — then compare it to <code>LibContentExport</code> in <a href="t-hle.html">topic 12</a>.</p>
+  <p><code>libCes.cpp</code> implements CP932 / Shift-JIS ↔ UTF-8 conversion, registered as <code>LIB_VERSION("Ces", 1, "Ces", 1, 1)</code>. <code>CesDecodeUtf8</code> is a textbook UTF-8 decoder with the replacement character <code>0xfffd</code> on a truncated or invalid sequence. If you want a first HLE file to read that is not inlined inside <code>libs.cpp</code>, start here — then compare it to <code>LibContentExport</code> in <a href="t-hle.html">HLE libraries</a>.</p>
 <!-- shared:t-shaders.html:excerpt-147 -->
 <p>GPU-selected descriptors require a bounded set of compatible candidates. Resource tracking discovers buffer/image tables and nested selectors, materialization refreshes their current values, and binding/emission maps the selected candidate to native resources. Compatible image views can share a contiguous descriptor array. Unsupported shapes retain explicit guards: deleting a guard does not supply the missing candidate discovery or bindings.</p>
 <!-- /shared -->
@@ -84,7 +84,7 @@ return permutation-&gt;handle;</pre>
 
   <section class="band band-watch">
     <div class="band-h"><span class="band-t">Watch</span></div>
-    <p class="band-why">The SRT walk on topic 15 is the plan this function re-executes. The pipeline-key lab is the <em>other</em> cache — Vulkan pipelines, not shader permutations.</p>
+    <p class="band-why">The <a href="t-registers.html">register/resource lesson's SRT walk</a> is the plan this function re-executes. The pipeline-key lab is the <em>other</em> cache — Vulkan pipelines, not shader permutations.</p>
     <div data-viz="srtwalk"></div>
   </section>
 
@@ -120,14 +120,14 @@ return permutation-&gt;handle;</pre>
 
 </main>
 
-<script src="assets/topics.js?v=20261007-5" defer></script>
-<script src="assets/search-index.js?v=20261007-5" defer></script>
-<script src="assets/app.js?v=20261007-5" defer></script>
+<script src="assets/topics.js?v=20261007-8" defer></script>
+<script src="assets/search-index.js?v=20261007-8" defer></script>
+<script src="assets/app.js?v=20261007-7" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>
 <script src="assets/figs.js?v=20261007" defer></script>
 <script src="assets/figures.js?v=20261007" defer></script>
-<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007-6" defer></script>
 </body>
 </html>

@@ -419,6 +419,21 @@ kbd, .kbd {
 .prose em { font-style: italic; }
 .prose a { color: var(--accent); text-underline-offset: 2px; }
 
+/* Stage overview: parallel columns on desktop, one stage at a time on mobile. */
+.prose .route-stages { list-style: none; padding: 0; max-width: none; }
+.prose .route-stages > li {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) minmax(0, 2fr) minmax(0, 2fr);
+  gap: 18px; padding: 18px 0; margin: 0;
+  border-bottom: 1px solid var(--line);
+}
+.route-stages h3 { margin: 0; font-size: 16px; line-height: 1.6; }
+.route-stages p { margin: 0; font-size: 17px; line-height: 1.6; }
+.source-snapshot { overflow-wrap: anywhere; }
+@media (max-width: 700px) {
+  .prose .route-stages > li { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+}
+
 .prose code, .topic code {
   font-family: var(--mono);
   font-size: .855em;
@@ -516,16 +531,16 @@ kbd, .kbd {
 .topic [data-viz] { margin: 0 0 18px; }
 
 /* filename label above a code block */
-.filename {
-  font-family: var(--mono); font-size: 10.5px;
-  text-transform: uppercase; letter-spacing: .05em;
+.filename, .prose .filename {
+  font-family: var(--mono); font-size: 12px; line-height: 1.5;
+  text-transform: none; letter-spacing: normal;
   color: var(--ink-3);
   background: var(--surface-2);
   border: 1px solid var(--line); border-bottom: 0;
   border-radius: 8px 8px 0 0;
   padding: 6px 12px;
-  margin: 0; display: block;
-  overflow-x: auto; white-space: nowrap;
+  margin: 0; display: block; max-width: none;
+  white-space: normal; overflow-wrap: anywhere;
 }
 .filename + pre {
   border-radius: 0 0 9px 9px;

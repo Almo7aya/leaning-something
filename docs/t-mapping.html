@@ -8,20 +8,20 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-5">
+<link rel="stylesheet" href="assets/app.css?v=20261007-7">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
 <main class="topic" data-app-content>
 
-  <p class="topic-eyebrow">Loading a game · 06</p>
+  <p class="topic-eyebrow">Step 16 · Loading and execution</p>
   <h1 id="mapping-a-program-into-memory">Mapping a program into memory</h1>
   <p class="topic-deck">
     The module wants to live at particular addresses and will store raw pointers assuming it got them. So the emulator reserves the guest's whole address space up front and carves it up, rather than letting the host decide where things land.
   </p>
 <!-- prerequisites:mapping -->
-<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="t-elf-and-self.html">ELF, SELF and Sony's format</a>. <a href="start.html">View the learning route</a>.</p>
+<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="t-elf-and-self.html">ELF, SELF and Sony's format</a> · <a href="t-address-space.html">The guest address space</a>. <a href="start.html">View the learning route</a>.</p>
 <!-- /prerequisites -->
 
   <section class="band band-read">
@@ -157,7 +157,7 @@ static uint64_t g_desired_base_addr = SYSTEM_RESERVED + CODE_BASE_OFFSET;   <i>/
                              mode == Common::VirtualMemory::Mode::NoAccess);
 
         if (Common::VirtualMemory::IsExecute(mode)) {
-            <b>PatchProgram</b>(program, segment_addr, segment_memory_size);   <i>// <a href="t-patching.html">topic 08</a></i>
+            <b>PatchProgram</b>(program, segment_addr, segment_memory_size);   <i>// <a href="t-patching.html">Patching guest instructions</a></i>
         }
 
         if (!skip_protect) {
@@ -182,7 +182,7 @@ static uint64_t g_desired_base_addr = SYSTEM_RESERVED + CODE_BASE_OFFSET;   <i>/
 
   <p>Three details worth extracting:</p>
   <ul>
-    <li><strong>Patch before protect.</strong> The rewriting in <a href="t-patching.html">topic 08</a> needs write access, and the instruction cache flush must happen after the bytes change. Reversing the order would either fault or execute stale instructions.</li>
+    <li><strong>Patch before protect.</strong> The rewriting in <a href="t-patching.html">Patching guest instructions</a> needs write access, and the instruction cache flush must happen after the bytes change. Reversing the order would either fault or execute stale instructions.</li>
     <li><strong><code>skip_protect</code></strong> exists because some PS5 executables declare <code>PT_LOAD</code> segments with no access flags at all. Applying <code>NoAccess</code> literally would make them unreadable; the loader leaves them mapped instead.</li>
     <li><strong>The TLS image is a template.</strong> <code>PT_TLS</code> describes the initial contents; each thread gets its own copy, allocated lazily by <code>TlsGetAddr</code>.</li>
   </ul>
@@ -238,15 +238,15 @@ static uint64_t g_desired_base_addr = SYSTEM_RESERVED + CODE_BASE_OFFSET;   <i>/
 
 </main>
 
-<script src="assets/topics.js?v=20261007-5" defer></script>
-<script src="assets/search-index.js?v=20261007-5" defer></script>
-<script src="assets/app.js?v=20261007-5" defer></script>
+<script src="assets/topics.js?v=20261007-8" defer></script>
+<script src="assets/search-index.js?v=20261007-8" defer></script>
+<script src="assets/app.js?v=20261007-7" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>
 <script src="assets/figs.js?v=20261007" defer></script>
 <script src="assets/figures.js?v=20261007" defer></script>
-<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007-6" defer></script>
 </body>
 </html>
 

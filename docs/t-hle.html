@@ -8,14 +8,14 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-5">
+<link rel="stylesheet" href="assets/app.css?v=20261007-7">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
 <main class="topic" data-app-content>
 
-  <p class="topic-eyebrow">Execution · 12</p>
+  <p class="topic-eyebrow">Step 21 · Loading and execution</p>
   <h1 id="hle-libraries">HLE libraries</h1>
   <p class="topic-deck">
     This is the bulk of the emulator by volume: reimplementations of the system libraries a game expects to call. Each is ordinary C++ with two unusual obligations — the right ABI annotation, and registration against the NID the guest imports by.
@@ -133,7 +133,7 @@ static int <b>KYTY_SYSV_ABI</b> ContentExportInit2(const ContentExportInitParam2
         <tr>
           <td><strong>Graphics driver (AGC)</strong></td>
           <td><code>agc.cpp</code><br><code>libAgcDriver.cpp</code><br><code>agcRegisterDefaults.inc</code></td>
-          <td>Hundreds of command-buffer builder functions, plus a generated table of the register values the real driver writes at context reset. Games only set registers they change, so the defaults must match the hardware exactly or state leaks between draws. Covered in <a href="t-pm4.html">topic 14</a>.</td>
+          <td>Hundreds of command-buffer builder functions, plus a generated table of the register values the real driver writes at context reset. Games only set registers they change, so the defaults must match the hardware exactly or state leaks between draws. Covered in <a href="t-pm4.html">PM4 &amp; the command processor</a>.</td>
         </tr>
         <tr>
           <td><strong>Kernel surface</strong></td>
@@ -355,15 +355,15 @@ struct KernelEvent {
 
 </main>
 
-<script src="assets/topics.js?v=20261007-5" defer></script>
-<script src="assets/search-index.js?v=20261007-5" defer></script>
-<script src="assets/app.js?v=20261007-5" defer></script>
+<script src="assets/topics.js?v=20261007-8" defer></script>
+<script src="assets/search-index.js?v=20261007-8" defer></script>
+<script src="assets/app.js?v=20261007-7" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>
 <script src="assets/figs.js?v=20261007" defer></script>
 <script src="assets/figures.js?v=20261007" defer></script>
-<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007-6" defer></script>
 </body>
 </html>
 

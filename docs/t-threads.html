@@ -8,14 +8,14 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-5">
+<link rel="stylesheet" href="assets/app.css?v=20261007-7">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
 <main class="topic" data-app-content>
 
-  <p class="topic-eyebrow">Execution · 11</p>
+  <p class="topic-eyebrow">Step 20 · Loading and execution</p>
   <h1 id="threads-and-tls">Threads and TLS</h1>
   <p class="topic-deck">
     There is no scheduler here. A guest thread is a host thread, and the host OS runs it. The work is in setting up the world that thread expects before its first instruction — thread-local storage, a stack, and a correct ABI transition.
@@ -66,7 +66,7 @@ params-&gt;argv[0] = "KytyEmu";</pre>
     uint64_t init_size;      <i>// bytes to copy from it</i>
     uint64_t image_size;     <i>// total per-thread size</i>
     uint64_t tcb_offset;     <i>// where the control block sits within the block</i>
-    uint64_t handler_vaddr;  <i>// the generated stub from <a href="t-patching.html">topic 08</a></i>
+    uint64_t handler_vaddr;  <i>// the generated stub from <a href="t-patching.html">Patching guest instructions</a></i>
 
     std::vector&lt;uint8_t&gt;           init_image;
     std::unordered_map&lt;int, Block&gt; <b>tlss</b>;      <i>// thread id → block</i>
@@ -108,7 +108,7 @@ void* ApplicationHeapMemalign(uint64_t alignment, uint64_t size);</pre>
   <section class="band band-do">
     <div class="band-h"><span class="band-t">Do</span></div>
     <p class="band-why">
-      The ABI wall from topic 03 shows up here in reverse — host code calling into guest code — which is the harder direction.
+      The <a href="t-calling-conventions.html">ABI wall</a> shows up here in reverse — host code calling into guest code — which is the harder direction.
     </p>
 
     <div class="check">
@@ -140,15 +140,15 @@ void* ApplicationHeapMemalign(uint64_t alignment, uint64_t size);</pre>
 
 </main>
 
-<script src="assets/topics.js?v=20261007-5" defer></script>
-<script src="assets/search-index.js?v=20261007-5" defer></script>
-<script src="assets/app.js?v=20261007-5" defer></script>
+<script src="assets/topics.js?v=20261007-8" defer></script>
+<script src="assets/search-index.js?v=20261007-8" defer></script>
+<script src="assets/app.js?v=20261007-7" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>
 <script src="assets/figs.js?v=20261007" defer></script>
 <script src="assets/figures.js?v=20261007" defer></script>
-<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007-6" defer></script>
 </body>
 </html>
 

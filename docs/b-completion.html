@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Submitted is not completed — KytyPS5</title>
 <meta name="description" content="Keep an object alive until the work using it has actually finished.">
-<link rel="stylesheet" href="assets/app.css?v=20261007-5">
+<link rel="stylesheet" href="assets/app.css?v=20261007-7">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 <main class="topic" data-app-content>
-<p class="topic-eyebrow">Beginner · B5</p>
+<p class="topic-eyebrow">Step 05 · Machine essentials · B5</p>
 <h1 id="overview">Submitted is not completed</h1>
 <p class="topic-deck">Keep an object alive until the work using it has actually finished.</p>
 <!-- prerequisites:beginner-completion -->
@@ -23,10 +23,10 @@
 <p>The CPU can enqueue work and continue while a device is still processing earlier work. <strong>Submitted</strong> means the request was handed off; <strong>completed</strong> means the relevant work has finished. A resource used by an unfinished request must remain valid. Imagine tickets 7 and 9 on one ordered queue: seeing completion 7 does not let you release something also used by ticket 9.</p>
 <p>Our resource records an id and its last-use ticket. A completed value permits retirement only when <code>last_use &lt;= completed</code>. A real implementation must associate the value with the correct queue/timeline and actual completion signal. Writing a number in a CPU variable does not wait for a GPU.</p>
 <h2 id="lambda">Read a small callback</h2>
-<p><code>std::erase_if</code> removes vector elements for which a predicate returns true. The expression <code>[completed](const Resource&amp; resource) { ... }</code> is a <strong>lambda</strong>: a small unnamed function object. It captures a copy of completed, borrows one resource for inspection, and returns whether that resource may be removed. This is your first callback; templates and forwarding can wait until you need the more advanced C++ reference.</p>
-<p class="filename">Complete runnable teaching program · <a href="labs/beginner/completion.cpp">completion.cpp</a></p>
+<p><code>std::erase_if</code> removes vector elements for which a predicate returns true. The expression <code>[completed](const Resource&amp; resource) { ... }</code> is a <strong>lambda</strong>: a small unnamed function object. It captures a copy of completed, borrows one resource for inspection, and returns whether that resource may be removed. This is your first callback; templates and forwarding follow in <a href="t-cpp-language.html">project C++ by example</a>, after the codebase map.</p>
+<div class="filename"><a href="labs/beginner/completion.cpp">completion.cpp</a></div>
 <!-- code:labs/beginner/completion.cpp -->
-<pre><code>#include &lt;algorithm&gt;
+<pre data-lang="cpp"><code>#include &lt;algorithm&gt;
 #include &lt;cstdint&gt;
 #include &lt;iostream&gt;
 #include &lt;vector&gt;
@@ -65,7 +65,7 @@ int main() {
 <pre>cmake --build _Build/curriculum/beginner --target completion
 ctest --test-dir _Build/curriculum/beginner -R '^beginner_completion$' --output-on-failure</pre>
 <p>To see the output directly in PowerShell, run <code>.\_Build\curriculum\beginner\completion.exe</code>; in a POSIX shell, run <code>./_Build/curriculum/beginner/completion</code>. Tests compare the full output and require a successful exit.</p><p>Expected output, with exit status <code>0</code>:</p><!-- output:labs/beginner/completion.txt -->
-<pre>submitted=7 completed=6 retained=1
+<pre data-lang="text">submitted=7 completed=6 retained=1
 completed=7 retained=1
 completed=9 retained=0</pre>
 <!-- /output -->
@@ -79,9 +79,9 @@ completed=9 retained=0</pre>
 <div class="check"><p class="check-h">Before moving on</p><ul class="check-list"><li class="check-item"><input type="checkbox"><label>I can explain all three retained counts and the equality boundary.</label></li><li class="check-item"><input type="checkbox"><label>I can distinguish CPU mutual exclusion from GPU completion.</label></li><li class="check-item"><input type="checkbox"><label>I kept the teaching model separate from a real device wait and am ready for emulation foundations.</label></li></ul></div><p>Ticks record your own assessment. Keep your prediction, actual output and explanation; a tick alone is not evidence of understanding.</p>
 </div></section>
 </main>
-<script src="assets/topics.js?v=20261007-5" defer></script>
-<script src="assets/search-index.js?v=20261007-5" defer></script>
-<script src="assets/app.js?v=20261007-5" defer></script>
-<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/topics.js?v=20261007-8" defer></script>
+<script src="assets/search-index.js?v=20261007-8" defer></script>
+<script src="assets/app.js?v=20261007-7" defer></script>
+<script src="assets/highlight.js?v=20261007-6" defer></script>
 </body>
 </html>

@@ -8,26 +8,26 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-5">
+<link rel="stylesheet" href="assets/app.css?v=20261007-7">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
 <main class="topic" data-app-content>
 
-  <p class="topic-eyebrow">Appendix · C5</p>
+  <p class="topic-eyebrow">Step 22 · Loading and execution · C5</p>
   <h1 id="the-system-around-the-gpu">The system around the GPU</h1>
   <p class="topic-deck">
-    The graphics half is the hard half, but a game boots, keeps running, and stays audible because of the other half. This is the map of everything that is not a draw call: audio, video, network, input, the file sandbox, and the launcher — and the one pattern they all share.
+    Apply the HLE-library pattern to console services: audio, video, network, input, the file sandbox and the launcher. Locate their initialization and guest-facing calls before the boot trace brings startup together.
   </p>
 <!-- prerequisites:cpp-system -->
-<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="t-hle.html">HLE libraries</a> · <a href="t-threads.html">Threads and TLS</a>. <a href="start.html">View the learning route</a>.</p>
+<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="t-hle.html">HLE libraries</a> · <a href="t-threads.html">Threads and TLS</a> · <a href="t-cpp-language.html">C++ language, by example</a>. <a href="start.html">View the learning route</a>.</p>
 <!-- /prerequisites -->
 
   <section class="band band-read">
     <div class="band-h"><span class="band-t">Read</span></div>
     <div class="prose">
-<p class="deck">Every one of these libraries is the same shape as the <code>ContentExport</code> example from <a href="t-hle.html">topic 12</a>: a <code>LIB_VERSION</code>, functions marked <code>KYTY_SYSV_ABI</code> with a <code>PRINT_NAME()</code> trace, and a <code>LIB_DEFINE</code> registration block. Once you can read one, you can read them all — so this page is mostly about what each one <em>does</em>.</p>
+<p class="deck">Every one of these libraries is the same shape as the <code>ContentExport</code> example from <a href="t-hle.html">HLE libraries</a>: a <code>LIB_VERSION</code>, functions marked <code>KYTY_SYSV_ABI</code> with a <code>PRINT_NAME()</code> trace, and a <code>LIB_DEFINE</code> registration block. Once you can read one, you can read them all — so this page is mostly about what each one <em>does</em>.</p>
 
   <h4 id="the-boot-order">The boot order — why order matters</h4>
   <p><code>Init()</code> in <code>src/emulator.cpp</code> initialises subsystems in a deliberate order, because each assumes the ones before it exist:</p>
@@ -57,7 +57,7 @@ subsystems.Initialize&lt;Libs::Graphics::Lifecycle&gt;();</pre>
   <p>Two layers: <code>avPlayer.cpp</code> for full-motion-video playback, and <code>libVideoDec2.cpp</code> plus <code>videoDec2Decoder.cpp</code> for the general video-decode API. Both sit on FFmpeg; the README credits <code>shadPS4</code> as a reference for the AVPlayer implementation. Games use these for cutscenes — the part of the run where the GPU thread is suddenly rendering video frames instead of the game.</p>
 
   <h4 id="network">Network — real sockets, offline-safe PlayStation</h4>
-  <p><code>libNet.cpp</code> plus <code>network.cpp</code> implement sockets, resolvers, SSL and HTTP shims — increasingly by forwarding straight to the host socket API and translating error codes, rather than by re-implementing behaviour. The subtle part is the <strong>NP surface</strong> — PlayStation Network APIs that a game will call at boot. Kyty stubs these <em>carefully enough that the game continues offline</em> rather than hanging on a login that will never succeed. That is the "pragmatic stub" philosophy from topic 12 applied to an entire service:</p>
+  <p><code>libNet.cpp</code> plus <code>network.cpp</code> implement sockets, resolvers, SSL and HTTP shims — increasingly by forwarding straight to the host socket API and translating error codes, rather than by re-implementing behaviour. The subtle part is the <strong>NP surface</strong> — PlayStation Network APIs that a game will call at boot. Kyty stubs these <em>carefully enough that the game continues offline</em> rather than hanging on a login that will never succeed. That is the "pragmatic stub" philosophy from <a href="t-hle.html">HLE libraries</a> applied to an entire service:</p>
 
   <div class="filename">src/libs/network.h — a slice of the surface</div>
 <pre>int KYTY_SYSV_ABI NetResolverCreate(const char* name, int memid, int flags);
@@ -157,7 +157,7 @@ int KYTY_SYSV_ABI SslTerm(int ssl_ctx_id);
   <section class="band band-watch">
     <div class="band-h"><span class="band-t">Watch</span></div>
     <p class="band-why">
-      The call path from topic 12, in one picture: how a guest call reaches a function in <code>src/libs/</code> and returns — the same route for every one of the libraries above.
+      The call path from <a href="t-hle.html">HLE libraries</a>, in one picture: how a guest call reaches a function in <code>src/libs/</code> and returns — the same route for every one of the libraries above.
     </p>
     <div data-viz="hlemodule"></div>
   </section>
@@ -187,7 +187,7 @@ int KYTY_SYSV_ABI SslTerm(int ssl_ctx_id);
         </li>
         <li class="check-item">
           <input type="checkbox">
-          <label>Read one function in <code>src/libs/audio.cpp</code> and identify the five conventions from topic 12: <code>LIB_VERSION</code>, <code>KYTY_SYSV_ABI</code>, <code>PRINT_NAME()</code>, argument logging, registration.</label>
+          <label>Read one function in <code>src/libs/audio.cpp</code> and identify the five conventions from <a href="t-hle.html">HLE libraries</a>: <code>LIB_VERSION</code>, <code>KYTY_SYSV_ABI</code>, <code>PRINT_NAME()</code>, argument logging, registration.</label>
         </li>
         <li class="check-item">
           <input type="checkbox">
@@ -203,7 +203,7 @@ int KYTY_SYSV_ABI SslTerm(int ssl_ctx_id);
         </li>
         <li class="check-item">
           <input type="checkbox">
-          <label>Name the three subsystems that sit on dedicated threads (see <a href="t-cpp-concurrency.html">topic C4</a>) and which one this page's audio library contributes.</label>
+          <label>Locate guest-thread creation, the main window loop and audio-thread startup. Explain their roles during initialization; the later <a href="t-cpp-concurrency.html">concurrency lesson</a> follows how these roles synchronize.</label>
         </li>
       </ul>
     </div>
@@ -211,14 +211,14 @@ int KYTY_SYSV_ABI SslTerm(int ssl_ctx_id);
 
 </main>
 
-<script src="assets/topics.js?v=20261007-5" defer></script>
-<script src="assets/search-index.js?v=20261007-5" defer></script>
-<script src="assets/app.js?v=20261007-5" defer></script>
+<script src="assets/topics.js?v=20261007-8" defer></script>
+<script src="assets/search-index.js?v=20261007-8" defer></script>
+<script src="assets/app.js?v=20261007-7" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>
 <script src="assets/figs.js?v=20261007" defer></script>
 <script src="assets/figures.js?v=20261007" defer></script>
-<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007-6" defer></script>
 </body>
 </html>

@@ -8,14 +8,14 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-5">
+<link rel="stylesheet" href="assets/app.css?v=20261007-7">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
 <main class="topic" data-app-content>
 
-  <p class="topic-eyebrow">Foundations · 03</p>
+  <p class="topic-eyebrow">Step 08 · Emulation foundations</p>
   <h1 id="calling-conventions-the-abi-wall">Calling conventions & the ABI wall</h1>
   <p class="topic-deck">
     Guest code was compiled for the System V AMD64 ABI. On Windows your host compiler emits Microsoft x64. The two disagree about which registers carry arguments — and since guest code runs natively, nothing translates between them for free.
@@ -41,7 +41,7 @@ xmm0 … xmm15           <i>128-bit vector registers, used for float arguments t
 rip                    <i>instruction pointer (not directly writable)</i>
 rflags                 <i>condition flags</i></pre>
 
-  <p>Plus <strong>segment registers</strong>, a leftover from 16-bit days. In 64-bit mode most are ignored, but two survive with a specific job: <code>fs</code> and <code>gs</code> provide a per-thread base address, used to reach thread-local storage. Remember <code>fs</code> — it comes back in <a href="t-patching.html">topic 08</a> and causes real trouble.</p>
+  <p>Plus <strong>segment registers</strong>, a leftover from 16-bit days. In 64-bit mode most are ignored, but two survive with a specific job: <code>fs</code> and <code>gs</code> provide a per-thread base address, used to reach thread-local storage. Remember <code>fs</code> — it comes back in <a href="t-patching.html">Patching guest instructions</a> and causes real trouble.</p>
 
   <h4 id="what-a-calling-convention-is">What a calling convention is</h4>
   <p data-shared="excerpt-015">Machine code has no concept of a "function argument." When you write <code>f(a, b)</code>, the compiler must decide: which register or stack slot does <code>a</code> go in? Who cleans up the stack? Which registers may <code>f</code> destroy? A <strong>calling convention</strong> (or ABI, application binary interface) is the agreed answer.</p>
@@ -86,7 +86,7 @@ rflags                 <i>condition flags</i></pre>
     ...
 }</pre>
 
-  <p>The reverse direction exists too. When the emulator generates machine code that guest code will call — the TLS stubs of <a href="t-patching.html">topic 08</a> — that stub must switch <em>back</em> to the Microsoft convention before calling into C++. You can read the switch happening by hand in <code>Jit::SafeCall</code>:</p>
+  <p>The reverse direction exists too. When the emulator generates machine code that guest code will call — the TLS stubs of <a href="t-patching.html">Patching guest instructions</a> — that stub must switch <em>back</em> to the Microsoft convention before calling into C++. You can read the switch happening by hand in <code>Jit::SafeCall</code>:</p>
 
   <div class="filename">src/loader/jit.h — SafeCall, abbreviated</div>
 <pre>sub    rsp,0x80            <i>make room</i>
@@ -170,15 +170,15 @@ ret</pre>
 
 </main>
 
-<script src="assets/topics.js?v=20261007-5" defer></script>
-<script src="assets/search-index.js?v=20261007-5" defer></script>
-<script src="assets/app.js?v=20261007-5" defer></script>
+<script src="assets/topics.js?v=20261007-8" defer></script>
+<script src="assets/search-index.js?v=20261007-8" defer></script>
+<script src="assets/app.js?v=20261007-7" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>
 <script src="assets/figs.js?v=20261007" defer></script>
 <script src="assets/figures.js?v=20261007" defer></script>
-<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007-6" defer></script>
 </body>
 </html>
 

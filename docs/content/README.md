@@ -6,7 +6,11 @@ server-side rendering is required. Node.js scripts regenerate derived content.
 ## Sources of truth
 
 - `learning.json` owns the core route, topic IDs, sidebar groups, prerequisites,
-  source revision and the short ray-tracing support summary. Existing IDs and URLs
+  source revision and the short ray-tracing support summary. The generator derives
+  core step numbers and page eyebrows from route position; `n` retains the reference
+  code. Keep sidebar topics in core-route order, with C++ and subsystem lessons beside their
+  prerequisites. Advanced research, visual tools and the glossary follow the core.
+  Existing IDs and URLs
   are retained so stored progress and incoming links survive reordering.
 - Individual `t-*.html` pages own their explanations. A paragraph marked
   `data-shared="excerpt-123"` is also used elsewhere. Edit that owning paragraph;

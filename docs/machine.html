@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>The machine, running — KytyPS5</title>
 <meta name="description" content="A live simulation of the emulator producing frames continuously. Change the parameters mid-run and watch pipeline-cache thrash, upload cost and serialised compute show up in the frame-time graph.">
-<link rel="stylesheet" href="assets/app.css?v=20261007-5">
+<link rel="stylesheet" href="assets/app.css?v=20261007-7">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 <link rel="stylesheet" href="assets/machine.css?v=20261007">
 </head>
@@ -91,7 +91,7 @@
         <p>
           This is why cache-key design matters: a key that includes state which cannot affect the
           output creates entries that are secretly identical, and thrashes for no reason. Covered
-          in <a href="t-vulkan.html">topic 17</a>.
+          in <a href="t-vulkan.html">The Vulkan backend</a>.
         </p>
       </div>
 
@@ -104,7 +104,7 @@
         </p>
         <p>
           The opposite extreme is not free either: fine granularity means far more protection
-          changes and faults. That trade is the subject of <a href="t-coherency.html">topic 10</a>.
+          changes and faults. That trade is the subject of <a href="t-coherency.html">Page faults &amp; CPU/GPU coherency</a>.
         </p>
       </div>
 
@@ -117,7 +117,7 @@
         </p>
         <p>
           Real hardware has one graphics queue and 56 compute queues for exactly this reason —
-          see <a href="t-pm4.html">topic 14</a>.
+          see <a href="t-pm4.html">PM4 &amp; the command processor</a>.
         </p>
       </div>
 
@@ -139,10 +139,10 @@
 </main>
 
 <script src="assets/konva.min.js?v=20261007" defer></script>
-<script src="assets/topics.js?v=20261007-5" defer></script>
-<script src="assets/search-index.js?v=20261007-5" defer></script>
-<script src="assets/app.js?v=20261007-5" defer></script>
-<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/topics.js?v=20261007-8" defer></script>
+<script src="assets/search-index.js?v=20261007-8" defer></script>
+<script src="assets/app.js?v=20261007-7" defer></script>
+<script src="assets/highlight.js?v=20261007-6" defer></script>
 <script src="assets/machine.js?v=20261007" defer></script>
 </body>
 </html>

@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Objects, owners and borrowed memory — KytyPS5</title>
 <meta name="description" content="Follow one object through pointers, references, a borrowed view and an ownership transfer.">
-<link rel="stylesheet" href="assets/app.css?v=20261007-5">
+<link rel="stylesheet" href="assets/app.css?v=20261007-7">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 <main class="topic" data-app-content>
-<p class="topic-eyebrow">Beginner · B3</p>
+<p class="topic-eyebrow">Step 03 · C++ essentials · B3</p>
 <h1 id="overview">Objects, owners and borrowed memory</h1>
 <p class="topic-deck">Follow one object through pointers, references, a borrowed view and an ownership transfer.</p>
 <!-- prerequisites:beginner-memory -->
@@ -18,19 +18,53 @@
 <!-- /prerequisites -->
 <section class="band band-read"><div class="band-h"><span class="band-t">Learn, run, explain</span></div><div class="prose">
 
-<h2 id="before">Before you start</h2><p>Complete <a href="b-bytes.html">B2</a>. This lesson connects the view you passed to the byte reader with the storage that keeps its bytes alive.</p>
-<h2 id="objects">A value, its address and an alias</h2>
-<p><code>int counter = 3;</code> creates an object. <code>&amp;counter</code> obtains its address. <code>int* pointer</code> stores an address of an integer; <code>*pointer</code> accesses the pointed-to integer. In <code>int&amp; alias = counter</code>, the ampersand instead declares a reference: another name for that object. Assigning to <code>alias</code> changes <code>counter</code>, not which object the reference denotes.</p>
-<p>A pointer may be null, but reading through a null, dangling or otherwise invalid pointer is not allowed. A reference also requires a live object; it does not keep that object alive. <code>const int*</code> prevents changing the integer through that pointer; <code>int* const</code> prevents changing the pointer itself. Neither spelling proves ownership or thread safety.</p>
-<h2 id="lifetime">Storage and lifetime are different questions</h2>
-<p>A local object with automatic storage duration is destroyed when its scope ends; this is often described as a stack object. A dynamically allocated object can outlive the function that created it. Someone must eventually release it. <strong>RAII</strong> ties resource cleanup to an owning object's lifetime: its destructor performs cleanup. A destructor is the function named <code>~Type()</code>, called when that object is destroyed.</p>
-<p><code>std::unique_ptr&lt;Buffer&gt;</code> owns one dynamically allocated Buffer. <code>std::make_unique</code> constructs it. The owner itself may be local, a member, or stored in another object. <code>std::shared_ptr</code> is a different policy: several handles share ownership, and the last strong owner releases the object. Cycles of shared ownership need additional care. RAII does not require every resource to have a single stack owner.</p>
-<p><code>std::vector&lt;int&gt;</code> owns a resizable sequence. <code>std::span&lt;const int&gt;</code> borrows its elements without owning or extending their lifetime. A vector reallocation can invalidate a view even while the vector object remains alive. A <code>span</code> is not a bounds-checking or lifetime-enforcing system in C++20.</p>
-<h2 id="moving">Transfer the owner, keep track of the object</h2>
-<p><code>auto</code> asks the compiler to deduce a variable's type from its initializer; it does not make the variable dynamically typed. <code>owner-&gt;values</code> accesses a member through a pointer-like owner. <code>std::move(owner)</code> permits a move; the receiving unique_ptr actually performs the transfer. The old unique_ptr becomes empty, while the Buffer stays at the same address. Moving arbitrary types has type-specific effects; do not generalize the empty unique_ptr rule to every moved-from object.</p>
-<p class="filename">Complete runnable teaching program · <a href="labs/beginner/ownership.cpp">ownership.cpp</a></p>
+<h2 id="before">Before you start</h2>
+<p>Complete <a href="b-bytes.html">bytes and bounded reads</a>. Read this lesson in four passes: aliases, cleanup, borrowing, then ownership transfer. Draw the small traces before combining them in the complete program. The fragments are excerpts or simplified parts of that program, not standalone executables.</p>
+<h2 id="objects">1. A value, its address and an alias</h2>
+<p>Start with one integer object. <code>&amp;counter</code> obtains its address; <code>int* pointer</code> stores an address of an integer; <code>*pointer</code> accesses the pointed-to integer. In <code>int&amp; alias = counter</code>, the ampersand declares a reference: another name for that same object.</p>
+<pre data-lang="cpp"><code>int counter = 3;
+int* pointer = &amp;counter;
+int&amp; alias = counter;
+*pointer = 4;
+alias = alias + 1;</code></pre>
+<p><strong>Predict:</strong> write counter's value after each assignment. How many integer objects are being changed?</p>
+<details><summary>Check the alias trace</summary><p>counter starts at 3, becomes 4 through pointer, then 5 through alias. There is one integer object. pointer is a separate pointer object holding its address; alias names counter. Assigning to alias changes counter rather than rebinding the reference.</p></details>
+<p>A pointer may be null, but accessing an object through a null, dangling or otherwise invalid pointer is not allowed. A reference also requires a live object; it does not keep that object alive.</p>
+<details><summary>Two uses of const</summary><p><code>const int* p</code> prevents changing the integer through p. <code>int* const p</code> prevents changing p itself. Neither spelling proves ownership or thread safety. In this lesson, read <code>span&lt;const int&gt;</code> as a view that does not permit changing its elements.</p></details>
+<h2 id="lifetime">2. Decide who performs cleanup</h2>
+<p>A local object with automatic storage duration is destroyed when its scope ends; this is often called a stack object. Braces introduce the scope in this fragment. A destructor is the function named <code>~Type()</code>, invoked when an object of that type is destroyed.</p>
+<pre data-lang="cpp"><code>{
+    Buffer buffer;
+    // Use buffer here.
+} // buffer's destructor runs here.</code></pre>
+<p>In the complete program below, Buffer owns a vector of integers and its destructor prints a message. The vector also cleans up its own element storage. <strong>RAII</strong> ties resource cleanup to an owning object's lifetime; it is useful for memory, files and locks.</p>
+<p>A dynamically allocated object can outlive the function that created it. <code>std::make_unique&lt;Buffer&gt;()</code> constructs one and returns a <code>std::unique_ptr&lt;Buffer&gt;</code> that owns it. Destroying that owner destroys Buffer and releases its allocation. The handle and its owned object are different objects.</p>
+<p><strong>Predict:</strong> if a unique_ptr is created inside this scope and its ownership is never transferred, is the allocation left alive when the scope ends?</p>
+<details><summary>Check the cleanup rule</summary><p>No. The local unique_ptr is destroyed at the closing brace, which destroys its Buffer. Allocating dynamically does not itself make the object permanent. The owner controls when cleanup happens.</p></details>
+<h2 id="borrows">3. Borrow elements without owning them</h2>
+<p><code>std::vector&lt;int&gt;</code> owns a resizable sequence. <code>std::span&lt;const int&gt;</code> borrows elements and their count, without owning them or extending their lifetime. In this fragment, both names reach the same three elements:</p>
+<pre data-lang="cpp"><code>std::vector&lt;int&gt; values{10, 20, 30};
+std::span&lt;const int&gt; view(values);
+values[1] = 25;
+// view[1] now reads 25.</code></pre>
+<p><strong>Predict:</strong> does destroying view destroy values? Does changing an existing integer element require a new span?</p>
+<details><summary>Check the borrow</summary><p>Destroying view leaves values alive. Replacing an existing integer value changes the shared element without reallocating its storage, so this view sees 25.</p></details>
+<p>Destroying the vector invalidates the view. Growing the vector can allocate new storage and invalidate a view even while the vector object remains alive. Do not use an old view after reallocation; create a new one from the current storage. A span provides neither automatic bounds checking nor lifetime enforcement in C++20.</p>
+<p><strong>On paper:</strong> draw the vector and span pointing to one block of elements. Then draw a larger allocation for the vector. The old span still refers to the old storage; describe why it cannot be read instead of executing that invalid access.</p>
+<h2 id="moving">4. Transfer the owner, keep track of the object</h2>
+<p>Now combine an owner and a borrow. <code>auto</code> deduces a type from its initializer. <code>owner-&gt;values</code> accesses the Buffer member through its pointer-like owner.</p>
+<pre data-lang="cpp"><code>auto owner = std::make_unique&lt;Buffer&gt;();
+std::span&lt;const int&gt; view(owner-&gt;values);
+auto next_owner = std::move(owner);</code></pre>
+<p><code>std::move(owner)</code> permits a move; construction of next_owner performs the ownership transfer. The original unique_ptr becomes empty. The Buffer and its vector elements stay where they were; this operation does not resize the vector.</p>
+<p><strong>Predict:</strong> which handle now destroys Buffer? Can view still read element 1 before that destruction?</p>
+<details><summary>Check the ownership transfer</summary><p>next_owner owns and eventually destroys Buffer. owner is empty. view still reaches the original elements, so it remains valid while next_owner keeps Buffer alive and the vector's storage remains valid. Moving arbitrary types has type-specific effects; the empty-owner rule here belongs to unique_ptr.</p></details>
+<details><summary>Optional: shared ownership</summary><p><code>std::shared_ptr</code> uses a different policy: several handles share ownership and the last strong owner destroys the managed object. Ownership cycles need additional care. Use <a href="t-cpp-language.html#runnable-idioms">the project C++ lesson's runnable example</a> when you reach it; this lesson's program uses a single owning handle at a time.</p></details>
+<h2 id="program">Trace the complete program</h2>
+<p>Before running, predict the output order, especially <code>buffer destroyed</code> and <code>scope ended</code>. <code>std::boolalpha</code> prints boolean values as true/false. The final conditional expression <code>counter == 5 ? 0 : 1</code> returns 0 if the comparison is true and 1 otherwise. Keep the alias trace and the allocation trace separate on paper.</p>
+<div class="filename"><a href="labs/beginner/ownership.cpp">ownership.cpp</a></div>
 <!-- code:labs/beginner/ownership.cpp -->
-<pre><code>#include &lt;iostream&gt;
+<pre data-lang="cpp"><code>#include &lt;iostream&gt;
 #include &lt;memory&gt;
 #include &lt;span&gt;
 #include &lt;utility&gt;
@@ -64,7 +98,7 @@ int main() {
 <pre>cmake --build _Build/curriculum/beginner --target ownership
 ctest --test-dir _Build/curriculum/beginner -R '^beginner_ownership$' --output-on-failure</pre>
 <p>To see the output directly in PowerShell, run <code>.\_Build\curriculum\beginner\ownership.exe</code>; in a POSIX shell, run <code>./_Build/curriculum/beginner/ownership</code>. Tests compare the full output and require a successful exit.</p><p>Expected output, with exit status <code>0</code>:</p><!-- output:labs/beginner/ownership.txt -->
-<pre>counter=5
+<pre data-lang="text">counter=5
 borrow=20
 old owner empty=true
 buffer destroyed
@@ -80,9 +114,9 @@ scope ended</pre>
 <div class="check"><p class="check-h">Before moving on</p><ul class="check-list"><li class="check-item"><input type="checkbox"><label>I can explain each arrow in the ownership sketch before and after the move.</label></li><li class="check-item"><input type="checkbox"><label>I can name two ways a span can become invalid.</label></li><li class="check-item"><input type="checkbox"><label>I changed the mutable view and justified the const restriction without using an invalid pointer.</label></li></ul></div><p>Ticks record your own assessment. Keep your prediction, actual output and explanation; a tick alone is not evidence of understanding.</p>
 </div></section>
 </main>
-<script src="assets/topics.js?v=20261007-5" defer></script>
-<script src="assets/search-index.js?v=20261007-5" defer></script>
-<script src="assets/app.js?v=20261007-5" defer></script>
-<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/topics.js?v=20261007-8" defer></script>
+<script src="assets/search-index.js?v=20261007-8" defer></script>
+<script src="assets/app.js?v=20261007-7" defer></script>
+<script src="assets/highlight.js?v=20261007-6" defer></script>
 </body>
 </html>

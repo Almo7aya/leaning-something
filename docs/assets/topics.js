@@ -14,6 +14,9 @@ window.KYTY_TOPICS = [
     "prerequisites": []
   },
   {
+    "part": "C++ essentials"
+  },
+  {
     "id": "beginner-cpp",
     "n": "B1",
     "title": "Your first C++ program",
@@ -21,7 +24,8 @@ window.KYTY_TOPICS = [
     "blurb": "Compile, run and debug a small program with functions, structs and a loop.",
     "ready": true,
     "level": "beginner",
-    "prerequisites": []
+    "prerequisites": [],
+    "step": "01"
   },
   {
     "id": "beginner-bytes",
@@ -33,7 +37,8 @@ window.KYTY_TOPICS = [
     "level": "beginner",
     "prerequisites": [
       "beginner-cpp"
-    ]
+    ],
+    "step": "02"
   },
   {
     "id": "beginner-memory",
@@ -45,7 +50,11 @@ window.KYTY_TOPICS = [
     "level": "beginner",
     "prerequisites": [
       "beginner-bytes"
-    ]
+    ],
+    "step": "03"
+  },
+  {
+    "part": "Machine essentials"
   },
   {
     "id": "beginner-machine",
@@ -57,7 +66,8 @@ window.KYTY_TOPICS = [
     "level": "beginner",
     "prerequisites": [
       "beginner-memory"
-    ]
+    ],
+    "step": "04"
   },
   {
     "id": "beginner-completion",
@@ -69,7 +79,8 @@ window.KYTY_TOPICS = [
     "level": "beginner",
     "prerequisites": [
       "beginner-machine"
-    ]
+    ],
+    "step": "05"
   },
   {
     "part": "Emulation foundations"
@@ -91,7 +102,8 @@ window.KYTY_TOPICS = [
     "level": "project",
     "prerequisites": [
       "beginner-machine"
-    ]
+    ],
+    "step": "06"
   },
   {
     "id": "no-cpu-emulator",
@@ -110,7 +122,8 @@ window.KYTY_TOPICS = [
     "level": "project",
     "prerequisites": [
       "what-an-emulator-is"
-    ]
+    ],
+    "step": "07"
   },
   {
     "id": "calling-conventions",
@@ -130,7 +143,8 @@ window.KYTY_TOPICS = [
     "prerequisites": [
       "no-cpu-emulator",
       "beginner-memory"
-    ]
+    ],
+    "step": "08"
   },
   {
     "id": "virtual-memory",
@@ -150,10 +164,96 @@ window.KYTY_TOPICS = [
     "prerequisites": [
       "beginner-memory",
       "no-cpu-emulator"
-    ]
+    ],
+    "step": "09"
   },
   {
-    "part": "Loading a game"
+    "part": "Project orientation"
+  },
+  {
+    "id": "cpp-codebase",
+    "n": "C6",
+    "title": "The codebase map & the toolbox",
+    "ready": true,
+    "file": "t-cpp-codebase.html",
+    "blurb": "Which file does what, the boot chain, and the third-party libraries behind it all.",
+    "src": [],
+    "level": "project",
+    "prerequisites": [
+      "what-an-emulator-is"
+    ],
+    "step": "10"
+  },
+  {
+    "id": "cpp-language",
+    "n": "C1",
+    "title": "C++ language, by example",
+    "ready": true,
+    "file": "t-cpp-language.html",
+    "blurb": "The small, dense subset of C++ this tree leans on — templates, constexpr, move semantics, casts, packing, macros — each shown as it actually appears.",
+    "src": [],
+    "level": "project",
+    "prerequisites": [
+      "beginner-memory",
+      "cpp-codebase"
+    ],
+    "step": "11"
+  },
+  {
+    "id": "cpp-build",
+    "n": "C3",
+    "title": "Building, linking & debugging",
+    "ready": true,
+    "file": "t-cpp-build.html",
+    "blurb": "Source to binary, the linker's job, the EXIT macros, and reading the crash log this project writes.",
+    "src": [],
+    "level": "project",
+    "prerequisites": [
+      "beginner-cpp",
+      "cpp-codebase",
+      "cpp-language"
+    ],
+    "step": "12"
+  },
+  {
+    "part": "Loading and execution"
+  },
+  {
+    "id": "address-space",
+    "n": "09",
+    "title": "The guest address space",
+    "ready": true,
+    "file": "t-address-space.html",
+    "blurb": "Bands, direct and flexible memory, and the host reservation.",
+    "src": [
+      "memory-management"
+    ],
+    "viz": [
+      "addrmap",
+      "allocator",
+      "vaddr"
+    ],
+    "level": "project",
+    "prerequisites": [
+      "virtual-memory"
+    ],
+    "step": "13"
+  },
+  {
+    "id": "pointers-memory",
+    "n": "C10",
+    "title": "Pointers, references & memory",
+    "ready": true,
+    "file": "t-pointers-memory.html",
+    "blurb": "How the tree uses pointers, references and memory — why a guest pointer is a host pointer, ownership types, borrowed spans, raw bytes and placement new.",
+    "src": [],
+    "level": "project",
+    "prerequisites": [
+      "beginner-memory",
+      "cpp-language",
+      "address-space"
+    ],
+    "step": "14"
   },
   {
     "id": "elf-and-self",
@@ -172,7 +272,8 @@ window.KYTY_TOPICS = [
     "level": "project",
     "prerequisites": [
       "virtual-memory"
-    ]
+    ],
+    "step": "15"
   },
   {
     "id": "mapping",
@@ -190,8 +291,10 @@ window.KYTY_TOPICS = [
     ],
     "level": "project",
     "prerequisites": [
-      "elf-and-self"
-    ]
+      "elf-and-self",
+      "address-space"
+    ],
+    "step": "16"
   },
   {
     "id": "nids",
@@ -212,7 +315,25 @@ window.KYTY_TOPICS = [
     "prerequisites": [
       "mapping",
       "calling-conventions"
-    ]
+    ],
+    "step": "17"
+  },
+  {
+    "id": "cpp-asm",
+    "n": "C2",
+    "title": "Assembly, the ABI & machine code",
+    "ready": true,
+    "file": "t-cpp-asm.html",
+    "blurb": "Reading the hand-written inline asm and the JIT machine-code buffers that cross the host/guest boundary.",
+    "src": [],
+    "level": "project",
+    "prerequisites": [
+      "beginner-machine",
+      "calling-conventions",
+      "pointers-memory",
+      "nids"
+    ],
+    "step": "18"
   },
   {
     "id": "patching",
@@ -230,31 +351,10 @@ window.KYTY_TOPICS = [
     "level": "project",
     "prerequisites": [
       "no-cpu-emulator",
-      "calling-conventions"
-    ]
-  },
-  {
-    "part": "Memory and execution"
-  },
-  {
-    "id": "address-space",
-    "n": "09",
-    "title": "The guest address space",
-    "ready": true,
-    "file": "t-address-space.html",
-    "blurb": "Bands, direct and flexible memory, and the host reservation.",
-    "src": [
-      "memory-management"
+      "calling-conventions",
+      "cpp-asm"
     ],
-    "viz": [
-      "addrmap",
-      "allocator",
-      "vaddr"
-    ],
-    "level": "project",
-    "prerequisites": [
-      "virtual-memory"
-    ]
+    "step": "19"
   },
   {
     "id": "threads",
@@ -273,7 +373,8 @@ window.KYTY_TOPICS = [
     "prerequisites": [
       "beginner-completion",
       "virtual-memory"
-    ]
+    ],
+    "step": "20"
   },
   {
     "id": "hle",
@@ -290,10 +391,46 @@ window.KYTY_TOPICS = [
     "level": "project",
     "prerequisites": [
       "nids"
-    ]
+    ],
+    "step": "21"
   },
   {
-    "part": "Graphics"
+    "id": "cpp-system",
+    "n": "C5",
+    "title": "The system around the GPU",
+    "ready": true,
+    "file": "t-cpp-system.html",
+    "blurb": "Audio, video, network, input, the file sandbox and the launcher — everything that is not a draw call.",
+    "src": [],
+    "level": "project",
+    "prerequisites": [
+      "hle",
+      "threads",
+      "cpp-language"
+    ],
+    "step": "22"
+  },
+  {
+    "id": "trace-boot",
+    "n": "D2",
+    "title": "ELF to first guest instruction",
+    "ready": true,
+    "file": "t-trace-boot.html",
+    "blurb": "Follow mapping, relocation, module initialization and the native entry boundary.",
+    "src": [],
+    "level": "project",
+    "prerequisites": [
+      "cpp-build",
+      "nids",
+      "patching",
+      "threads",
+      "hle",
+      "cpp-system"
+    ],
+    "step": "23"
+  },
+  {
+    "part": "Graphics and performance"
   },
   {
     "id": "gpu-basics",
@@ -312,7 +449,8 @@ window.KYTY_TOPICS = [
     "level": "project",
     "prerequisites": [
       "beginner-machine"
-    ]
+    ],
+    "step": "24"
   },
   {
     "id": "pm4",
@@ -334,7 +472,8 @@ window.KYTY_TOPICS = [
     "prerequisites": [
       "gpu-basics",
       "beginner-bytes"
-    ]
+    ],
+    "step": "25"
   },
   {
     "id": "registers",
@@ -354,7 +493,8 @@ window.KYTY_TOPICS = [
     "level": "project",
     "prerequisites": [
       "pm4"
-    ]
+    ],
+    "step": "26"
   },
   {
     "id": "shaders",
@@ -375,7 +515,8 @@ window.KYTY_TOPICS = [
     "level": "project",
     "prerequisites": [
       "registers"
-    ]
+    ],
+    "step": "27"
   },
   {
     "id": "vulkan",
@@ -400,7 +541,23 @@ window.KYTY_TOPICS = [
     "prerequisites": [
       "gpu-basics",
       "beginner-completion"
-    ]
+    ],
+    "step": "28"
+  },
+  {
+    "id": "program-cache",
+    "n": "C9",
+    "title": "The program cache",
+    "ready": true,
+    "file": "t-program-cache.html",
+    "blurb": "One function, ProgramCache::Get: how a draw finds or builds a shader permutation, including mesh stages.",
+    "src": [],
+    "level": "project",
+    "prerequisites": [
+      "shaders",
+      "vulkan"
+    ],
+    "step": "29"
   },
   {
     "id": "coherency",
@@ -424,36 +581,60 @@ window.KYTY_TOPICS = [
       "virtual-memory",
       "vulkan",
       "beginner-completion"
-    ]
+    ],
+    "step": "30"
   },
   {
-    "part": "Working on the project"
-  },
-  {
-    "id": "cpp-codebase",
-    "n": "C6",
-    "title": "The codebase map & the toolbox",
+    "id": "cpp-concurrency",
+    "n": "C4",
+    "title": "Concurrency & the memory model",
     "ready": true,
-    "file": "t-cpp-codebase.html",
-    "blurb": "Which file does what, the boot chain, and the third-party libraries behind it all.",
+    "file": "t-cpp-concurrency.html",
+    "blurb": "Four threads, one address space: who runs what, the atomics and locks, and the timeline semaphores that hold it together.",
     "src": [],
     "level": "project",
     "prerequisites": [
-      "what-an-emulator-is"
-    ]
+      "beginner-completion",
+      "threads",
+      "coherency"
+    ],
+    "step": "31"
   },
   {
-    "id": "cpp-build",
-    "n": "C3",
-    "title": "Building, linking & debugging",
+    "id": "trace-draw",
+    "n": "D3",
+    "title": "One draw to GPU completion",
     "ready": true,
-    "file": "t-cpp-build.html",
-    "blurb": "Source to binary, the linker's job, the EXIT macros, and reading the crash log this project writes.",
+    "file": "t-trace-draw.html",
+    "blurb": "PM4, current state, programs, bindings, recording and completion: one selected path.",
     "src": [],
     "level": "project",
     "prerequisites": [
-      "beginner-cpp"
-    ]
+      "pm4",
+      "shaders",
+      "program-cache",
+      "coherency",
+      "cpp-concurrency"
+    ],
+    "step": "32"
+  },
+  {
+    "id": "cpp-performance",
+    "n": "C7",
+    "title": "Performance: why this design is fast",
+    "ready": true,
+    "file": "t-cpp-performance.html",
+    "blurb": "Native execution, one-jump imports, batched GPU work, cached shaders — and where the time actually goes.",
+    "src": [],
+    "level": "project",
+    "prerequisites": [
+      "trace-draw",
+      "program-cache"
+    ],
+    "step": "33"
+  },
+  {
+    "part": "First contribution"
   },
   {
     "id": "developer-curriculum",
@@ -466,52 +647,10 @@ window.KYTY_TOPICS = [
     "level": "project",
     "prerequisites": [
       "cpp-build",
-      "coherency"
-    ]
-  },
-  {
-    "id": "trace-boot",
-    "n": "D2",
-    "title": "ELF to first guest instruction",
-    "ready": true,
-    "file": "t-trace-boot.html",
-    "blurb": "Follow mapping, relocation, module initialization and the native entry boundary.",
-    "src": [],
-    "level": "project",
-    "prerequisites": [
-      "nids",
-      "patching"
-    ]
-  },
-  {
-    "id": "trace-draw",
-    "n": "D3",
-    "title": "One draw to GPU completion",
-    "ready": true,
-    "file": "t-trace-draw.html",
-    "blurb": "PM4, current state, programs, bindings, recording and completion: one selected path.",
-    "src": [],
-    "level": "project",
-    "prerequisites": [
-      "vulkan",
-      "shaders",
-      "pm4"
-    ]
-  },
-  {
-    "id": "debugging-labs",
-    "n": "D4",
-    "title": "Reproducible debugging labs",
-    "ready": true,
-    "file": "t-debugging-labs.html",
-    "blurb": "Native C++ red-to-green exercises for range coverage, lifetime ticks and output contracts.",
-    "src": [],
-    "level": "project",
-    "prerequisites": [
-      "beginner-bytes",
-      "beginner-memory",
-      "beginner-completion"
-    ]
+      "trace-boot",
+      "trace-draw"
+    ],
+    "step": "34"
   },
   {
     "id": "debugging",
@@ -527,7 +666,55 @@ window.KYTY_TOPICS = [
     "level": "project",
     "prerequisites": [
       "developer-curriculum"
-    ]
+    ],
+    "step": "35"
+  },
+  {
+    "id": "reading-a-run",
+    "n": "20",
+    "title": "Reading a run",
+    "ready": true,
+    "file": "t-reading-a-run.html",
+    "blurb": "The exact log lines a build writes, what each field means, and which grep to run first.",
+    "src": [],
+    "level": "project",
+    "prerequisites": [
+      "debugging"
+    ],
+    "step": "36"
+  },
+  {
+    "id": "cpp-diagnosis",
+    "n": "C8",
+    "title": "A boot failure, diagnosed",
+    "ready": true,
+    "file": "t-cpp-diagnosis.html",
+    "blurb": "A worked case study: black screen to crash to fix, using the logs, the crash reader and the module tools.",
+    "src": [],
+    "level": "project",
+    "prerequisites": [
+      "debugging",
+      "reading-a-run",
+      "trace-boot"
+    ],
+    "step": "37"
+  },
+  {
+    "id": "debugging-labs",
+    "n": "D4",
+    "title": "Reproducible debugging labs",
+    "ready": true,
+    "file": "t-debugging-labs.html",
+    "blurb": "Native C++ red-to-green exercises for range coverage, lifetime ticks and output contracts.",
+    "src": [],
+    "level": "project",
+    "prerequisites": [
+      "beginner-bytes",
+      "beginner-memory",
+      "beginner-completion",
+      "reading-a-run"
+    ],
+    "step": "38"
   },
   {
     "id": "first-change",
@@ -542,134 +729,10 @@ window.KYTY_TOPICS = [
     "level": "project",
     "prerequisites": [
       "debugging-labs",
-      "debugging"
-    ]
-  },
-  {
-    "id": "reading-a-run",
-    "n": "20",
-    "title": "Reading a run",
-    "ready": true,
-    "file": "t-reading-a-run.html",
-    "blurb": "The exact log lines a build writes, what each field means, and which grep to run first.",
-    "src": [],
-    "level": "project",
-    "prerequisites": [
-      "debugging"
-    ]
-  },
-  {
-    "part": "C++ and subsystem reference"
-  },
-  {
-    "id": "pointers-memory",
-    "n": "C10",
-    "title": "Pointers, references & memory",
-    "ready": true,
-    "file": "t-pointers-memory.html",
-    "blurb": "How the tree uses pointers, references and memory — why a guest pointer is a host pointer, ownership types, borrowed spans, raw bytes and placement new.",
-    "src": [],
-    "level": "reference",
-    "prerequisites": [
-      "beginner-memory",
-      "virtual-memory"
-    ]
-  },
-  {
-    "id": "cpp-language",
-    "n": "C1",
-    "title": "C++ language, by example",
-    "ready": true,
-    "file": "t-cpp-language.html",
-    "blurb": "The small, dense subset of C++ this tree leans on — templates, constexpr, move semantics, casts, packing, macros — each shown as it actually appears.",
-    "src": [],
-    "level": "reference",
-    "prerequisites": [
-      "beginner-memory"
-    ]
-  },
-  {
-    "id": "cpp-asm",
-    "n": "C2",
-    "title": "Assembly, the ABI & machine code",
-    "ready": true,
-    "file": "t-cpp-asm.html",
-    "blurb": "Reading the hand-written inline asm and the JIT machine-code buffers that cross the host/guest boundary.",
-    "src": [],
-    "level": "reference",
-    "prerequisites": [
-      "beginner-machine",
-      "calling-conventions"
-    ]
-  },
-  {
-    "id": "cpp-concurrency",
-    "n": "C4",
-    "title": "Concurrency & the memory model",
-    "ready": true,
-    "file": "t-cpp-concurrency.html",
-    "blurb": "Four threads, one address space: who runs what, the atomics and locks, and the timeline semaphores that hold it together.",
-    "src": [],
-    "level": "reference",
-    "prerequisites": [
-      "beginner-completion",
-      "threads"
-    ]
-  },
-  {
-    "id": "cpp-system",
-    "n": "C5",
-    "title": "The system around the GPU",
-    "ready": true,
-    "file": "t-cpp-system.html",
-    "blurb": "Audio, video, network, input, the file sandbox and the launcher — everything that is not a draw call.",
-    "src": [],
-    "level": "reference",
-    "prerequisites": [
-      "hle",
-      "threads"
-    ]
-  },
-  {
-    "id": "cpp-performance",
-    "n": "C7",
-    "title": "Performance: why this design is fast",
-    "ready": true,
-    "file": "t-cpp-performance.html",
-    "blurb": "Native execution, one-jump imports, batched GPU work, cached shaders — and where the time actually goes.",
-    "src": [],
-    "level": "reference",
-    "prerequisites": [
-      "vulkan",
-      "coherency"
-    ]
-  },
-  {
-    "id": "cpp-diagnosis",
-    "n": "C8",
-    "title": "A boot failure, diagnosed",
-    "ready": true,
-    "file": "t-cpp-diagnosis.html",
-    "blurb": "A worked case study: black screen to crash to fix, using the logs, the crash reader and the module tools.",
-    "src": [],
-    "level": "reference",
-    "prerequisites": [
-      "debugging"
-    ]
-  },
-  {
-    "id": "program-cache",
-    "n": "C9",
-    "title": "The program cache",
-    "ready": true,
-    "file": "t-program-cache.html",
-    "blurb": "One function, ProgramCache::Get: how a draw finds or builds a shader permutation, including mesh stages.",
-    "src": [],
-    "level": "reference",
-    "prerequisites": [
-      "shaders",
-      "vulkan"
-    ]
+      "debugging",
+      "reading-a-run"
+    ],
+    "step": "39"
   },
   {
     "part": "Advanced research"
@@ -799,28 +862,36 @@ window.KYTY_ROUTES = {
     "no-cpu-emulator",
     "calling-conventions",
     "virtual-memory",
+    "cpp-codebase",
+    "cpp-language",
+    "cpp-build",
+    "address-space",
+    "pointers-memory",
     "elf-and-self",
     "mapping",
     "nids",
+    "cpp-asm",
     "patching",
-    "address-space",
     "threads",
     "hle",
+    "cpp-system",
+    "trace-boot",
     "gpu-basics",
     "pm4",
     "registers",
     "shaders",
     "vulkan",
+    "program-cache",
     "coherency",
-    "cpp-codebase",
-    "cpp-build",
-    "developer-curriculum",
-    "trace-boot",
+    "cpp-concurrency",
     "trace-draw",
-    "debugging-labs",
+    "cpp-performance",
+    "developer-curriculum",
     "debugging",
-    "first-change",
-    "reading-a-run"
+    "reading-a-run",
+    "cpp-diagnosis",
+    "debugging-labs",
+    "first-change"
   ]
 };
 window.KYTY_PROJECT = {

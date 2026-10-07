@@ -48,9 +48,9 @@
   }
 
   /* ---------------- language detection ----------------
-     None of the blocks carry a language class, so guess from the
-     content. Ordering matters: shell and asm are checked first
-     because they are narrow, and C-like is the fallback. */
+     Prefer data-lang when supplied; infer the language for older
+     excerpts. Shell and asm are checked first because they are
+     narrow, and C-like is the fallback. */
 
   function detect(text) {
     var t = text.slice(0, 1200);
@@ -179,7 +179,8 @@
   // Text inside these is already meaningful: <b> is the author's own
   // emphasis, <i> is a comment they marked by hand, <a> is a link.
   // Re-colouring inside them would fight styling that is already correct.
-  var SKIP = { B: 1, I: 1, A: 1, CODE: 1, EM: 1, STRONG: 1, MARK: 1 };
+  // <code> is a standard wrapper for a whole listing, not manual emphasis.
+  var SKIP = { B: 1, I: 1, A: 1, EM: 1, STRONG: 1, MARK: 1 };
 
   function shouldSkip(node, root) {
     for (var n = node.parentNode; n && n !== root; n = n.parentNode) {
@@ -191,6 +192,7 @@
 
   function highlight(pre) {
     if (pre.dataset.hl) return;               // idempotent
+    if (pre.dataset.lang === "text") { pre.dataset.hl = "skip"; return; }
     var text = pre.textContent;
     if (!text || text.length > 60000) { pre.dataset.hl = "skip"; return; }
 

@@ -16,28 +16,36 @@
       "no-cpu-emulator",
       "calling-conventions",
       "virtual-memory",
+      "cpp-codebase",
+      "cpp-language",
+      "cpp-build",
+      "address-space",
+      "pointers-memory",
       "elf-and-self",
       "mapping",
       "nids",
+      "cpp-asm",
       "patching",
-      "address-space",
       "threads",
       "hle",
+      "cpp-system",
+      "trace-boot",
       "gpu-basics",
       "pm4",
       "registers",
       "shaders",
       "vulkan",
+      "program-cache",
       "coherency",
-      "cpp-codebase",
-      "cpp-build",
-      "developer-curriculum",
-      "trace-boot",
+      "cpp-concurrency",
       "trace-draw",
-      "debugging-labs",
+      "cpp-performance",
+      "developer-curriculum",
       "debugging",
-      "first-change",
-      "reading-a-run"
+      "reading-a-run",
+      "cpp-diagnosis",
+      "debugging-labs",
+      "first-change"
     ]
   },
   "topics": [
@@ -53,6 +61,9 @@
       "ready": true,
       "level": "beginner",
       "prerequisites": []
+    },
+    {
+      "part": "C++ essentials"
     },
     {
       "id": "beginner-cpp",
@@ -87,6 +98,9 @@
       "prerequisites": [
         "beginner-bytes"
       ]
+    },
+    {
+      "part": "Machine essentials"
     },
     {
       "id": "beginner-machine",
@@ -194,7 +208,87 @@
       ]
     },
     {
-      "part": "Loading a game"
+      "part": "Project orientation"
+    },
+    {
+      "id": "cpp-codebase",
+      "n": "C6",
+      "title": "The codebase map & the toolbox",
+      "ready": true,
+      "file": "t-cpp-codebase.html",
+      "blurb": "Which file does what, the boot chain, and the third-party libraries behind it all.",
+      "src": [],
+      "level": "project",
+      "prerequisites": [
+        "what-an-emulator-is"
+      ]
+    },
+    {
+      "id": "cpp-language",
+      "n": "C1",
+      "title": "C++ language, by example",
+      "ready": true,
+      "file": "t-cpp-language.html",
+      "blurb": "The small, dense subset of C++ this tree leans on — templates, constexpr, move semantics, casts, packing, macros — each shown as it actually appears.",
+      "src": [],
+      "level": "project",
+      "prerequisites": [
+        "beginner-memory",
+        "cpp-codebase"
+      ]
+    },
+    {
+      "id": "cpp-build",
+      "n": "C3",
+      "title": "Building, linking & debugging",
+      "ready": true,
+      "file": "t-cpp-build.html",
+      "blurb": "Source to binary, the linker's job, the EXIT macros, and reading the crash log this project writes.",
+      "src": [],
+      "level": "project",
+      "prerequisites": [
+        "beginner-cpp",
+        "cpp-codebase",
+        "cpp-language"
+      ]
+    },
+    {
+      "part": "Loading and execution"
+    },
+    {
+      "id": "address-space",
+      "n": "09",
+      "title": "The guest address space",
+      "ready": true,
+      "file": "t-address-space.html",
+      "blurb": "Bands, direct and flexible memory, and the host reservation.",
+      "src": [
+        "memory-management"
+      ],
+      "viz": [
+        "addrmap",
+        "allocator",
+        "vaddr"
+      ],
+      "level": "project",
+      "prerequisites": [
+        "virtual-memory"
+      ]
+    },
+    {
+      "id": "pointers-memory",
+      "n": "C10",
+      "title": "Pointers, references & memory",
+      "ready": true,
+      "file": "t-pointers-memory.html",
+      "blurb": "How the tree uses pointers, references and memory — why a guest pointer is a host pointer, ownership types, borrowed spans, raw bytes and placement new.",
+      "src": [],
+      "level": "project",
+      "prerequisites": [
+        "beginner-memory",
+        "cpp-language",
+        "address-space"
+      ]
     },
     {
       "id": "elf-and-self",
@@ -231,7 +325,8 @@
       ],
       "level": "project",
       "prerequisites": [
-        "elf-and-self"
+        "elf-and-self",
+        "address-space"
       ]
     },
     {
@@ -256,6 +351,22 @@
       ]
     },
     {
+      "id": "cpp-asm",
+      "n": "C2",
+      "title": "Assembly, the ABI & machine code",
+      "ready": true,
+      "file": "t-cpp-asm.html",
+      "blurb": "Reading the hand-written inline asm and the JIT machine-code buffers that cross the host/guest boundary.",
+      "src": [],
+      "level": "project",
+      "prerequisites": [
+        "beginner-machine",
+        "calling-conventions",
+        "pointers-memory",
+        "nids"
+      ]
+    },
+    {
       "id": "patching",
       "n": "08",
       "title": "Patching guest instructions",
@@ -271,30 +382,8 @@
       "level": "project",
       "prerequisites": [
         "no-cpu-emulator",
-        "calling-conventions"
-      ]
-    },
-    {
-      "part": "Memory and execution"
-    },
-    {
-      "id": "address-space",
-      "n": "09",
-      "title": "The guest address space",
-      "ready": true,
-      "file": "t-address-space.html",
-      "blurb": "Bands, direct and flexible memory, and the host reservation.",
-      "src": [
-        "memory-management"
-      ],
-      "viz": [
-        "addrmap",
-        "allocator",
-        "vaddr"
-      ],
-      "level": "project",
-      "prerequisites": [
-        "virtual-memory"
+        "calling-conventions",
+        "cpp-asm"
       ]
     },
     {
@@ -334,7 +423,40 @@
       ]
     },
     {
-      "part": "Graphics"
+      "id": "cpp-system",
+      "n": "C5",
+      "title": "The system around the GPU",
+      "ready": true,
+      "file": "t-cpp-system.html",
+      "blurb": "Audio, video, network, input, the file sandbox and the launcher — everything that is not a draw call.",
+      "src": [],
+      "level": "project",
+      "prerequisites": [
+        "hle",
+        "threads",
+        "cpp-language"
+      ]
+    },
+    {
+      "id": "trace-boot",
+      "n": "D2",
+      "title": "ELF to first guest instruction",
+      "ready": true,
+      "file": "t-trace-boot.html",
+      "blurb": "Follow mapping, relocation, module initialization and the native entry boundary.",
+      "src": [],
+      "level": "project",
+      "prerequisites": [
+        "cpp-build",
+        "nids",
+        "patching",
+        "threads",
+        "hle",
+        "cpp-system"
+      ]
+    },
+    {
+      "part": "Graphics and performance"
     },
     {
       "id": "gpu-basics",
@@ -444,6 +566,20 @@
       ]
     },
     {
+      "id": "program-cache",
+      "n": "C9",
+      "title": "The program cache",
+      "ready": true,
+      "file": "t-program-cache.html",
+      "blurb": "One function, ProgramCache::Get: how a draw finds or builds a shader permutation, including mesh stages.",
+      "src": [],
+      "level": "project",
+      "prerequisites": [
+        "shaders",
+        "vulkan"
+      ]
+    },
+    {
       "id": "coherency",
       "n": "10",
       "title": "Page faults & CPU/GPU coherency",
@@ -468,60 +604,18 @@
       ]
     },
     {
-      "part": "Working on the project"
-    },
-    {
-      "id": "cpp-codebase",
-      "n": "C6",
-      "title": "The codebase map & the toolbox",
+      "id": "cpp-concurrency",
+      "n": "C4",
+      "title": "Concurrency & the memory model",
       "ready": true,
-      "file": "t-cpp-codebase.html",
-      "blurb": "Which file does what, the boot chain, and the third-party libraries behind it all.",
+      "file": "t-cpp-concurrency.html",
+      "blurb": "Four threads, one address space: who runs what, the atomics and locks, and the timeline semaphores that hold it together.",
       "src": [],
       "level": "project",
       "prerequisites": [
-        "what-an-emulator-is"
-      ]
-    },
-    {
-      "id": "cpp-build",
-      "n": "C3",
-      "title": "Building, linking & debugging",
-      "ready": true,
-      "file": "t-cpp-build.html",
-      "blurb": "Source to binary, the linker's job, the EXIT macros, and reading the crash log this project writes.",
-      "src": [],
-      "level": "project",
-      "prerequisites": [
-        "beginner-cpp"
-      ]
-    },
-    {
-      "id": "developer-curriculum",
-      "n": "D1",
-      "title": "The developer route & coverage",
-      "ready": true,
-      "file": "developer-curriculum.html",
-      "blurb": "Prerequisites, evidence-based gates, a coverage map and a contribution capstone.",
-      "src": [],
-      "level": "project",
-      "prerequisites": [
-        "cpp-build",
+        "beginner-completion",
+        "threads",
         "coherency"
-      ]
-    },
-    {
-      "id": "trace-boot",
-      "n": "D2",
-      "title": "ELF to first guest instruction",
-      "ready": true,
-      "file": "t-trace-boot.html",
-      "blurb": "Follow mapping, relocation, module initialization and the native entry boundary.",
-      "src": [],
-      "level": "project",
-      "prerequisites": [
-        "nids",
-        "patching"
       ]
     },
     {
@@ -534,24 +628,43 @@
       "src": [],
       "level": "project",
       "prerequisites": [
-        "vulkan",
+        "pm4",
         "shaders",
-        "pm4"
+        "program-cache",
+        "coherency",
+        "cpp-concurrency"
       ]
     },
     {
-      "id": "debugging-labs",
-      "n": "D4",
-      "title": "Reproducible debugging labs",
+      "id": "cpp-performance",
+      "n": "C7",
+      "title": "Performance: why this design is fast",
       "ready": true,
-      "file": "t-debugging-labs.html",
-      "blurb": "Native C++ red-to-green exercises for range coverage, lifetime ticks and output contracts.",
+      "file": "t-cpp-performance.html",
+      "blurb": "Native execution, one-jump imports, batched GPU work, cached shaders — and where the time actually goes.",
       "src": [],
       "level": "project",
       "prerequisites": [
-        "beginner-bytes",
-        "beginner-memory",
-        "beginner-completion"
+        "trace-draw",
+        "program-cache"
+      ]
+    },
+    {
+      "part": "First contribution"
+    },
+    {
+      "id": "developer-curriculum",
+      "n": "D1",
+      "title": "The developer route & coverage",
+      "ready": true,
+      "file": "developer-curriculum.html",
+      "blurb": "Prerequisites, evidence-based gates, a coverage map and a contribution capstone.",
+      "src": [],
+      "level": "project",
+      "prerequisites": [
+        "cpp-build",
+        "trace-boot",
+        "trace-draw"
       ]
     },
     {
@@ -571,22 +684,6 @@
       ]
     },
     {
-      "id": "first-change",
-      "n": "19",
-      "title": "Your first change",
-      "ready": true,
-      "file": "t-first-change.html",
-      "blurb": "The complete loop, end to end, on your own build.",
-      "src": [
-        "worked-example-implementing-a-missing-function"
-      ],
-      "level": "project",
-      "prerequisites": [
-        "debugging-labs",
-        "debugging"
-      ]
-    },
-    {
       "id": "reading-a-run",
       "n": "20",
       "title": "Reading a run",
@@ -600,92 +697,6 @@
       ]
     },
     {
-      "part": "C++ and subsystem reference"
-    },
-    {
-      "id": "pointers-memory",
-      "n": "C10",
-      "title": "Pointers, references & memory",
-      "ready": true,
-      "file": "t-pointers-memory.html",
-      "blurb": "How the tree uses pointers, references and memory — why a guest pointer is a host pointer, ownership types, borrowed spans, raw bytes and placement new.",
-      "src": [],
-      "level": "reference",
-      "prerequisites": [
-        "beginner-memory",
-        "virtual-memory"
-      ]
-    },
-    {
-      "id": "cpp-language",
-      "n": "C1",
-      "title": "C++ language, by example",
-      "ready": true,
-      "file": "t-cpp-language.html",
-      "blurb": "The small, dense subset of C++ this tree leans on — templates, constexpr, move semantics, casts, packing, macros — each shown as it actually appears.",
-      "src": [],
-      "level": "reference",
-      "prerequisites": [
-        "beginner-memory"
-      ]
-    },
-    {
-      "id": "cpp-asm",
-      "n": "C2",
-      "title": "Assembly, the ABI & machine code",
-      "ready": true,
-      "file": "t-cpp-asm.html",
-      "blurb": "Reading the hand-written inline asm and the JIT machine-code buffers that cross the host/guest boundary.",
-      "src": [],
-      "level": "reference",
-      "prerequisites": [
-        "beginner-machine",
-        "calling-conventions"
-      ]
-    },
-    {
-      "id": "cpp-concurrency",
-      "n": "C4",
-      "title": "Concurrency & the memory model",
-      "ready": true,
-      "file": "t-cpp-concurrency.html",
-      "blurb": "Four threads, one address space: who runs what, the atomics and locks, and the timeline semaphores that hold it together.",
-      "src": [],
-      "level": "reference",
-      "prerequisites": [
-        "beginner-completion",
-        "threads"
-      ]
-    },
-    {
-      "id": "cpp-system",
-      "n": "C5",
-      "title": "The system around the GPU",
-      "ready": true,
-      "file": "t-cpp-system.html",
-      "blurb": "Audio, video, network, input, the file sandbox and the launcher — everything that is not a draw call.",
-      "src": [],
-      "level": "reference",
-      "prerequisites": [
-        "hle",
-        "threads"
-      ]
-    },
-    {
-      "id": "cpp-performance",
-      "n": "C7",
-      "title": "Performance: why this design is fast",
-      "ready": true,
-      "file": "t-cpp-performance.html",
-      "blurb": "Native execution, one-jump imports, batched GPU work, cached shaders — and where the time actually goes.",
-      "src": [],
-      "level": "reference",
-      "prerequisites": [
-        "vulkan",
-        "coherency"
-      ]
-    },
-    {
       "id": "cpp-diagnosis",
       "n": "C8",
       "title": "A boot failure, diagnosed",
@@ -693,23 +704,44 @@
       "file": "t-cpp-diagnosis.html",
       "blurb": "A worked case study: black screen to crash to fix, using the logs, the crash reader and the module tools.",
       "src": [],
-      "level": "reference",
+      "level": "project",
       "prerequisites": [
-        "debugging"
+        "debugging",
+        "reading-a-run",
+        "trace-boot"
       ]
     },
     {
-      "id": "program-cache",
-      "n": "C9",
-      "title": "The program cache",
+      "id": "debugging-labs",
+      "n": "D4",
+      "title": "Reproducible debugging labs",
       "ready": true,
-      "file": "t-program-cache.html",
-      "blurb": "One function, ProgramCache::Get: how a draw finds or builds a shader permutation, including mesh stages.",
+      "file": "t-debugging-labs.html",
+      "blurb": "Native C++ red-to-green exercises for range coverage, lifetime ticks and output contracts.",
       "src": [],
-      "level": "reference",
+      "level": "project",
       "prerequisites": [
-        "shaders",
-        "vulkan"
+        "beginner-bytes",
+        "beginner-memory",
+        "beginner-completion",
+        "reading-a-run"
+      ]
+    },
+    {
+      "id": "first-change",
+      "n": "19",
+      "title": "Your first change",
+      "ready": true,
+      "file": "t-first-change.html",
+      "blurb": "The complete loop, end to end, on your own build.",
+      "src": [
+        "worked-example-implementing-a-missing-function"
+      ],
+      "level": "project",
+      "prerequisites": [
+        "debugging-labs",
+        "debugging",
+        "reading-a-run"
       ]
     },
     {

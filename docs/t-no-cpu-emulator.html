@@ -8,14 +8,14 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-5">
+<link rel="stylesheet" href="assets/app.css?v=20261007-7">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
 <main class="topic" data-app-content>
 
-  <p class="topic-eyebrow">Foundations · 02</p>
+  <p class="topic-eyebrow">Step 07 · Emulation foundations</p>
   <h1 id="why-there-s-no-cpu-emulator">Why there's no CPU emulator</h1>
   <p class="topic-deck">
     Search the repository for a general guest-CPU interpreter or dynamic translator and you'll find
@@ -56,8 +56,8 @@
         <tr><td><span class="chip host">good</span> Vastly less code</td><td>A competent x86-64 JIT is tens of thousands of lines on its own. Kyty spends that budget on graphics instead.</td></tr>
         <tr><td><span class="chip guest">hard</span> No general instruction-level control</td><td>There is no general translator through which every memory instruction passes. Kyty uses hardware page protection for coherency and targeted rewriting for specific host incompatibilities, so the exception handler remains essential.</td></tr>
         <tr><td><span class="chip guest">hard</span> Crashes are real crashes</td><td>A guest bug corrupts the emulator's own process. There is no sandbox. Hence the forensic crash dump: the faulting guest thread, all registers, the code bytes around the fault, the top of the stack.</td></tr>
-        <tr><td><span class="chip guest">hard</span> Host CPU features must match</td><td>Kyty patches or handles selected instruction-feature gaps. Unsupported forms can still fault; it is not a general instruction emulator — see <a href="t-coherency.html">topic 10</a>.</td></tr>
-        <tr><td><span class="chip guest">hard</span> ABI and OS assumptions leak</td><td>Guest code assumes System V registers, a working <code>fs</code> segment, 16 KB pages, and a FreeBSD kernel. None of that is true on Windows. <a href="t-calling-conventions.html">topic 03</a>, <a href="t-patching.html">topic 08</a> and <a href="t-address-space.html">topic 09</a> are about closing those gaps.</td></tr>
+        <tr><td><span class="chip guest">hard</span> Host CPU features must match</td><td>Kyty patches or handles selected instruction-feature gaps. Unsupported forms can still fault; it is not a general instruction emulator — see <a href="t-coherency.html">Page faults &amp; CPU/GPU coherency</a>.</td></tr>
+        <tr><td><span class="chip guest">hard</span> ABI and OS assumptions leak</td><td>Guest code assumes System V registers, a working <code>fs</code> segment, 16 KB pages, and a FreeBSD kernel. None of that is true on Windows. <a href="t-calling-conventions.html">Calling conventions &amp; the ABI wall</a>, <a href="t-patching.html">Patching guest instructions</a> and <a href="t-address-space.html">The guest address space</a> are about closing those gaps.</td></tr>
       </tbody>
     </table>
   </div>
@@ -161,10 +161,10 @@
 
 </main>
 
-<script src="assets/topics.js?v=20261007-5" defer></script>
-<script src="assets/search-index.js?v=20261007-5" defer></script>
-<script src="assets/highlight.js?v=20261007" defer></script>
-<script src="assets/app.js?v=20261007-5" defer></script>
+<script src="assets/topics.js?v=20261007-8" defer></script>
+<script src="assets/search-index.js?v=20261007-8" defer></script>
+<script src="assets/highlight.js?v=20261007-6" defer></script>
+<script src="assets/app.js?v=20261007-7" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>

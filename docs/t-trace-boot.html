@@ -8,22 +8,22 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-5">
+<link rel="stylesheet" href="assets/app.css?v=20261007-7">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 <main class="topic" data-app-content>
-<p class="topic-eyebrow">Developer curriculum · D2</p>
+<p class="topic-eyebrow">Step 23 · Loading and execution · D2</p>
 <h1 id="overview">ELF to the first guest instruction</h1>
 <p class="topic-deck">Follow one boot path across file offsets, mapped addresses, relocation and the native guest-entry boundary.</p>
 <!-- prerequisites:trace-boot -->
-<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="t-nids.html">NIDs and the runtime linker</a> · <a href="t-patching.html">Patching guest instructions</a>. <a href="start.html">View the learning route</a>.</p>
+<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="t-cpp-build.html">Building, linking &amp; debugging</a> · <a href="t-nids.html">NIDs and the runtime linker</a> · <a href="t-patching.html">Patching guest instructions</a> · <a href="t-threads.html">Threads and TLS</a> · <a href="t-hle.html">HLE libraries</a> · <a href="t-cpp-system.html">The system around the GPU</a>. <a href="start.html">View the learning route</a>.</p>
 <!-- /prerequisites -->
 <section class="band band-read">
 <div class="band-h"><span class="band-t">Read, trace, prove</span></div>
 <div class="prose">
 
-<p>Prerequisites: <a href="t-elf-and-self.html">ELF/SELF</a>, <a href="t-nids.html">NIDs</a>, <a href="t-calling-conventions.html">the ABI</a> and <a href="t-threads.html">threads</a>. This is a source-reading trace at <code>d2413fc2</code>, with an optional debugger worksheet. It is not a captured run of a particular game.</p>
+<p>Bring the codebase map and the loading, patching, thread and HLE explanations together here. This is a source-reading trace at <code>d2413fc2</code>, with an optional debugger worksheet. It is not a captured run of a particular game.</p>
 <div class="callout k"><span class="lbl">Define the endpoint first</span>
 <p><strong>First guest instruction</strong> may be a shared module initializer called by <code>StartModule</code>. <strong>Main executable entry</strong> is a later transfer through <code>RunEntry</code>. Neither necessarily means the game's C/C++ <code>main()</code>. A failure before the “Execute: Main” log can therefore already be executing guest code.</p></div>
 
@@ -116,13 +116,13 @@ Last verified boundary / unresolved question:</pre>
 <li><code>src/loader/runtimeLinker.cpp</code>: <code>LoadProgram</code>, <code>LoadProgramToMemory</code>, <code>RelocateAll</code>, <code>StartModule</code>, <code>GetEntry</code>, <code>RunEntry</code>.</li>
 <li><code>src/loader/elf.cpp</code>: file parsing and <code>LoadSegment</code>.</li>
 </ul>
-<p>Continue with <a href="t-trace-draw.html">one draw through the renderer</a>, or return to the <a href="developer-curriculum.html#gates">developer gates</a>. Dynamic loading/unloading, every relocation type and every exception/TLS path are outside this selected trace.</p>
+<p>Continue with <a href="t-gpu-basics.html">GPU basics</a>. The graphics lessons build toward <a href="t-trace-draw.html">one draw through the renderer</a>. Dynamic loading/unloading, every relocation type and every exception/TLS path are outside this selected trace.</p>
 
 </div></section>
 </main>
-<script src="assets/topics.js?v=20261007-5" defer></script>
-<script src="assets/search-index.js?v=20261007-5" defer></script>
-<script src="assets/app.js?v=20261007-5" defer></script>
-<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/topics.js?v=20261007-8" defer></script>
+<script src="assets/search-index.js?v=20261007-8" defer></script>
+<script src="assets/app.js?v=20261007-7" defer></script>
+<script src="assets/highlight.js?v=20261007-6" defer></script>
 </body>
 </html>

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Start here — KytyPS5</title>
 <meta name="description" content="Learn enough C++ and machine behavior to follow KytyPS5, then prove a small change with evidence.">
-<link rel="stylesheet" href="assets/app.css?v=20261007-5">
+<link rel="stylesheet" href="assets/app.css?v=20261007-7">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
@@ -15,20 +15,23 @@
 <p class="topic-deck">Learn enough C++ and machine behavior to follow KytyPS5, then prove a small change with evidence.</p>
 <section class="band band-read"><div class="band-h"><span class="band-t">Learn, run, explain</span></div><div class="prose">
 
+<h2 id="orientation">The project you are learning</h2>
+<p>KytyPS5 recreates parts of a console environment inside a PC process. It loads the guest program, adapts calls into console services, and translates GPU work for the host. On its native x86-64 path, guest CPU instructions run on the host CPU. The course builds these ideas from small C++ programs before tracing the real source.</p>
 <h2 id="choose">Choose your entry point</h2>
 <p><strong>New to C++ or emulation:</strong> begin with <a href="b-first-program.html">B1: your first C++ program</a> and follow the core route. You need a computer, an editor and a C++ toolchain. The first five lessons use only the standard library; no emulator checkout, Vulkan device or game is required.</p>
 <p><strong>Already comfortable with C++:</strong> try the readiness questions below. Start at <a href="t-what-an-emulator-is.html">emulation foundations</a> if you can answer them, or use the linked beginner lesson to fill a gap.</p>
 <p><strong>Ready to contribute:</strong> use the <a href="developer-curriculum.html">developer gates</a> and the existing <a href="path.html">project practice checklist</a>. The book, architecture tour and interactive tools are alternate views and references, not additional prerequisite courses.</p>
 <h2 id="route">The core route</h2>
-<div class="tw"><table><thead><tr><th>Stage</th><th>Read and do</th><th>Evidence to keep</th></tr></thead><tbody>
-<tr><td>1 · C++ essentials</td><td><a href="b-first-program.html">B1: compile and debug</a>, <a href="b-bytes.html">B2: bytes</a>, <a href="b-memory.html">B3: ownership</a></td><td>A working program, a corrected compiler error, a checked byte read and a lifetime sketch.</td></tr>
-<tr><td>2 · Machine essentials</td><td><a href="b-machine.html">B4: instructions and addresses</a>, <a href="b-completion.html">B5: completion</a></td><td>A four-instruction trace and a resource-retirement timeline.</td></tr>
-<tr><td>3 · Emulation foundations</td><td><a href="t-what-an-emulator-is.html">What an emulator is</a> through loading, memory, threads and HLE.</td><td>Explain native execution, the ABI boundary, guest mappings and a replaced library call.</td></tr>
-<tr><td>4 · Graphics</td><td><a href="t-gpu-basics.html">GPU basics</a> through Vulkan and coherency. Use each page's first-pass reading guide before its implementation detail.</td><td>A packet → state → shader → resource → submission → completion ledger.</td></tr>
-<tr><td>5 · Source walkthrough</td><td><a href="t-cpp-codebase.html">Codebase map</a>, <a href="t-cpp-build.html">build</a>, <a href="t-trace-boot.html">boot trace</a> and <a href="t-trace-draw.html">draw trace</a>.</td><td>Named functions and a checked address worksheet; separate static reading from an observed run.</td></tr>
-<tr><td>6 · First contribution</td><td><a href="t-debugging-labs.html">Debugging labs</a>, then <a href="t-first-change.html">a bounded change</a>.</td><td>A reproducible failure, explained correction and ordinary, boundary and error checks.</td></tr>
-</tbody></table></div>
-<p>The Previous/Next links follow this core route. Reference pages link back here instead of silently adding themselves to the course. Allow time to stop, predict, run and explain; reading time is not a completion deadline.</p>
+<ol class="route-stages" role="list">
+<li><h3 id="stage-1">1 · C++ essentials</h3><p><strong>Read and do:</strong> <a href="b-first-program.html">B1: compile and debug</a>, <a href="b-bytes.html">B2: bytes</a>, <a href="b-memory.html">B3: ownership</a></p><p><strong>Keep:</strong> A working program, a corrected compiler error, a checked byte read and a lifetime sketch.</p></li>
+<li><h3 id="stage-2">2 · Machine essentials</h3><p><strong>Read and do:</strong> <a href="b-machine.html">B4: instructions and addresses</a>, <a href="b-completion.html">B5: completion</a></p><p><strong>Keep:</strong> A four-instruction trace and a resource-retirement timeline.</p></li>
+<li><h3 id="stage-3">3 · Emulation foundations</h3><p><strong>Read and do:</strong> <a href="t-what-an-emulator-is.html">Emulation</a>, native execution, calling conventions and virtual memory.</p><p><strong>Keep:</strong> Explain the guest/host boundary, how a call crosses it, and what a protected page does.</p></li>
+<li><h3 id="stage-4">4 · Project orientation</h3><p><strong>Read and do:</strong> <a href="t-cpp-codebase.html">Codebase map</a>, <a href="t-cpp-language.html">project C++ by example</a>, then <a href="t-cpp-build.html">build/setup</a>.</p><p><strong>Keep:</strong> Find each subsystem and distinguish the learning-lab build from the emulator build. Record which build you actually verified.</p></li>
+<li><h3 id="stage-5">5 · Loading and execution</h3><p><strong>Read and do:</strong> Guest address space and <a href="t-pointers-memory.html">project pointers</a>; ELF, mapping, linking, <a href="t-cpp-asm.html">assembly</a> and patching; threads, HLE and <a href="t-cpp-system.html">console services</a>; then the <a href="t-trace-boot.html">boot trace</a>.</p><p><strong>Keep:</strong> Named functions, an address worksheet, and a trace from file bytes to guest entry.</p></li>
+<li><h3 id="stage-6">6 · Graphics and performance</h3><p><strong>Read and do:</strong> <a href="t-gpu-basics.html">GPU basics</a>, packets, registers, shaders, Vulkan and the <a href="t-program-cache.html">program cache</a>; coherency and <a href="t-cpp-concurrency.html">concurrency</a>; then the <a href="t-trace-draw.html">draw trace</a> and <a href="t-cpp-performance.html">performance</a>.</p><p><strong>Keep:</strong> A packet → state → shader → resource → submission → completion ledger. Use each lesson's first-pass guide before its implementation reference.</p></li>
+<li><h3 id="stage-7">7 · First contribution</h3><p><strong>Read and do:</strong> <a href="developer-curriculum.html">Evidence gates</a>, <a href="t-debugging.html">diagnostics</a>, <a href="t-reading-a-run.html">log reading</a>, a <a href="t-cpp-diagnosis.html">worked diagnosis</a>, <a href="t-debugging-labs.html">debugging labs</a>, then <a href="t-first-change.html">a bounded change</a>.</p><p><strong>Keep:</strong> A reproducible failure, explained correction and ordinary, boundary and error checks.</p></li>
+</ol>
+<p>The sidebar step numbers, home progress grid and Previous/Next links follow this core route. C++ and subsystem lessons appear alongside the concepts they support. B/C/D codes identify lessons; the step numbers give the reading order. Advanced research, visual tools and the glossary remain outside the core route. Allow time to stop, predict, run and explain; reading time is not a completion deadline.</p>
 <h2 id="readiness">Readiness questions</h2>
 <details><summary>Can you explain the compiler, linker and debugger?</summary><p>The compiler translates a source file; the linker connects compiled definitions and libraries into an executable; the debugger lets you pause an executable and inspect its state. Complete <a href="b-first-program.html#practice">B1's broken-build exercise</a> if these are new.</p></details>
 <details><summary>What are the last four readable bytes in a five-byte buffer?</summary><p>Offsets 1 through 4. A four-byte read may start at 0 or 1. Check the offset before subtracting it from the size; checking offset + 4 alone can wrap. See <a href="b-bytes.html">B2</a>.</p></details>
@@ -42,13 +45,13 @@
 <p>The code-reading pages identify their source next to excerpts. Ellipses and schematic comments indicate omitted detail. Do not paste such a fragment into a compiler and expect a complete program.</p>
 <h2 id="scope">What completing this route means</h2>
 <p>You should be able to follow a selected boot and draw path, explain the main ownership and execution boundaries, and verify a small regression fix. It does not mean every shader opcode, platform ABI, audio pipeline or console behavior is covered. Use the <a href="developer-curriculum.html#coverage">coverage map</a> to choose a deeper track: loader/HLE, memory/threads, graphics/shaders, or system services. <a href="t-ray-tracing.html">Ray tracing</a> is an advanced branch after the graphics prerequisites.</p>
-<p>Source snapshot: <!-- project:revision -->d2413fc2ebd91d1b7234197c2dd5bd48e1cb6a51 (7 October 2026)<!-- /project -->. Named source functions are reading anchors, not guarantees about a different checkout.</p>
+<p class="source-snapshot">Source snapshot: <!-- project:revision -->d2413fc2ebd91d1b7234197c2dd5bd48e1cb6a51 (7 October 2026)<!-- /project -->. Named source functions are reading anchors, not guarantees about a different checkout.</p>
 <div class="check"><p class="check-h">Before moving on</p><ul class="check-list"><li class="check-item"><input type="checkbox"><label>I chose an entry point using the readiness questions.</label></li><li class="check-item"><input type="checkbox"><label>I can distinguish a runnable teaching fixture from a project excerpt and a conceptual model.</label></li></ul></div><p>Ticks record your own assessment. Keep your prediction, actual output and explanation; a tick alone is not evidence of understanding.</p>
 </div></section>
 </main>
-<script src="assets/topics.js?v=20261007-5" defer></script>
-<script src="assets/search-index.js?v=20261007-5" defer></script>
-<script src="assets/app.js?v=20261007-5" defer></script>
-<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/topics.js?v=20261007-8" defer></script>
+<script src="assets/search-index.js?v=20261007-8" defer></script>
+<script src="assets/app.js?v=20261007-7" defer></script>
+<script src="assets/highlight.js?v=20261007-6" defer></script>
 </body>
 </html>

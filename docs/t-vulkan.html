@@ -8,14 +8,14 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-5">
+<link rel="stylesheet" href="assets/app.css?v=20261007-7">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
 <main class="topic" data-app-content>
 
-  <p class="topic-eyebrow">Graphics · 17</p>
+  <p class="topic-eyebrow">Step 28 · Graphics and performance</p>
   <h1 id="the-vulkan-backend">The Vulkan backend</h1>
   <p class="topic-deck">
     The last leg: turning accumulated state into real Vulkan objects, getting texture memory into a layout the GPU can sample, and presenting the result. This is also where most performance answers live.
@@ -57,7 +57,7 @@ struct GraphicContext {
     ...
 };</pre>
 
-  <p>One queue, guarded by a mutex. The 57 guest queues of <a href="t-pm4.html">topic 14</a> are multiplexed onto it — ordering is preserved through timeline semaphores rather than through hardware queues.</p>
+  <p>One queue, guarded by a mutex. The 57 guest queues of <a href="t-pm4.html">PM4 &amp; the command processor</a> are multiplexed onto it — ordering is preserved through timeline semaphores rather than through hardware queues.</p>
 
   <p>Format capability queries are memoised, because they are asked constantly and are not cheap:</p>
 <pre>vk::FormatProperties GetFormatProperties(vk::Format format) const {
@@ -465,15 +465,15 @@ public:
 
 </main>
 
-<script src="assets/topics.js?v=20261007-5" defer></script>
-<script src="assets/search-index.js?v=20261007-5" defer></script>
-<script src="assets/app.js?v=20261007-5" defer></script>
+<script src="assets/topics.js?v=20261007-8" defer></script>
+<script src="assets/search-index.js?v=20261007-8" defer></script>
+<script src="assets/app.js?v=20261007-7" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>
 <script src="assets/figs.js?v=20261007" defer></script>
 <script src="assets/figures.js?v=20261007" defer></script>
-<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007-6" defer></script>
 </body>
 </html>
 

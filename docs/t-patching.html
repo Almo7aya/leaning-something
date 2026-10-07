@@ -8,20 +8,20 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-5">
+<link rel="stylesheet" href="assets/app.css?v=20261007-7">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
 <main class="topic" data-app-content>
 
-  <p class="topic-eyebrow">Loading a game · 08</p>
+  <p class="topic-eyebrow">Step 19 · Loading and execution</p>
   <h1 id="patching-guest-instructions">Patching guest instructions</h1>
   <p class="topic-deck">
     Guest code assumes a working <code>fs</code> segment and a FreeBSD-shaped world. On Windows those assumptions are false, and since the code runs natively there is no interpreter to fix them up on the fly. So the loader edits the instructions themselves.
   </p>
 <!-- prerequisites:patching -->
-<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="t-no-cpu-emulator.html">Why there's no CPU emulator</a> · <a href="t-calling-conventions.html">Calling conventions &amp; the ABI wall</a>. <a href="start.html">View the learning route</a>.</p>
+<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="t-no-cpu-emulator.html">Why there's no CPU emulator</a> · <a href="t-calling-conventions.html">Calling conventions &amp; the ABI wall</a> · <a href="t-cpp-asm.html">Assembly, the ABI &amp; machine code</a>. <a href="start.html">View the learning route</a>.</p>
 <!-- /prerequisites -->
 
   <section class="band band-read">
@@ -97,7 +97,7 @@ for (auto* ptr = start_ptr; ptr &lt;= end_ptr; ptr++) {
     return g_tls_cached_main_tcb;
 }</pre>
 
-  <p>Note <code>KYTY_MS_ABI</code>: this is called from generated code that has already switched conventions. The <code>SafeCall</code> stub of <a href="t-calling-conventions.html">topic 03</a> sits between them, saving flags and volatile registers, aligning the stack and reserving shadow space.</p>
+  <p>Note <code>KYTY_MS_ABI</code>: this is called from generated code that has already switched conventions. The <code>SafeCall</code> stub of <a href="t-calling-conventions.html">Calling conventions &amp; the ABI wall</a> sits between them, saving flags and volatile registers, aligning the stack and reserving shadow space.</p>
 
   <div class="callout h">
     <span class="lbl">Why this is expensive but acceptable</span>
@@ -187,15 +187,15 @@ for (auto* ptr = start_ptr; ptr &lt;= end_ptr; ptr++) {
 
 </main>
 
-<script src="assets/topics.js?v=20261007-5" defer></script>
-<script src="assets/search-index.js?v=20261007-5" defer></script>
-<script src="assets/app.js?v=20261007-5" defer></script>
+<script src="assets/topics.js?v=20261007-8" defer></script>
+<script src="assets/search-index.js?v=20261007-8" defer></script>
+<script src="assets/app.js?v=20261007-7" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>
 <script src="assets/figs.js?v=20261007" defer></script>
 <script src="assets/figures.js?v=20261007" defer></script>
-<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007-6" defer></script>
 </body>
 </html>
 

@@ -8,14 +8,14 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-5">
+<link rel="stylesheet" href="assets/app.css?v=20261007-7">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
 <main class="topic" data-app-content>
 
-  <p class="topic-eyebrow">Foundations · 04</p>
+  <p class="topic-eyebrow">Step 09 · Emulation foundations</p>
   <h1 id="virtual-memory-briefly">Virtual memory, briefly</h1>
   <p class="topic-deck">
     Because guest code runs natively, the emulator cannot instrument a memory access. What it can do is take away permission to a page and let the CPU tell it when something touched it. Page protection is not background knowledge here — it is the primary tool.
@@ -48,7 +48,7 @@
     <div class="layer k"><span class="nm">3 · Commit reserved ranges lazily</span><span class="chip kyty">kyty</span><span class="ds">Eligible faults in the guest backing ranges can commit missing backing. A reserved address alone does not make an access valid; guest mappings, permissions and ownership still matter.</span></div>
   </div>
 
-  <p>All three funnel into one function — the exception handler installed by the loader — which is why <a href="t-coherency.html">topic 10</a> exists.</p>
+  <p>All three funnel into one function — the exception handler installed by the loader — which is why <a href="t-coherency.html">Page faults &amp; CPU/GPU coherency</a> exists.</p>
 
   <h4 id="the-page-size-mismatch">The page-size mismatch</h4>
   <p>The PS5 uses 16 KB pages; PCs use 4 KB. Kyty's guest allocator works in <code>0x4000</code>-byte units:</p>
@@ -132,15 +132,15 @@ program-&gt;base_size_aligned = AlignUp(program-&gt;base_size, GUEST_PAGE_SIZE);
 
 </main>
 
-<script src="assets/topics.js?v=20261007-5" defer></script>
-<script src="assets/search-index.js?v=20261007-5" defer></script>
-<script src="assets/app.js?v=20261007-5" defer></script>
+<script src="assets/topics.js?v=20261007-8" defer></script>
+<script src="assets/search-index.js?v=20261007-8" defer></script>
+<script src="assets/app.js?v=20261007-7" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>
 <script src="assets/figs.js?v=20261007" defer></script>
 <script src="assets/figures.js?v=20261007" defer></script>
-<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007-6" defer></script>
 </body>
 </html>
 

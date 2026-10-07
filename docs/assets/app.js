@@ -24,6 +24,8 @@
   var TOPICS = window.KYTY_TOPICS || [];
   var LIST = TOPICS.filter(function (t) { return !t.part; });
 
+  function topicNumber(topic) { return topic.step || topic.n; }
+
   function coreTopics() {
     var route = (window.KYTY_ROUTES || {}).core || [];
     return route.map(function (id) {
@@ -292,7 +294,9 @@
     var pendingPart = null;
     TOPICS.forEach(function (t) {
       if (t.part) { pendingPart = t.part; return; }
-      if (q && t.title.toLowerCase().indexOf(q) < 0 && (t.n || "").indexOf(q) < 0) return;
+      var referenceCode = /^[BCD]\d+$/.test(t.n) ? t.n.toLowerCase() : "";
+      if (q && t.title.toLowerCase().indexOf(q) < 0 && referenceCode.indexOf(q) < 0 &&
+          (topicNumber(t) || "").toLowerCase().indexOf(q) < 0) return;
       if (pendingPart) {
         root.appendChild(el("div", "side-part", pendingPart));
         pendingPart = null;
@@ -305,7 +309,7 @@
         a.title = "Not written yet";
       }
       if (t.file === here) a.setAttribute("aria-current", "page");
-      a.appendChild(el("span", "side-n", t.n));
+      a.appendChild(el("span", "side-n", topicNumber(t)));
       a.appendChild(el("span", null, t.title));
       if (d[t.id]) a.appendChild(el("span", "side-done", "✓"));
       root.appendChild(a);
@@ -421,7 +425,7 @@
       var left = el("div", "resume-l");
       left.appendChild(el("p", "resume-k",
         allDone ? "Core route checkpoints completed" : anyDone ? "Continue the core route" : "Start here"));
-      left.appendChild(el("p", "resume-t", next.n + " · " + next.title));
+      left.appendChild(el("p", "resume-t", topicNumber(next) + " · " + next.title));
       if (next.blurb) left.appendChild(el("p", "resume-d", next.blurb));
       card.appendChild(left);
 
@@ -437,8 +441,8 @@
         var cls = "pcell " + (d[t.id] ? "done" : t.ready ? "ready" : "soon");
         if (t.file === here) cls += " here";
         var node;
-        if (t.ready) { node = el("a", cls, t.n); node.href = t.file; }
-        else { node = el("span", cls, t.n); }
+        if (t.ready) { node = el("a", cls, topicNumber(t)); node.href = t.file; }
+        else { node = el("span", cls, topicNumber(t)); }
         node.title = t.title + (t.ready ? "" : " — not written yet");
         grid.appendChild(node);
       });

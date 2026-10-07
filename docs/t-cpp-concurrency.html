@@ -8,26 +8,26 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-5">
+<link rel="stylesheet" href="assets/app.css?v=20261007-7">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
 <main class="topic" data-app-content>
 
-  <p class="topic-eyebrow">Appendix · C4</p>
+  <p class="topic-eyebrow">Step 31 · Graphics and performance · C4</p>
   <h1 id="concurrency-the-memory-model">Concurrency &amp; the memory model</h1>
   <p class="topic-deck">
     The emulator has several thread roles sharing one address space. This page is the map: who runs what, how work gets from one thread to another, and the C++ primitives — atomics, locks, condition variables, timeline semaphores — that hold it together.
   </p>
 <!-- prerequisites:cpp-concurrency -->
-<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="b-completion.html">Submitted is not completed</a> · <a href="t-threads.html">Threads and TLS</a>. <a href="start.html">View the learning route</a>.</p>
+<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="b-completion.html">Submitted is not completed</a> · <a href="t-threads.html">Threads and TLS</a> · <a href="t-coherency.html">Page faults &amp; CPU/GPU coherency</a>. <a href="start.html">View the learning route</a>.</p>
 <!-- /prerequisites -->
 
   <section class="band band-read">
     <div class="band-h"><span class="band-t">Read</span></div>
     <div class="prose">
-<p class="deck">For a web engineer the closest analogy is a service worker plus a render thread plus a worker pool sharing a page — except here there is no runtime to arbitrate, and a mistake corrupts the whole process.</p>
+<p class="deck">The threads lesson identified execution roles, and coherency explained CPU/GPU visibility. Connect those ideas here: follow work handed between CPU threads, distinguish a lock from device completion, and identify which synchronization condition protects each resource. Bring that reasoning to the draw trace next.</p>
 
 <p><code>CommandScheduler</code> has a priority completion worker for guest-memory callbacks. <code>DeferPriorityOperation()</code> queues such callbacks after the submission tick; ordinary deferred callbacks manage GPU resources. Shutdown and dependent callbacks wait for the relevant priority work. Trace this separately from recording Vulkan commands on the GPU worker.</p>
   <h4 id="the-four-threads">The main thread roles</h4>
@@ -122,10 +122,10 @@ std::mutex m_mutex;   <i>// every allocation path takes this</i></pre>
     </table>
   </div>
 
-  <p>And the quiet winner: <code>thread_local</code>. The <code>PRINT_NAME</code> flag from <a href="t-hle.html">topic 12</a> is per-thread, so one thread can enable tracing without a single atomic. Anything that is only ever touched by the thread that owns it needs no synchronisation ; shared guest memory still requires synchronization.</p>
+  <p>And the quiet winner: <code>thread_local</code>. The <code>PRINT_NAME</code> flag from <a href="t-hle.html">HLE libraries</a> is per-thread, so one thread can enable tracing without a single atomic. Anything that is only ever touched by the thread that owns it needs no synchronisation ; shared guest memory still requires synchronization.</p>
 
   <h4 id="the-coherency-channel">The coherency channel — the cross-thread handshake</h4>
-  <p>CPU and GPU share one memory in the guest's model. On the host, the GPU thread must <em>see</em> what the guest thread wrote. The emulator's trick (covered properly in <a href="t-coherency.html">topic 10</a>) is that the GPU never polls — it <em>faults</em>. When the guest writes a page the GPU has been told about, a host page-fault fires on the <strong>faulting thread</strong>, and the exception handler routes it to the memory layer:</p>
+  <p>CPU and GPU share one memory in the guest's model. On the host, the GPU thread must <em>see</em> what the guest thread wrote. The emulator's trick (covered properly in <a href="t-coherency.html">Page faults &amp; CPU/GPU coherency</a>) is that the GPU never polls — it <em>faults</em>. When the guest writes a page the GPU has been told about, a host page-fault fires on the <strong>faulting thread</strong>, and the exception handler routes it to the memory layer:</p>
 
   <div class="filename">src/loader/runtimeLinker.cpp — the exception handler, routing to memory</div>
 <pre>if (Libs::LibKernel::Memory::HandleGpuFault(access, info-&gt;access_violation_vaddr)) {
@@ -152,7 +152,7 @@ n_info.pSignalSemaphoreValues    = submit.signal_ticks.data();</pre>
     <table>
       <thead><tr><th>File</th><th>Primitive</th><th>What it is</th></tr></thead>
       <tbody>
-        <tr><td><code>eventQueue.cpp</code></td><td>kqueue</td><td>the unified event mechanism — a queue with attached sources (timer, socket, GPU) and <code>kevent</code>-style waits. Covered in <a href="t-hle.html">topic 12</a>.</td></tr>
+        <tr><td><code>eventQueue.cpp</code></td><td>kqueue</td><td>the unified event mechanism — a queue with attached sources (timer, socket, GPU) and <code>kevent</code>-style waits. Covered in <a href="t-hle.html">HLE libraries</a>.</td></tr>
         <tr><td><code>semaphore.cpp</code></td><td>counting semaphore</td><td>a counter you can wait on or post to; the classic producer/consumer throttle.</td></tr>
         <tr><td><code>eventFlag.cpp</code></td><td>event flags</td><td>a bitmask threads wait on for any-or-all bits. Console middleware loves these.</td></tr>
         <tr><td><code>syncOnAddress.cpp</code></td><td>address sync</td><td>wait/notify on a specific memory address — how the guest does lightweight inter-thread signalling.</td></tr>
@@ -172,7 +172,7 @@ n_info.pSignalSemaphoreValues    = submit.signal_ticks.data();</pre>
     <ul>
       <li><span class="kind spec">Reference</span><div><a href="https://en.cppreference.com/w/cpp/atomic/memory_order">cppreference — memory_order</a><span class="d">The definitive explainer of relaxed / acquire / release / seq_cst and what each one actually promises. Read this before ever writing a non-default order.</span></div></li>
       <li><span class="kind">Article</span><div><a href="https://www.modernescpp.com/index.php/category/multithreading/">Modernes C++ — multithreading</a><span class="d">A readable tour of threads, mutexes, condition variables and atomics, in the exact shape this tree uses them.</span></div></li>
-      <li><span class="kind spec">Spec</span><div><a href="https://man.freebsd.org/cgi/man.cgi?query=kqueue">FreeBSD — kqueue(2)</a><span class="d">The event mechanism the PS5 exposes and <code>eventQueue.cpp</code> reimplements — filters, flags, and the <code>KernelEvent</code> struct from topic 12.</span></div></li>
+      <li><span class="kind spec">Spec</span><div><a href="https://man.freebsd.org/cgi/man.cgi?query=kqueue">FreeBSD — kqueue(2)</a><span class="d">The event mechanism the PS5 exposes and <code>eventQueue.cpp</code> reimplements — filters, flags, and the <code>KernelEvent</code> struct from <a href="t-hle.html">HLE libraries</a>.</span></div></li>
       <li><span class="kind code">Reference</span><div><a href="https://en.cppreference.com/w/cpp/thread/jthread">cppreference — std::jthread</a><span class="d">C++20's auto-joining thread, used for the GPU worker. The <code>stop_token</code> is how cooperative shutdown is meant to work.</span></div></li>
     </ul>
   </div>
@@ -236,14 +236,14 @@ n_info.pSignalSemaphoreValues    = submit.signal_ticks.data();</pre>
 
 </main>
 
-<script src="assets/topics.js?v=20261007-5" defer></script>
-<script src="assets/search-index.js?v=20261007-5" defer></script>
-<script src="assets/app.js?v=20261007-5" defer></script>
+<script src="assets/topics.js?v=20261007-8" defer></script>
+<script src="assets/search-index.js?v=20261007-8" defer></script>
+<script src="assets/app.js?v=20261007-7" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>
 <script src="assets/figs.js?v=20261007" defer></script>
 <script src="assets/figures.js?v=20261007" defer></script>
-<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007-6" defer></script>
 </body>
 </html>

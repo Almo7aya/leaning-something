@@ -8,26 +8,27 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-5">
+<link rel="stylesheet" href="assets/app.css?v=20261007-7">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
 <main class="topic" data-app-content>
 
-  <p class="topic-eyebrow">Appendix · C3</p>
+  <p class="topic-eyebrow">Step 12 · Project orientation · C3</p>
   <h1 id="building-linking-debugging">Building, linking &amp; debugging</h1>
   <p class="topic-deck">
     Reading the code is one thing; making it build and telling a crash log apart from a feature is the other. This page is the bridge: how source becomes a binary in this project, what the linker is really doing, and how the emulator tells you what broke.
   </p>
 <!-- prerequisites:cpp-build -->
-<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="b-first-program.html">Your first C++ program</a>. <a href="start.html">View the learning route</a>.</p>
+<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="b-first-program.html">Your first C++ program</a> · <a href="t-cpp-codebase.html">The codebase map &amp; the toolbox</a> · <a href="t-cpp-language.html">C++ language, by example</a>. <a href="start.html">View the learning route</a>.</p>
 <!-- /prerequisites -->
 
   <section class="band band-read">
     <div class="band-h"><span class="band-t">Read</span></div>
     <div class="prose">
-<p class="deck">For a web engineer the mental model is: TypeScript + bundler + linter + test runner, transplanted to a compiled language. The pieces line up almost one-to-one, and the differences are the interesting parts.</p>
+<p>Start with the toolchain, configure/build commands and tests. You already compiled the standalone lessons; this page explains the additional dependencies and settings for the emulator. Keep the learning repository and emulator checkout separate. You can follow the next source traces without a game; record whether you have actually built or run the emulator.</p>
+<p>The linker, failure macros and crash-log sections are reference material to revisit during diagnostics. Web-development comparisons at the end are optional.</p>
 
   <h4 id="the-toolchain-at-a-glance">The toolchain at a glance</h4>
   <p>The documented build uses Clang, Ninja and LLVM’s linker. CMake also accepts GCC on POSIX; use the upstream toolchain when reproducing a build:</p>
@@ -176,7 +177,7 @@ Unhandled host exception: type=1 code=3221225477 pc=0x00000009000a3b4c access=2 
   <p>This is the same output the bug-report template asks you to attach. When a game misbehaves, the log — not the screen — is the evidence.</p>
 
   <h4 id="diagnostics-flags">Diagnostics flags</h4>
-  <p>All of these come from <code>--help</code> in <code>src/main.cpp</code>. The three that matter for reading the project are covered in <a href="t-debugging.html">topic 18</a>; here is the full useful set:</p>
+  <p>All of these come from <code>--help</code> in <code>src/main.cpp</code>. The three that matter for reading the project are covered in <a href="t-debugging.html">Debugging &amp; diagnostics</a>; here is the full useful set:</p>
 
   <div class="tw">
     <table>
@@ -310,14 +311,14 @@ ctest --test-dir _Build/windows --output-on-failure</pre>
 
 </main>
 
-<script src="assets/topics.js?v=20261007-5" defer></script>
-<script src="assets/search-index.js?v=20261007-5" defer></script>
-<script src="assets/app.js?v=20261007-5" defer></script>
+<script src="assets/topics.js?v=20261007-8" defer></script>
+<script src="assets/search-index.js?v=20261007-8" defer></script>
+<script src="assets/app.js?v=20261007-7" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>
 <script src="assets/figs.js?v=20261007" defer></script>
 <script src="assets/figures.js?v=20261007" defer></script>
-<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007-6" defer></script>
 </body>
 </html>

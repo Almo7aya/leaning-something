@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Your first C++ program — KytyPS5</title>
 <meta name="description" content="Turn a source file into a program, follow its values, and diagnose a small build error.">
-<link rel="stylesheet" href="assets/app.css?v=20261007-5">
+<link rel="stylesheet" href="assets/app.css?v=20261007-7">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 <main class="topic" data-app-content>
-<p class="topic-eyebrow">Beginner · B1</p>
+<p class="topic-eyebrow">Step 01 · C++ essentials · B1</p>
 <h1 id="overview">Your first C++ program</h1>
 <p class="topic-deck">Turn a source file into a program, follow its values, and diagnose a small build error.</p>
 <!-- prerequisites:beginner-cpp -->
@@ -31,13 +31,16 @@ ctest --test-dir _Build/curriculum/beginner --output-on-failure</pre>
 <h2 id="read">Read the language in a small program</h2>
 <p>A <strong>variable</strong> names a value stored in an object. <code>int total = 0;</code> creates an integer initialized to zero. <code>const</code> prevents assigning a new value through that name. A <strong>function</strong> groups operations: <code>pixel_count</code> takes a <code>Frame</code> argument and returns an integer. Braces delimit its body, semicolons finish statements, and <code>return</code> gives its result to the caller.</p>
 <p>A <code>struct</code> groups named members: a frame has width and height. The dot accesses a member. <code>std::array&lt;Frame, 2&gt;</code> stores two frames; the angle brackets supply the element type and count to a library template. You can use this container before learning to write templates. <code>std::</code> identifies names from the standard library; <code>#include</code> makes their declarations available.</p>
-<p>The range <code>for</code> loop visits each frame. Here it makes a small copy called <code>frame</code>. <code>std::cout</code> writes output; <code>&lt;&lt;</code> sends the next value to that stream, and <code>'
-'</code> ends the line. Execution enters our <code>main</code> function. Returning zero reports success to the shell; our explicit nonzero return reports a failed check.</p>
+<p>The range <code>for</code> loop visits each frame. Here it makes a small copy called <code>frame</code>. <code>std::cout</code> writes output; <code>&lt;&lt;</code> sends the next value to that stream, and <code>'\n'</code> ends the line. Execution enters our <code>main</code> function. Returning zero reports success to the shell; our explicit nonzero return reports a failed check.</p>
+<h2 id="decisions">Read a decision before running it</h2>
+<p><code>=</code> assigns a value. <code>==</code> compares two values for equality, and <code>!=</code> asks whether they differ. In <code>if (total != 16)</code>, the parenthesized condition decides whether the following block runs. If the total is wrong, <code>return 1;</code> leaves <code>main</code> immediately. Otherwise execution continues to <code>return 0;</code>.</p>
+<p><strong>Predict:</strong> what exit status would this check produce for totals 16 and 18? Does testing <code>total != 16</code> change <code>total</code>?</p>
+<details><summary>Check your prediction</summary><p>16 reaches the final return and exits with 0; 18 takes the failed-check branch and exits with 1. The comparison changes no value.</p></details>
 <h2 id="program">Predict, then run</h2>
-<p>Before running, calculate each product and the final total on paper.</p>
-<p class="filename">Complete runnable teaching program · <a href="labs/beginner/first_program.cpp">first_program.cpp</a></p>
+<p>This is a standalone C++ example; it compiles without KytyPS5. Before running, calculate each product and the final total on paper.</p>
+<div class="filename"><a href="labs/beginner/first_program.cpp">first_program.cpp</a></div>
 <!-- code:labs/beginner/first_program.cpp -->
-<pre><code>#include &lt;array&gt;
+<pre data-lang="cpp"><code>#include &lt;array&gt;
 #include &lt;iostream&gt;
 
 struct Frame {
@@ -67,7 +70,7 @@ int main() {
 <pre>cmake --build _Build/curriculum/beginner --target first_program
 ctest --test-dir _Build/curriculum/beginner -R '^beginner_first_program$' --output-on-failure</pre>
 <p>To see the output directly in PowerShell, run <code>.\_Build\curriculum\beginner\first_program.exe</code>; in a POSIX shell, run <code>./_Build/curriculum/beginner/first_program</code>. Tests compare the full output and require a successful exit.</p><p>Expected output, with exit status <code>0</code>:</p><!-- output:labs/beginner/first_program.txt -->
-<pre>pixels=12
+<pre data-lang="text">pixels=12
 pixels=4
 total=16</pre>
 <!-- /output -->
@@ -81,9 +84,9 @@ total=16</pre>
 <div class="check"><p class="check-h">Before moving on</p><ul class="check-list"><li class="check-item"><input type="checkbox"><label>I can explain the three output lines and the purpose of main, Frame and pixel_count.</label></li><li class="check-item"><input type="checkbox"><label>I rebuilt after an edit, observed a failed check, and made the intended behavior pass.</label></li><li class="check-item"><input type="checkbox"><label>I can distinguish a compiler error from a linker error and record whether I used a debugger.</label></li></ul></div><p>Ticks record your own assessment. Keep your prediction, actual output and explanation; a tick alone is not evidence of understanding.</p>
 </div></section>
 </main>
-<script src="assets/topics.js?v=20261007-5" defer></script>
-<script src="assets/search-index.js?v=20261007-5" defer></script>
-<script src="assets/app.js?v=20261007-5" defer></script>
-<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/topics.js?v=20261007-8" defer></script>
+<script src="assets/search-index.js?v=20261007-8" defer></script>
+<script src="assets/app.js?v=20261007-7" defer></script>
+<script src="assets/highlight.js?v=20261007-6" defer></script>
 </body>
 </html>

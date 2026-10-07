@@ -8,14 +8,14 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-5">
+<link rel="stylesheet" href="assets/app.css?v=20261007-7">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
 <main class="topic" data-app-content>
 
-  <p class="topic-eyebrow">Graphics · 16</p>
+  <p class="topic-eyebrow">Step 27 · Graphics and performance</p>
   <h1 id="shaders-rdna-2-spir-v">Shaders: RDNA 2 → SPIR-V</h1>
   <p class="topic-deck">
     Games ship compiled RDNA 2 shader binaries. Vulkan wants SPIR-V. Translating the arithmetic is mechanical; recovering <em>structured</em> control flow from an unstructured branch soup is the actual problem, and the reason this is the largest single piece of the emulator.
@@ -80,7 +80,7 @@ IR::AllocateBindings(ir, push_data_start_dword,
 <i>// EmitProgram constructs the emitter, which analyses requirements.</i>
 auto spirv = Spirv::EmitProgram(ir, options.input_info);</pre>
 
-  <p>Materialisation happens in the renderer's pipeline cache between the two functions above — see <a href="t-registers.html#why-compilation-and-binding-are-separate">topic 15</a>.</p>
+  <p>Materialisation happens in the renderer's pipeline cache between the two functions above — see <a href="t-registers.html#why-compilation-and-binding-are-separate">Registers, sharps &amp; resources</a>.</p>
 
   <div class="fig">
     <div class="fig-head"><span>The current phases</span><span>click a stage</span></div>
@@ -296,14 +296,14 @@ struct Program : ResourcePlan {
 <aside class="callout k"><span class="lbl">Advanced appendix</span><p><a href="t-ray-tracing.html">C11: Implementing ray tracing</a> follows the implemented BVH32/BVH64 software path, its tests and limits, then develops a research plan for additional forms and a conditional Vulkan hardware backend.</p></aside>
 </main>
 
-<script src="assets/topics.js?v=20261007-5" defer></script>
-<script src="assets/search-index.js?v=20261007-5" defer></script>
-<script src="assets/app.js?v=20261007-5" defer></script>
+<script src="assets/topics.js?v=20261007-8" defer></script>
+<script src="assets/search-index.js?v=20261007-8" defer></script>
+<script src="assets/app.js?v=20261007-7" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>
 <script src="assets/figs.js?v=20261007" defer></script>
 <script src="assets/figures.js?v=20261007" defer></script>
-<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007-6" defer></script>
 </body>
 </html>

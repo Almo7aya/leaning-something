@@ -8,14 +8,14 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-5">
+<link rel="stylesheet" href="assets/app.css?v=20261007-7">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
 <main class="topic" data-app-content>
 
-  <p class="topic-eyebrow">Graphics · 15</p>
+  <p class="topic-eyebrow">Step 26 · Graphics and performance</p>
   <h1 id="registers-sharps-resources">Registers, sharps & resources</h1>
   <p class="topic-deck">
     Register-write packets do not draw anything — they accumulate into a shadow copy of the hardware register file. When a draw finally arrives, all of that has to become concrete Vulkan state, and the shader's resources have to be found through a chain of packed descriptors.
@@ -159,7 +159,7 @@ inline constexpr ColorComponentMapping ColorMappingBgra {0xc6u};   <i>// 2, 1, 0
 };</pre>
 
   <h4 id="the-three-descriptor-types">The three descriptor types</h4>
-  <p>You decoded these interactively in <a href="t-gpu-basics.html">topic 13</a>. Here are the actual accessors, which double as documentation of the bit layout:</p>
+  <p>You decoded these interactively in <a href="t-gpu-basics.html">How a GPU actually draws</a>. Here are the actual accessors, which double as documentation of the bit layout:</p>
 
   <div class="filename">src/graphics/shader/shaderBindings.h — V#, buffer resource</div>
 <pre>struct ShaderBufferResource {
@@ -338,15 +338,15 @@ auto result = ShaderRecompiler::CompileProgram(std::move(translated), options,
 
 </main>
 
-<script src="assets/topics.js?v=20261007-5" defer></script>
-<script src="assets/search-index.js?v=20261007-5" defer></script>
-<script src="assets/app.js?v=20261007-5" defer></script>
+<script src="assets/topics.js?v=20261007-8" defer></script>
+<script src="assets/search-index.js?v=20261007-8" defer></script>
+<script src="assets/app.js?v=20261007-7" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>
 <script src="assets/figs.js?v=20261007" defer></script>
 <script src="assets/figures.js?v=20261007" defer></script>
-<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007-6" defer></script>
 </body>
 </html>
 

@@ -8,26 +8,26 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-5">
+<link rel="stylesheet" href="assets/app.css?v=20261007-7">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
 <main class="topic" data-app-content>
 
-  <p class="topic-eyebrow">Appendix · C2</p>
+  <p class="topic-eyebrow">Step 18 · Loading and execution · C2</p>
   <h1 id="assembly-the-abi-machine-code">Assembly, the ABI &amp; machine code</h1>
   <p class="topic-deck">
     Guest code runs natively, so the boundaries between host and guest are crossed in raw assembly. This page teaches you to read the small number of hand-written asm blocks in the tree — and the odder part: structs whose bytes <em>are</em> x86 instructions, generated at runtime.
   </p>
 <!-- prerequisites:cpp-asm -->
-<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="b-machine.html">Instructions, addresses and the guest</a> · <a href="t-calling-conventions.html">Calling conventions &amp; the ABI wall</a>. <a href="start.html">View the learning route</a>.</p>
+<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="b-machine.html">Instructions, addresses and the guest</a> · <a href="t-calling-conventions.html">Calling conventions &amp; the ABI wall</a> · <a href="t-pointers-memory.html">Pointers, references &amp; memory</a> · <a href="t-nids.html">NIDs and the runtime linker</a>. <a href="start.html">View the learning route</a>.</p>
 <!-- /prerequisites -->
 
   <section class="band band-read">
     <div class="band-h"><span class="band-t">Read</span></div>
     <div class="prose">
-<p class="deck">C++ cannot express "swap the stack pointer to an address in guest memory and jump". When the emulator needs that kind of control it writes assembly by hand. The examples below cover guest entry, fiber context switching, generated thunks and instruction patches.</p>
+<p class="deck">C++ cannot express "swap the stack pointer to an address in guest memory and jump". When the emulator needs that kind of control it writes assembly by hand. After mapping and NID resolution, read how C++ hands control to machine code. The examples cover guest entry, fiber context switching, generated thunks and instruction patches, preparing you for the instruction-patching lesson next.</p>
 
   <h4 id="where-assembly-appears">Where assembly appears</h4>
   <p>These paths need explicit control of registers or instruction bytes:</p>
@@ -44,7 +44,7 @@
   </div>
 
   <h4 id="x86-64-in-ten-lines">x86-64 in ten lines</h4>
-  <p>Everything below needs only a handful of registers. A fuller register tour is in <a href="t-calling-conventions.html">topic 03</a>; the abbreviated list:</p>
+  <p>Everything below needs only a handful of registers. A fuller register tour is in <a href="t-calling-conventions.html">Calling conventions &amp; the ABI wall</a>; the abbreviated list:</p>
 <pre>rax rbx rcx rdx        <i>general purpose; rax also carries the return value</i>
 rsi rdi                <i>argument registers (and the "S"/"D" asm constraints)</i>
 rbp rsp                <i>frame pointer / stack pointer — the stack moves toward lower addresses</i>
@@ -285,14 +285,14 @@ mov    rsp, rbx                   <i>restore, pop everything back, ret</i></pre>
 
 </main>
 
-<script src="assets/topics.js?v=20261007-5" defer></script>
-<script src="assets/search-index.js?v=20261007-5" defer></script>
-<script src="assets/app.js?v=20261007-5" defer></script>
+<script src="assets/topics.js?v=20261007-8" defer></script>
+<script src="assets/search-index.js?v=20261007-8" defer></script>
+<script src="assets/app.js?v=20261007-7" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>
 <script src="assets/figs.js?v=20261007" defer></script>
 <script src="assets/figures.js?v=20261007" defer></script>
-<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007-6" defer></script>
 </body>
 </html>

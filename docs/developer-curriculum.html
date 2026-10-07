@@ -8,16 +8,16 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-5">
+<link rel="stylesheet" href="assets/app.css?v=20261007-7">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 <main class="topic" data-app-content>
-<p class="topic-eyebrow">Developer curriculum · D1</p>
+<p class="topic-eyebrow">Step 34 · First contribution · D1</p>
 <h1 id="overview">The developer curriculum</h1>
 <p class="topic-deck">A source-grounded route from understanding KytyPS5 to making and verifying a focused contribution.</p>
 <!-- prerequisites:developer-curriculum -->
-<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="t-cpp-build.html">Building, linking &amp; debugging</a> · <a href="t-coherency.html">Page faults &amp; CPU/GPU coherency</a>. <a href="start.html">View the learning route</a>.</p>
+<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="t-cpp-build.html">Building, linking &amp; debugging</a> · <a href="t-trace-boot.html">ELF to first guest instruction</a> · <a href="t-trace-draw.html">One draw to GPU completion</a>. <a href="start.html">View the learning route</a>.</p>
 <!-- /prerequisites -->
 <section class="band band-read">
 <div class="band-h"><span class="band-t">Read, trace, prove</span></div>
@@ -27,7 +27,7 @@
 <p>This is a route from reading the emulator to making a defensible change. It is pinned to <code>d2413fc2</code> (7 October 2026), not a guarantee about future main. The traces follow selected real source paths; the labs deliberately introduce caller mistakes in isolated fixtures. They do not demonstrate that a game works, and they do not claim upstream has these bugs.</p></div>
 
 <h2 id="prerequisites">Before you start</h2>
-<p>Before this contributor track, build a small C++20 executable, read pointers and half-open ranges, distinguish integers from addresses, and explain ownership and synchronization. If any are new, follow <a href="start.html">Start here</a> through B1–B5, then the emulation foundations; read <a href="t-cpp-concurrency.html">C4</a> before threaded changes. The <a href="path.html">project practice checklist</a> is an optional companion for readers who already meet these prerequisites. Use the gates below as evidence of developer readiness.</p>
+<p>Before this contributor track, build a small C++20 executable, read pointers and half-open ranges, distinguish integers from addresses, and explain ownership and synchronization. If any are new, follow <a href="start.html">Start here</a> through the beginner lessons, foundations and both source traces; read <a href="t-cpp-concurrency.html">C4</a> before threaded changes. The <a href="path.html">project practice checklist</a> is an optional companion for readers who already meet these prerequisites. Use the gates below as evidence of developer readiness.</p>
 <p>Keep two roots distinct: this learning repository, and the emulator checkout at <code>KytyPS5/</code>. Run the native labs from the learning root. Run emulator build commands from the emulator root. The committed site can be served directly. Authors regenerate shared excerpts and navigation with the documentation script. Beginner labs need only CMake and a C++20 toolchain; these developer labs also use the emulator source checkout.</p>
 <pre>git -C KytyPS5 rev-parse HEAD
 git -C KytyPS5 status --short
@@ -35,6 +35,7 @@ git status --short</pre>
 <p>Record the full source SHA, compiler, OS and test command. If your checkout differs, compare the named functions before trusting the trace. Do not reset an existing worktree just to match a lesson.</p>
 
 <h2 id="gates">The developer route: pass by evidence</h2>
+<p>The core route has already introduced the boot and draw traces. Review that evidence here, then follow <a href="t-debugging.html">diagnostics</a>, <a href="t-reading-a-run.html">reading a run</a>, the <a href="t-cpp-diagnosis.html">worked diagnosis</a>, the <a href="t-debugging-labs.html">debugging labs</a> and <a href="t-first-change.html">your first change</a>. The gates below assess evidence; they do not define a competing chapter order.</p>
 <div class="check"><p class="check-h">Ready for the developer route</p><ul class="check-list">
 <li class="check-item"><input type="checkbox"><label>I checked the prerequisites and can distinguish the learning repository from my emulator source checkout.</label></li>
 <li class="check-item"><input type="checkbox"><label>I chose a bounded subsystem goal and identified its required evidence and coverage limits below.</label></li>
@@ -45,8 +46,8 @@ git status --short</pre>
 <tbody>
 <tr><td>0 · Orientation</td><td>Read the foundations and build material. Classify guest CPU code, HLE code, GPU command processing and host Vulkan work.</td><td>A source map with one owning function per boundary, plus a successful build of the standalone labs.</td></tr>
 <tr><td>1 · Boot</td><td><a href="t-trace-boot.html">D2: ELF to first guest instruction</a>.</td><td>An address worksheet, the ordered boot chain, and a correct distinction between module initialization, executable entry and main(). Static-only work is labelled as such.</td></tr>
-<tr><td>2 · Memory correctness</td><td><a href="t-debugging-labs.html#alignment">Lab A: page coverage</a>.</td><td>The original failing case, a local correction, and passing boundary/overflow checks. Explain why aligning size alone fails.</td></tr>
-<tr><td>3 · One draw</td><td><a href="t-trace-draw.html">D3: PM4 to completion</a>.</td><td>A packet/state/binding/submission ledger. Identify the actual completion condition and one legal early-return path.</td></tr>
+<tr><td>2 · One draw</td><td><a href="t-trace-draw.html">D3: PM4 to completion</a>.</td><td>A packet/state/binding/submission ledger. Identify the actual completion condition and one legal early-return path.</td></tr>
+<tr><td>3 · Memory correctness</td><td><a href="t-debugging-labs.html#alignment">Lab A: page coverage</a>.</td><td>The original failing case, a local correction, and passing boundary/overflow checks. Explain why aligning size alone fails.</td></tr>
 <tr><td>4 · Lifetime and contracts</td><td><a href="t-debugging-labs.html#lifetime">Lab B</a> and <a href="t-debugging-labs.html#contract">Lab C</a>.</td><td>Reproduce all three intentional failures, fix the marked callers, and justify error-path output preservation and completion-based retirement.</td></tr>
 <tr><td>5 · Contribution</td><td><a href="t-first-change.html">A bounded first change</a>, or a regression test for existing behavior.</td><td>A test that fails before and passes after, adjacent negative tests, a focused diff, and an honest report separating build, unit, integration and game evidence.</td></tr>
 </tbody></table></div>
@@ -107,9 +108,9 @@ node scripts/build-search-index.cjs</pre>
 
 </div></section>
 </main>
-<script src="assets/topics.js?v=20261007-5" defer></script>
-<script src="assets/search-index.js?v=20261007-5" defer></script>
-<script src="assets/app.js?v=20261007-5" defer></script>
-<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/topics.js?v=20261007-8" defer></script>
+<script src="assets/search-index.js?v=20261007-8" defer></script>
+<script src="assets/app.js?v=20261007-7" defer></script>
+<script src="assets/highlight.js?v=20261007-6" defer></script>
 </body>
 </html>

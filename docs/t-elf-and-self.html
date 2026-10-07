@@ -8,14 +8,14 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-5">
+<link rel="stylesheet" href="assets/app.css?v=20261007-7">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
 <main class="topic" data-app-content>
 
-  <p class="topic-eyebrow">Loading a game · 05</p>
+  <p class="topic-eyebrow">Step 15 · Loading and execution</p>
   <h1 id="elf-self-and-sony-s-format">ELF, SELF and Sony's format</h1>
   <p class="topic-deck">
     A game module looks like an ELF and is rejected by every normal ELF loader. The type is <code>ET_SCE_*</code>, and the machinery a linker needs — symbols, strings, relocations — has been moved into a proprietary segment.
@@ -86,11 +86,11 @@
 <pre>b4fpgH5ZXxQ<b>#</b>Graphics5Driver<b>#</b>Graphics5Driver
 └─ symbol ─┘ └─── library ───┘ └──── module ────┘</pre>
 
-  <p>Kyty stores its HLE implementations under the same key, so resolution is a dictionary lookup. You will meet the exact mechanism in <a href="t-nids.html">topic 07</a> and <a href="t-hle.html">topic 12</a>.</p>
+  <p>Kyty stores its HLE implementations under the same key, so resolution is a dictionary lookup. You will meet the exact mechanism in <a href="t-nids.html">NIDs and the runtime linker</a> and <a href="t-hle.html">HLE libraries</a>.</p>
 
   <h4 id="thread-local-storage-in-one-paragraph">Thread-local storage in one paragraph</h4>
   <p data-shared="excerpt-035">A variable declared <code>thread_local</code> needs a different copy per thread. The usual implementation gives each thread a block of memory and a pointer to it, reachable through a segment register — <code>fs</code> on x86-64 Linux and FreeBSD. Code that reads a thread-local reads <code>fs:[offset]</code>.</p>
-  <p>On x86-64 Windows the host TEB uses <code>gs</code>; a guest <code>fs</code> access does not address the guest TLS block. <a href="t-patching.html">topic 08</a> is entirely about the fix.</p>
+  <p>On x86-64 Windows the host TEB uses <code>gs</code>; a guest <code>fs</code> access does not address the guest TLS block. <a href="t-patching.html">Patching guest instructions</a> is entirely about the fix.</p>
 
   <div class="learn">
     <div class="lh">Learn more · linking, PIC, GOT and PLT</div>
@@ -253,15 +253,15 @@ struct SelfSegment {
 
 </main>
 
-<script src="assets/topics.js?v=20261007-5" defer></script>
-<script src="assets/search-index.js?v=20261007-5" defer></script>
-<script src="assets/app.js?v=20261007-5" defer></script>
+<script src="assets/topics.js?v=20261007-8" defer></script>
+<script src="assets/search-index.js?v=20261007-8" defer></script>
+<script src="assets/app.js?v=20261007-7" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>
 <script src="assets/figs.js?v=20261007" defer></script>
 <script src="assets/figures.js?v=20261007" defer></script>
-<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007-6" defer></script>
 </body>
 </html>
 

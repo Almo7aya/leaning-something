@@ -8,26 +8,28 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-5">
+<link rel="stylesheet" href="assets/app.css?v=20261007-7">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
 <main class="topic" data-app-content>
 
-  <p class="topic-eyebrow">Appendix · C8</p>
+  <p class="topic-eyebrow">Step 37 · First contribution · C8</p>
   <h1 id="a-boot-failure-diagnosed">A boot failure, diagnosed</h1>
   <p class="topic-deck">
-    Everything so far has been tools and vocabulary. This is the day you actually use them: a game that boots to a black screen and then crashes, walked from the command line to the fix — the same loop topic 19 turns into a habit.
+    Apply diagnostics and log reading to a worked boot failure. Follow the evidence from the command line to a testable hypothesis, then use the same process in the debugging labs and your first change.
   </p>
 <!-- prerequisites:cpp-diagnosis -->
-<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="t-debugging.html">Debugging &amp; diagnostics</a>. <a href="start.html">View the learning route</a>.</p>
+<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="t-debugging.html">Debugging &amp; diagnostics</a> · <a href="t-reading-a-run.html">Reading a run</a> · <a href="t-trace-boot.html">ELF to first guest instruction</a>. <a href="start.html">View the learning route</a>.</p>
 <!-- /prerequisites -->
 
   <section class="band band-read">
     <div class="band-h"><span class="band-t">Read</span></div>
     <div class="prose">
 <p class="deck">The scenario is real, the names are not. A title we'll call <em>Neptune</em> boots, stays on a black screen for a few seconds, and then the process dies. Everything below is what a diagnosis of that actually looks like.</p>
+
+  <p>Work through the supplied excerpts without needing a game. Record what each excerpt establishes and what still needs a reproduction or test. If you have a suitable title and build, the live exercise below is an additional application of the method.</p>
 
   <h4 id="the-setup">The setup — turn the taps on</h4>
   <p>You never diagnose blind. Start with the main log, and add command/shader dumps for a bounded reproduction:</p>
@@ -37,7 +39,7 @@
   --printf-direction File --printf-output-file _kyty.txt `
   --command-buffer-dump true --shader-log-direction File</pre>
 
-  <p>Three artifacts land on disk: <code>_kyty.txt</code> (every log line), the command-buffer dumps, and <code>_Shaders/</code> (the shader compile trail). The <code>--printf-direction</code> and <code>--shader-log-direction</code> switches are the ones from <a href="t-debugging.html">topic 18</a>; the playground tools are designed to read exactly these files. Record the visible behavior alongside the logs; neither alone establishes the cause.</p>
+  <p>Three artifacts land on disk: <code>_kyty.txt</code> (every log line), the command-buffer dumps, and <code>_Shaders/</code> (the shader compile trail). The <code>--printf-direction</code> and <code>--shader-log-direction</code> switches are the ones from <a href="t-debugging.html">Debugging &amp; diagnostics</a>; the playground tools are designed to read exactly these files. Record the visible behavior alongside the logs; neither alone establishes the cause.</p>
 
   <h4 id="step-one-the-log">Step one — read the log in both directions</h4>
   <p>Open <code>_kyty.txt</code>. <strong>Top-down</strong> you see the boot story: modules loading, mounts happening, relocations resolving. Then, near the bottom, the <strong>unresolved imports</strong> — the loader logs every NID it could not bind, with the owning module:</p>
@@ -49,7 +51,7 @@
 
   <p>Three habits, all learned earlier:</p>
   <ul>
-    <li><strong>Bottom-up is for the crash; top-down is for the story.</strong> Unresolved imports are not errors yet — they become errors only if the game <em>calls</em> them. Each line is a candidate for <a href="t-first-change.html">topic 19</a>.</li>
+    <li><strong>Bottom-up is for the crash; top-down is for the story.</strong> Unresolved imports are not errors yet — they become errors only if the game <em>calls</em> them. Each line is a candidate for <a href="t-first-change.html">Your first change</a>.</li>
     <li><strong>The <code>#B#A</code> tail is the id encoding from the <a href="playground.html#id64">id encoder tool</a></strong> — module and library ids, not a readable name.</li>
     <li><strong>The whole log is droppable into the <a href="playground.html#log-triage">log triage tool</a></strong>, which groups these lines into "unresolved", "unimplemented", and "errors" buckets. That is the to-do list.</li>
   </ul>
@@ -114,7 +116,7 @@ Unhandled host exception: type=1 code=3221225477 pc=0x00000009000a3b4c access=2 
   <div class="learn">
     <div class="lh">Learn more · the diagnosis craft</div>
     <ul>
-      <li><span class="kind">Guide</span><div><a href="t-debugging.html">Debugging &amp; diagnostics</a><span class="d">Topic 18 — the full flag table and the artifacts each one produces, which this case study assumes.</span></div></li>
+      <li><span class="kind">Guide</span><div><a href="t-debugging.html">Debugging &amp; diagnostics</a><span class="d">The preceding diagnostics lesson lists the flags and artifacts this case study uses.</span></div></li>
       <li><span class="kind">Guide</span><div><a href="t-cpp-build.html#reading-a-crash-log">Reading a crash log</a><span class="d">Topic C3's annotated walk through every block of the dump, referenced above.</span></div></li>
       <li><span class="kind">Article</span><div><a href="https://learn.microsoft.com/en-us/visualstudio/debugger/debugging-absolute-beginners?view=visualstudio">Debugging for beginners</a><span class="d">Microsoft’s introduction to reproducing a problem, inspecting state and testing a debugging hypothesis.</span></div></li>
     </ul>
@@ -132,18 +134,18 @@ Unhandled host exception: type=1 code=3221225477 pc=0x00000009000a3b4c access=2 
   <section class="band band-try">
     <div class="band-h"><span class="band-t">Try</span></div>
     <p class="band-why">
-      Run the case study on your own title, in miniature — this time the tools do the heavy lifting.
+      Annotate the supplied log excerpts first. You can apply the same sequence to your own title when a game and an emulator build are available.
     </p>
 
     <div class="callout k">
-      <span class="lbl">A ten-minute lab</span>
-      <p>Take any title you own, run it with the three flags from Step one, and feed the result to three playground tools in order: <a href="playground.html#log-triage">log triage</a> (find the buckets), <a href="playground.html#crash-log-reader">crash reader</a> (if it crashed), <a href="playground.html#elf-inspector">module inspector</a> (what the loader saw). Write down the one line that is the <em>cause</em> rather than the symptom. Then compare with the demo log in the crash reader to check your judgment.</p>
+      <span class="lbl">Apply the diagnosis method</span>
+      <p>Use the supplied excerpts or a bounded run of your own title. Feed the relevant evidence to the playground tools in order: <a href="playground.html#log-triage">log triage</a> (find the buckets), <a href="playground.html#crash-log-reader">crash reader</a> (if it crashed), <a href="playground.html#elf-inspector">module inspector</a> (what the loader saw). For an ELF inspection you need an actual module; mark that step pending if you have none. Write down a candidate cause, the observations supporting it and the test that could disprove it. A log line alone does not establish causation.</p>
     </div>
   </section>
   <section class="band band-do">
     <div class="band-h"><span class="band-t">Do</span></div>
     <p class="band-why">
-      These are the case study's checkpoints, minus the specific crash — they hold for any title.
+      Use the worked example or your own reproduction. Label supplied evidence, source inspection and observed runtime results separately.
     </p>
 
     <div class="check">
@@ -151,11 +153,11 @@ Unhandled host exception: type=1 code=3221225477 pc=0x00000009000a3b4c access=2 
       <ul class="check-list">
         <li class="check-item">
           <input type="checkbox">
-          <label>Run a title with the three flags and confirm the three artifacts appear on disk.</label>
+          <label>Identify the flags and expected artifacts in the example. If I ran my own title, record which artifacts actually appeared.</label>
         </li>
         <li class="check-item">
           <input type="checkbox">
-          <label>Read <code>_kyty.txt</code> both ways: the boot story top-down, and any crash block bottom-up.</label>
+          <label>Read the supplied log excerpts or my own <code>_kyty.txt</code> both ways: the boot story top-down and the crash evidence bottom-up.</label>
         </li>
         <li class="check-item">
           <input type="checkbox">
@@ -167,11 +169,11 @@ Unhandled host exception: type=1 code=3221225477 pc=0x00000009000a3b4c access=2 
         </li>
         <li class="check-item">
           <input type="checkbox">
-          <label>Inspect a relocation destination and distinguish an HLE contract problem from a loader or guest-call problem.</label>
+          <label>Explain how inspecting a relocation destination distinguishes an HLE contract problem from a loader or guest-call problem. Record whether I inspected a real destination or followed the example.</label>
         </li>
         <li class="check-item">
           <input type="checkbox">
-          <label>State which contract tests passed and what the repeated game route actually demonstrated.</label>
+          <label>Separate the example's proposed verification from tests I actually ran. Record any live game reproduction as completed or pending.</label>
         </li>
       </ul>
     </div>
@@ -179,14 +181,14 @@ Unhandled host exception: type=1 code=3221225477 pc=0x00000009000a3b4c access=2 
 
 </main>
 
-<script src="assets/topics.js?v=20261007-5" defer></script>
-<script src="assets/search-index.js?v=20261007-5" defer></script>
-<script src="assets/app.js?v=20261007-5" defer></script>
+<script src="assets/topics.js?v=20261007-8" defer></script>
+<script src="assets/search-index.js?v=20261007-8" defer></script>
+<script src="assets/app.js?v=20261007-7" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>
 <script src="assets/figs.js?v=20261007" defer></script>
 <script src="assets/figures.js?v=20261007" defer></script>
-<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007-6" defer></script>
 </body>
 </html>

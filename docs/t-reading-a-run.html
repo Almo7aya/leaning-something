@@ -8,14 +8,14 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-5">
+<link rel="stylesheet" href="assets/app.css?v=20261007-7">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
 <main class="topic" data-app-content>
 
-  <p class="topic-eyebrow">Working on it · 20</p>
+  <p class="topic-eyebrow">Step 36 · First contribution</p>
   <h1 id="reading-a-run">Reading a run</h1>
   <p class="topic-deck">
     The rest of the course explains the machine. This page is the field guide: the exact log lines a build at <code>d2413fc2</code> writes, what each field means, and which grep to run first.
@@ -30,14 +30,14 @@
 <p class="deck">A useful run is one you can search. Start with <code>--printf-direction File --printf-output-file _kyty.txt</code>. Add dumps only when the first file has told you which subsystem is stuck.</p>
 
   <h4 id="the-order-the-log-arrives-in">The order the log arrives in</h4>
-  <p>The first few dozen lines are the boot you already know from <a href="lifetime.html">One full run</a>: host virtual memory, parsed flags, lifecycle inits, HLE registration, SELF/ELF load, TLS patches, relocations, then guest entry. After that the log is <em>reactive</em> — a line appears because guest code called something, faulted, or submitted GPU work.</p>
+  <p>The first few dozen lines are the boot you traced in <a href="t-trace-boot.html">ELF to first guest instruction</a>: host virtual memory, parsed flags, lifecycle inits, HLE registration, SELF/ELF load, TLS patches, relocations, then guest entry. After that the log is <em>reactive</em> — a line appears because guest code called something, faulted, or submitted GPU work.</p>
   <div class="tw">
     <table>
       <thead><tr><th>You grep for</th><th>It means</th><th>Then</th></tr></thead>
       <tbody>
-        <tr><td><code>unresolved symbol</code></td><td>An import the linker could not bind. The NID and owning module are on the same line.</td><td><a href="t-first-change.html">topic 19</a></td></tr>
+        <tr><td><code>unresolved symbol</code></td><td>An import the linker could not bind. The NID and owning module are on the same line.</td><td><a href="t-first-change.html">Your first change</a></td></tr>
         <tr><td><code>EXIT_NOT_IMPLEMENTED</code></td><td>A case the author marked and left. The condition and file are in the message.</td><td>That file, that condition</td></tr>
-        <tr><td><code>Patch tls at addr:</code></td><td>A nine-byte <code>fs:[0]</code> read was rewritten to <code>Jit::Call9</code>.</td><td><a href="t-patching.html">topic 08</a></td></tr>
+        <tr><td><code>Patch tls at addr:</code></td><td>A nine-byte <code>fs:[0]</code> read was rewritten to <code>Jit::Call9</code>.</td><td><a href="t-patching.html">Patching guest instructions</a></td></tr>
         <tr><td><code>CFG dispatcher fallback:</code></td><td>This shader will emit a program-counter dispatcher. Not an error.</td><td>Section below</td></tr>
         <tr><td><code>phase begin</code> / <code>phase end</code></td><td>Recompiler timings, with stage name and shader hash.</td><td>Section below</td></tr>
         <tr><td><code>--- Guest fault context ---</code></td><td>Unhandled host exception. The process is about to <code>EXIT</code>.</td><td><a href="playground.html#crash-log-reader">Crash reader</a></td></tr>
@@ -97,7 +97,7 @@ rg "mesh shader exceeds host limits" _kyty.txt</pre>
 
   <section class="band band-watch">
     <div class="band-h"><span class="band-t">Watch</span></div>
-    <p class="band-why">The fault-path animation on topic 10 is the same three branches the dump above comes from. The crash reader on the Playground annotates a real block.</p>
+    <p class="band-why">The <a href="t-coherency.html">coherency lesson's fault-path animation</a> is the same three branches the dump above comes from. The crash reader on the Playground annotates a real block.</p>
     <div data-viz="faultpath"></div>
   </section>
 
@@ -133,14 +133,14 @@ rg "mesh shader exceeds host limits" _kyty.txt</pre>
 
 </main>
 
-<script src="assets/topics.js?v=20261007-5" defer></script>
-<script src="assets/search-index.js?v=20261007-5" defer></script>
-<script src="assets/app.js?v=20261007-5" defer></script>
+<script src="assets/topics.js?v=20261007-8" defer></script>
+<script src="assets/search-index.js?v=20261007-8" defer></script>
+<script src="assets/app.js?v=20261007-7" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>
 <script src="assets/figs.js?v=20261007" defer></script>
 <script src="assets/figures.js?v=20261007" defer></script>
-<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007-6" defer></script>
 </body>
 </html>

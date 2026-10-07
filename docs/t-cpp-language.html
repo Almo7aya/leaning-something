@@ -8,20 +8,20 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-5">
+<link rel="stylesheet" href="assets/app.css?v=20261007-7">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
 <main class="topic" data-app-content>
 
-  <p class="topic-eyebrow">Appendix · C1</p>
+  <p class="topic-eyebrow">Step 11 · Project orientation · C1</p>
   <h1 id="c-language-by-example">C++ language, by example</h1>
   <p class="topic-deck">
-    This is a reference for reading project C++, after <a href="b-memory.html">B3: objects and ownership</a>. Use one section when the source requires it; you do not need to master every construct before starting the emulator walkthrough. The Read section contains project excerpts, often with omitted declarations. The Try section provides a complete standalone program.
+    Use the codebase map to locate these examples, then connect the objects and ownership from the beginner lessons to the C++ used in the project. Read the syntax before building and following the loader. The Read section contains project excerpts, often with omitted declarations; the Try section provides a complete standalone program. Revisit individual constructs as you encounter them in later source traces.
   </p>
 <!-- prerequisites:cpp-language -->
-<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="b-memory.html">Objects, owners and borrowed memory</a>. <a href="start.html">View the learning route</a>.</p>
+<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="b-memory.html">Objects, owners and borrowed memory</a> · <a href="t-cpp-codebase.html">The codebase map &amp; the toolbox</a>. <a href="start.html">View the learning route</a>.</p>
 <!-- /prerequisites -->
 
   <section class="band band-read">
@@ -171,7 +171,7 @@ if (bucket == nullptr) {
     ++m_allocated_buckets;
 }</pre>
 
-  <p>And here is the deliberate use of <code>shared_ptr</code>, from the event-queue code (also covered in <a href="t-hle.html">topic 12</a>): a queue can be destroyed while another thread is blocked in it, so it is pinned with a shared reference for the duration of the operation:</p>
+  <p>And here is the deliberate use of <code>shared_ptr</code>, from the event-queue code (also covered in <a href="t-hle.html">HLE libraries</a>): a queue can be destroyed while another thread is blocked in it, so it is pinned with a shared reference for the duration of the operation:</p>
 
 <pre>using KernelEqueueRef = std::shared_ptr&lt;KernelEqueuePrivate&gt;;
 [[nodiscard]] KernelEqueueRef KernelPinEqueue(KernelEqueue eq);</pre>
@@ -303,7 +303,7 @@ public:                                                                         
     name(name&amp;&amp;) noexcept            = delete;                                         \
     name&amp; operator=(name&amp;&amp;) noexcept = delete;</pre>
 
-  <p><strong>2. The HLE registration DSL.</strong> The whole of <code>src/libs/</code> is registered with a handful of macros (covered in <a href="t-hle.html">topic 12</a> and animated below). Notice the <code>#</code> operator in <code>LIB_ADD</code> — it stringifies its argument at compile time, turning a function name into a log label with no reflection machinery:</p>
+  <p><strong>2. The HLE registration DSL.</strong> The whole of <code>src/libs/</code> is registered with a handful of macros (covered in <a href="t-hle.html">HLE libraries</a> and animated below). Notice the <code>#</code> operator in <code>LIB_ADD</code> — it stringifies its argument at compile time, turning a function name into a log label with no reflection machinery:</p>
 
   <div class="filename">src/libs/libs.h</div>
 <pre>#define LIB_ADD(n, f, t)                                                       \
@@ -390,9 +390,9 @@ public:                                                                         
     <div class="band-h"><span class="band-t">Try</span></div><div class="prose">
     <h2 id="runnable-idioms">A complete forwarding and ownership example</h2>
     <p>A named integer is an lvalue; the literal 7 is an rvalue. Predict which overload category() selects after the forwarding wrapper. Then follow the shared object after one handle resets. The final operation copies a float representation with <code>std::bit_cast</code>; it does not dereference an incompatible pointer.</p>
-    <p class="filename">Runnable teaching program · <a href="labs/beginner/cpp_idioms.cpp">cpp_idioms.cpp</a></p>
+    <div class="filename"><a href="labs/beginner/cpp_idioms.cpp">cpp_idioms.cpp</a></div>
     <!-- code:labs/beginner/cpp_idioms.cpp -->
-<pre><code>#include &lt;bit&gt;
+<pre data-lang="cpp"><code>#include &lt;bit&gt;
 #include &lt;cstdint&gt;
 #include &lt;iostream&gt;
 #include &lt;memory&gt;
@@ -426,7 +426,7 @@ int main() {
     <pre>cmake --build _Build/curriculum/beginner --target cpp_idioms
 ctest --test-dir _Build/curriculum/beginner -R '^beginner_cpp_idioms$' --output-on-failure</pre>
     <p>Expected output:</p><!-- output:labs/beginner/cpp_idioms.txt -->
-<pre>lvalue
+<pre data-lang="text">lvalue
 rvalue
 shared value=7
 bit pattern round trip preserved</pre>
@@ -473,14 +473,14 @@ bit pattern round trip preserved</pre>
 
 </main>
 
-<script src="assets/topics.js?v=20261007-5" defer></script>
-<script src="assets/search-index.js?v=20261007-5" defer></script>
-<script src="assets/app.js?v=20261007-5" defer></script>
+<script src="assets/topics.js?v=20261007-8" defer></script>
+<script src="assets/search-index.js?v=20261007-8" defer></script>
+<script src="assets/app.js?v=20261007-7" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>
 <script src="assets/figs.js?v=20261007" defer></script>
 <script src="assets/figures.js?v=20261007" defer></script>
-<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007-6" defer></script>
 </body>
 </html>

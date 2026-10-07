@@ -8,14 +8,14 @@
 <link rel="stylesheet" href="assets/viz.css?v=20261007">
 <link rel="stylesheet" href="assets/atlas.css?v=20261007">
 <link rel="stylesheet" href="assets/lab.css?v=20261007">
-<link rel="stylesheet" href="assets/app.css?v=20261007-5">
+<link rel="stylesheet" href="assets/app.css?v=20261007-7">
 <link rel="stylesheet" href="assets/highlight.css?v=20261007">
 </head>
 <body>
 
 <main class="topic" data-app-content>
 
-  <p class="topic-eyebrow">Appendix · C10</p>
+  <p class="topic-eyebrow">Step 14 · Loading and execution · C10</p>
   <h1 id="pointers-references-and-memory">Pointers, references &amp; memory</h1>
   <p class="topic-deck">
     An emulator is a memory program: it maps a foreign address space, hands the CPU raw addresses, and shares
@@ -24,13 +24,13 @@
     rest of it ordinary.
   </p>
 <!-- prerequisites:pointers-memory -->
-<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="b-memory.html">Objects, owners and borrowed memory</a> · <a href="t-virtual-memory.html">Virtual memory, briefly</a>. <a href="start.html">View the learning route</a>.</p>
+<p class="lesson-prerequisites"><strong>Before this page:</strong> <a href="b-memory.html">Objects, owners and borrowed memory</a> · <a href="t-cpp-language.html">C++ language, by example</a> · <a href="t-address-space.html">The guest address space</a>. <a href="start.html">View the learning route</a>.</p>
 <!-- /prerequisites -->
 
   <section class="band band-read">
     <div class="band-h"><span class="band-t">Read</span></div>
     <div class="prose">
-<p class="deck">Start with the idea that surprises people, because once you accept it the pointers in this tree stop looking like emulator magic and start looking like plain C++.</p>
+<p class="deck">You have seen the guest address-space map and the project's C++ syntax. Now identify which addresses may be used as pointers, which objects own storage, and which views borrow it. This prepares the ELF and mapping lessons that follow. The graphics examples exercise the same ownership rules; their draw and synchronization paths are traced later.</p>
 
   <h4 id="a-guest-pointer-is-a-host-pointer">A guest pointer <em>is</em> a host pointer</h4>
   <p>Many emulators translate a guest address into a location in host-managed storage. KytyPS5's native path instead reserves and maps supported guest ranges at usable virtual addresses inside its host process. A guest address can therefore identify the same mapped location when used by guest code and emulator code. This applies only to valid mappings with suitable permissions, bounds and object-access rules; casting an arbitrary integer does not make it safe to dereference.</p>
@@ -165,14 +165,14 @@ void SetFunc(Handler func) { *reinterpret_cast&lt;Handler*&gt;(&amp;code[2]) = f
 
 </main>
 
-<script src="assets/topics.js?v=20261007-5" defer></script>
-<script src="assets/search-index.js?v=20261007-5" defer></script>
-<script src="assets/app.js?v=20261007-5" defer></script>
+<script src="assets/topics.js?v=20261007-8" defer></script>
+<script src="assets/search-index.js?v=20261007-8" defer></script>
+<script src="assets/app.js?v=20261007-7" defer></script>
 <script src="assets/viz.js?v=20261007" defer></script>
 <script src="assets/atlas.js?v=20261007-d2413fc2" defer></script>
 <script src="assets/lab.js?v=20261007" defer></script>
 <script src="assets/figs.js?v=20261007" defer></script>
 <script src="assets/figures.js?v=20261007" defer></script>
-<script src="assets/highlight.js?v=20261007" defer></script>
+<script src="assets/highlight.js?v=20261007-6" defer></script>
 </body>
 </html>
