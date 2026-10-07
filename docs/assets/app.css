@@ -1055,6 +1055,20 @@ kbd, .kbd {
    band copy, tables) falls back to the browser's blue/purple.
    ============================================================ */
 
+/* Cover every content wrapper, including tools and generated return links.
+   Zero specificity lets navigation, cards and buttons keep their own styles.
+   The default also applies to visited links instead of the browser's purple. */
+:where([data-app-content] a[href]) {
+  color: var(--accent);
+  text-underline-offset: 2px;
+  text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+:where([data-app-content] a[href]:hover) { text-decoration-color: currentColor; }
+:where([data-app-content] a[href]:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
 .topic a, .home a, .band-why a, .callout a, .check-item label a,
 .topic td a, .topic th a, .ex a {
   color: var(--accent);

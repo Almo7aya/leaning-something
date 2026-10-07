@@ -62,6 +62,7 @@ paragraphs from the owning topic pages:
 | **[The Complete Book](https://almo7aya.dev/leaning-something/course.html)** | Project reference after basic C++ | 39 chapters; read alongside the core route |
 | **[Architecture Guide](https://almo7aya.dev/leaning-something/tour.html)** | Already comfortable with systems programming | 15 sections, ~45 minutes |
 | **[Learning Path](https://almo7aya.dev/leaning-something/path.html)** | Project practice after the readiness checks | 7 levels; game observations are optional integration work |
+| **[Run Observatory](docs/run-observatory.html)** | Follow one executable workload across subsystem boundaries | 8 experiments; reversible state, computed pixels and evidence export |
 
 The old `kytyps5-*.html` file names redirect to these.
 
@@ -132,6 +133,7 @@ docs/                          served by GitHub Pages
 ├─ lifetime / machine / system-explorer / browser-emulator / advanced-emulator .html   whole-system simulations
 ├─ loadlink / guest-run / host-run .html   step-by-step diagrams: load & link, the guest side, the host side
 ├─ playground.html             decode your own command buffers, modules and logs
+├─ run-observatory.html         guest bytes to pixels, with fault comparison and verified replay
 ├─ lab / atlas / course / tour / path / examples .html            the long-form documents
 ├─ kytyps5-*.html              redirects from the old file names
 └─ assets/
@@ -139,6 +141,7 @@ docs/                          served by GitHub Pages
    ├─ viz.js / atlas.js / figs.js / figures.js       the animations
    ├─ lab.js                                          the eleven input-driven tools
    ├─ playground.js, system-explorer.js, browser-emulator.js, lifetime.js, machine.js
+   ├─ observatory-engine.js, observatory.js, observatory.css   executable model and desktop inspectors
    └─ shot-*.jpg                                      emulator screenshots (lazy-loaded)
 KytyPS5/                       a plain clone of the emulator (not tracked here) used to check the material
 ```
@@ -168,6 +171,7 @@ node scripts/check-docs.cjs
 node scripts/check-doc-examples.cjs
 node scripts/build-artifact-data.cjs
 node scripts/check-artifacts.cjs
+node scripts/check-observatory.cjs
 node scripts/check-curriculum.cjs
 node scripts/check-beginner.cjs
 node scripts/build-search-index.cjs

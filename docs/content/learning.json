@@ -801,6 +801,15 @@
       "level": "project"
     },
     {
+      "id": "run-observatory",
+      "n": "◎",
+      "title": "Run Observatory",
+      "ready": true,
+      "file": "run-observatory.html",
+      "blurb": "An executable run from guest bytes to pixels: reversible state, fault experiments, healthy-run comparison and verified replay files.",
+      "level": "project"
+    },
+    {
       "id": "system-explorer",
       "n": "◆",
       "title": "KytyPS5 system explorer",

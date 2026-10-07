@@ -36,6 +36,7 @@ node scripts/check-docs.cjs
 node scripts/check-doc-examples.cjs
 node scripts/build-artifact-data.cjs
 node scripts/check-artifacts.cjs
+node scripts/check-observatory.cjs
 node scripts/check-curriculum.cjs
 node scripts/check-beginner.cjs
 node scripts/build-search-index.cjs
@@ -86,6 +87,19 @@ words, and ELF files to 64 MiB; larger artifacts need offline tools.
 exercise preparation. Simulator shortcuts belong to the focused game display.
 Keep modeled timings, instruction sets and cache events labeled as simulations.
 
+Run Observatory connects these boundaries in one deterministic executable fixture.
+`assets/observatory-engine.js` is the pure model; `assets/observatory.js` renders
+recorded snapshots and owns playback, inspectors and local file controls. Guest
+instruction bytes produce writes, packet headers go through the shared reader,
+and the lowered shader operations feed the software rasterizer. The bytecode,
+services, scheduler, costs and cache capacity are teaching choices. The ELF
+fixture deliberately uses `e_machine = NONE`; never describe it as a PS5 binary.
+Replay imports regenerate and compare the evidence at the pinned source revision.
+Keep the 2 MiB import bound and reject mismatches without loading executable data.
+Run `node scripts/check-observatory.cjs` after changing the model. These checks
+cover visibility failures, safe lifetime boundaries, cache capacity, pixel changes
+and replay integrity; they do not validate native execution.
+
 For browser regression checks, serve `docs/`, install Playwright separately, then
 run `node scripts/check-visual-tools.cjs`. `PLAYWRIGHT_MODULE` can name an existing
 Playwright module, `BROWSER_EXECUTABLE` a browser executable, and `DOCS_URL` the
@@ -93,3 +107,8 @@ server URL (default `http://127.0.0.1:8765`). The suite checks desktop widths
 1280/1440/1920 in both themes, exercises controls and writes screenshots under
 `_Build/curriculum/browser/visual-tools/`. Inspect these images as well as the
 assertions; browser checks do not prove native emulator behavior.
+
+Run `node scripts/check-observatory-browser.cjs` with the same environment for the
+new tool's seven inspectors, breakpoints, watchpoints, comparison, binary exports,
+replay imports and shared view links. Its screenshots and report are written to
+`_Build/curriculum/browser/observatory/`.

@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en" class="notranslate" translate="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Run Observatory — KytyPS5</title>
+<meta name="description" content="An executable, reversible teaching run: inspect guest instructions, memory bytes, PM4 packets, shader operations, cache reuse, completion and pixels. Compare faults with a healthy run.">
+<link rel="stylesheet" href="assets/app.css?v=20261007-links1">
+<link rel="stylesheet" href="assets/visual-tools.css?v=20261007-tools1">
+<link rel="stylesheet" href="assets/observatory.css?v=20261007-o1">
+</head>
+<body>
+<main data-app-content class="ro-page">
+  <header class="ro-hero">
+    <div><p class="ro-eyebrow">RUN OBSERVATORY <span>EXECUTABLE LEARNING LAB</span></p><h1 id="run-observatory">Every byte has a story.</h1>
+    <p>Follow one workload from a cold process to a completed frame. Stop at any boundary, look inside its state, and find the first difference when something goes wrong.</p></div>
+    <a class="ro-start-link" href="t-trace-boot.html">Read the boot walkthrough ↗</a>
+  </header>
+  <section class="ro-bounds" aria-label="Model boundaries"><b>Computed here</b><span>Instruction bytes → memory writes → packet decode → shader operations → rasterized pixels.</span><b>Modeled here</b><span>Threads, GPU scheduling, cache costs and services. No native PS5 code or Vulkan runs in this page.</span></section>
+  <section id="observatory" class="ro-workbench" data-visual-workspace="Run Observatory · one state, every boundary" tabindex="0" aria-label="Run Observatory workspace">
+    <div class="ro-config">
+      <label>Experiment<select id="ro-case"></select></label>
+      <label>Frames<select id="ro-frames"><option>1</option><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option><option>7</option><option>8</option></select></label>
+      <label>Input offset<input id="ro-offset" type="range" min="-35" max="20" value="-18"><output id="ro-offset-value">−18%</output></label>
+      <label>Pipeline slots<select id="ro-capacity"><option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option></select></label>
+      <button type="button" id="ro-rebuild">Rebuild run</button>
+    </div>
+    <div class="ro-transport"><div class="ro-controls">
+      <div class="ro-button-group"><button type="button" id="ro-home" title="Rewind to cold start">↤ Start</button><button type="button" id="ro-prev" title="Previous event · Left arrow">← Back</button><button type="button" class="ro-primary" id="ro-play">▶ Replay</button><button type="button" id="ro-next" title="Next event · Right arrow">Step →</button><button type="button" id="ro-frame">Next frame ⇥</button></div>
+      <label>Pace<select id="ro-speed"><option value="1000">Read · 1×</option><option value="350" selected>Trace · 3×</option><option value="90">Fast · 10×</option></select></label>
+      <label>Break on<select id="ro-break"><option value="problem">Failed invariant</option><option value="none">Nothing</option><option value="cpu.store">Memory write</option><option value="shader.translate">Translation</option><option value="pipeline.create">Pipeline creation</option><option value="gpu.submit">Submission</option><option value="gpu.complete">Completion</option><option value="present.flip">Presentation</option></select></label>
+      <span id="ro-play-state" role="status">Paused at cold start</span>
+    </div>
+    <div class="ro-scrub"><span id="ro-position">EVENT 0 / 0</span><input type="range" id="ro-seek" min="0" max="1" value="0" aria-label="Replay event"><span id="ro-clock">0 modeled µs</span></div>
+    <nav id="ro-path" class="ro-path" aria-label="Follow an architecture boundary"></nav></div>
+    <div class="ro-overview">
+      <section class="ro-screen-panel">
+        <header class="ro-panel-head"><div><span class="ro-kicker">SOFTWARE FRAMEBUFFER</span><h2 id="ro-screen-title">Waiting for the first flip</h2></div><label class="ro-inline-check"><input type="checkbox" id="ro-pending">Pending target</label></header>
+        <div class="ro-screen"><canvas id="ro-canvas" width="128" height="80" aria-label="Pixels produced by the teaching shader and rasterizer"></canvas><div class="ro-screen-tag" id="ro-image-label">FRONT BUFFER · 128 × 80</div><div class="ro-screen-hint" id="ro-screen-hint">The display changes at presentation, after completion.</div></div>
+        <p id="ro-pixel" class="ro-pixel" role="status">Click the image to inspect a pixel, or focus it and use the arrow keys.</p>
+        <div class="ro-metrics" id="ro-metrics"></div>
+      </section>
+      <section class="ro-event-panel" aria-label="Selected event">
+        <div class="ro-event-tag"><span id="ro-owner">LOADER</span><span id="ro-frame-label">PRE-ENTRY</span></div>
+        <h2 id="ro-event-title">A cold process</h2><p id="ro-event-why"></p>
+        <div id="ro-checks"></div>
+        <div class="ro-diff-head"><b>What changed</b><span>before → after this event</span></div><div id="ro-changes"></div>
+        <div class="ro-source" id="ro-source"></div>
+      </section>
+    </div>
+    <section class="ro-timeline-panel" aria-label="Run timeline">
+      <header class="ro-panel-head"><div><span class="ro-kicker">FOLLOW THE DEPENDENCY</span><h2 id="timeline">One trace, several owners</h2></div><span class="ro-muted">Width = modeled cost · click an event</span></header>
+      <div id="ro-timeline"></div>
+    </section>
+    <section class="ro-inspector">
+      <div class="ro-tabs" role="tablist" aria-label="State inspectors">
+        <button type="button" role="tab" id="ro-tab-cpu" data-tab="cpu" aria-controls="ro-inspect" aria-selected="true">CPU &amp; code</button>
+        <button type="button" role="tab" id="ro-tab-memory" data-tab="memory" aria-controls="ro-inspect" aria-selected="false" tabindex="-1">Memory</button>
+        <button type="button" role="tab" id="ro-tab-packets" data-tab="packets" aria-controls="ro-inspect" aria-selected="false" tabindex="-1">Packets</button>
+        <button type="button" role="tab" id="ro-tab-shader" data-tab="shader" aria-controls="ro-inspect" aria-selected="false" tabindex="-1">Shader &amp; cache</button>
+        <button type="button" role="tab" id="ro-tab-queues" data-tab="queues" aria-controls="ro-inspect" aria-selected="false" tabindex="-1">Queues &amp; lifetime</button>
+        <button type="button" role="tab" id="ro-tab-services" data-tab="services" aria-controls="ro-inspect" aria-selected="false" tabindex="-1">Services</button>
+        <button type="button" role="tab" id="ro-tab-compare" data-tab="compare" aria-controls="ro-inspect" aria-selected="false" tabindex="-1">Compare</button>
+      </div>
+      <div class="ro-watch"><label>Write watchpoint <input id="ro-watch" placeholder="e.g. 0x00012004" spellcheck="false" aria-label="Memory write watchpoint"></label><span id="ro-watch-status">Optional: pause replay when an event writes this address.</span><button type="button" id="ro-export-memory">Export selected memory</button></div>
+      <div id="ro-inspect" role="tabpanel" aria-labelledby="ro-tab-cpu"></div>
+    </section>
+    <section class="ro-ledger">
+      <header class="ro-panel-head"><div><span class="ro-kicker">EVENT EVIDENCE</span><h2 id="event-ledger">Inspect the record</h2></div><label>Filter<input type="search" id="ro-filter" placeholder="shader, upload, frame…" aria-label="Filter recorded events"></label></header>
+      <div id="ro-events" class="ro-event-list" aria-label="Recorded events"></div>
+    </section>
+    <footer class="ro-footer"><div><b id="ro-fingerprint"></b><span>Deterministic replay · costs are illustrative, not hardware measurements.</span></div><div class="ro-button-group"><button type="button" id="ro-share">Copy view link</button><button type="button" id="ro-export">Export replay</button><button type="button" id="ro-import">Import replay</button><input id="ro-import-file" type="file" accept=".json,application/json" hidden></div><span id="ro-file-status" role="status"></span></footer>
+  </section>
+  <section class="ro-missions" aria-labelledby="experiments"><header><p class="ro-eyebrow">LEARN BY BREAKING ONE THING</p><h2 id="experiments">Explain the failure before fixing it.</h2><p>Compare each fault with a healthy run using the same settings. For cache thrashing, compare the same workload with enough cache slots to retain its pipelines.</p></header><div id="ro-missions"></div></section>
+  <section class="ro-method" aria-labelledby="how-it-works"><h2 id="how-it-works">What makes this run inspectable?</h2>
+    <div><article><b>State, not an animated script</b><p>A deterministic interpreter executes a stored bytecode. A bounded compiler lowers three real RDNA ALU encodings into operations that the software vertex executor consumes. A barycentric rasterizer computes the actual image. Every recorded event contains a snapshot you can revisit.</p></article>
+    <article><b>The model has explicit edges</b><p>The instruction set, import IDs, scheduling, state-slot meaning and cache capacity are teaching choices. ELF and PM4 header decoding use the Playground readers. The shader subset is tiny; it is not a complete RDNA implementation. There is no PS5 binary execution, Vulkan, real thread contention, or native performance measurement.</p></article>
+    <article><b>Evidence you can carry away</b><p>Export the configuration, ordered events, memory writes and checks. Import re-executes the configuration and verifies the evidence. The fingerprint detects accidental mismatch; it is not a cryptographic signature. Files are processed locally. A view link shares configuration and event position, not uploaded data.</p></article></div>
+    <p>Follow the matching source from each selected event, then return to <a href="t-trace-draw.html">the native draw walkthrough</a>. Use <a href="playground.html">Playground</a> to inspect artifacts from a real KytyPS5 run. Use <a href="browser-emulator.html">the browser micro-emulator</a> for a continuous playable guest.</p>
+  </section>
+</main>
+<script src="assets/topics.js?v=20261007-o1" defer></script>
+<script src="assets/search-index.js?v=20261007-o1" defer></script>
+<script src="assets/app.js?v=20261007-7" defer></script>
+<script src="assets/artifact-data.js?v=20261007-tools1" defer></script>
+<script src="assets/artifact-parsers.js?v=20261007-tools1" defer></script>
+<script src="assets/observatory-engine.js?v=20261007-o1" defer></script>
+<script src="assets/observatory.js?v=20261007-o1" defer></script>
+<script src="assets/visual-tools.js?v=20261007-tools1" defer></script>
+</body>
+</html>

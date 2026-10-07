@@ -5,7 +5,7 @@ const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const base = (process.env.DOCS_URL || 'http://127.0.0.1:8765').replace(/\/$/,'');
 const output = path.resolve(__dirname,'../_Build/curriculum/browser/visual-tools');
-const names = ['playground','lifetime','loadlink','guest-run','host-run','system-explorer','machine','browser-emulator','advanced-emulator'];
+const names = ['playground','lifetime','loadlink','guest-run','host-run','run-observatory','system-explorer','machine','browser-emulator','advanced-emulator'];
 const report = {layouts:[],checks:[],errors:[]};
 fs.mkdirSync(output,{recursive:true});
 async function main() {
