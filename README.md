@@ -23,6 +23,10 @@ and the Playground. The **[developer curriculum](https://almo7aya.dev/leaning-so
 adds D1–D4: a coverage map and contribution gates, ELF-to-entry and PM4-to-completion
 source traces, and three reproducible native C++ debugging labs.
 
+The sidebar can be hidden or shown, remembers that preference on desktop, and keeps
+the active page highlighted and in view. Its scroll position is retained as you move
+between pages in the same browser tab.
+
 The developer track tests range coverage, last-use lifetime bookkeeping and an
 explicitly fictional output contract. It includes expected failures, reference fixes,
 negative/boundary cases and an evidence-record capstone. It does not claim exhaustive

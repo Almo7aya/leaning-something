@@ -7,6 +7,8 @@
   "use strict";
 
   var LS_THEME = "kyty.theme";
+  var LS_SIDE_HIDDEN = "kyty.sidebar.hidden";
+  var SS_SIDE_SCROLL = "kyty.sidebar.scroll";
   var LS_DONE = "kyty.done";      // { topicId: true }  topic marked complete
   var LS_CHECK = "kyty.check";    // { "topic:idx": true }  individual checkboxes
 
@@ -77,7 +79,64 @@
 
   /* ---------------- sidebar ---------------- */
 
-  var sideNav = null;
+  var sideNav = null, sideEl = null, sideToggle = null, mainEl = null;
+  var sideMedia = window.matchMedia("(max-width: 940px)");
+  var desktopHidden = readJSON(LS_SIDE_HIDDEN, false) === true;
+  var mobileOpen = false, sideQuery = "", sideScroll = 0, sideFrame = 0;
+  try {
+    var savedScroll = Number(sessionStorage.getItem(SS_SIDE_SCROLL));
+    if (Number.isFinite(savedScroll) && savedScroll >= 0) sideScroll = savedScroll;
+  } catch (e) {}
+
+  function sidebarOpen() {
+    return sideMedia.matches ? mobileOpen : !desktopHidden;
+  }
+
+  function revealActiveTopic() {
+    if (!sideNav || sideQuery) return;
+    var active = sideNav.querySelector('[aria-current="page"]');
+    if (!active || !sideNav.clientHeight) return;
+    var row = active.getBoundingClientRect(), viewport = sideNav.getBoundingClientRect();
+    // Move only the navigation scroller; never change the article's scroll position.
+    if (row.top < viewport.top + 8 || row.bottom > viewport.bottom - 8) {
+      sideNav.scrollTop += row.top - viewport.top - (sideNav.clientHeight - row.height) / 2;
+    }
+  }
+
+  function saveSidebarScroll() {
+    if (!sideNav || sideQuery || sideFrame) return;
+    sideScroll = sideNav.scrollTop;
+    try { sessionStorage.setItem(SS_SIDE_SCROLL, String(sideScroll)); } catch (e) {}
+  }
+
+  function syncSidebar() {
+    var open = sidebarOpen();
+    var returnFocus = !open && sideEl.contains(document.activeElement);
+    document.documentElement.classList.toggle("side-hidden", !open);
+    sideEl.inert = !open;
+    sideEl.setAttribute("aria-hidden", String(!open));
+    mainEl.inert = sideMedia.matches && open;
+    sideToggle.setAttribute("aria-expanded", String(open));
+    sideToggle.setAttribute("aria-label", open ? "Hide sidebar" : "Show sidebar");
+    sideToggle.title = open ? "Hide sidebar" : "Show sidebar";
+    if (returnFocus) sideToggle.focus({ preventScroll: true });
+  }
+
+  function setSidebarOpen(open) {
+    if (sideMedia.matches) mobileOpen = open;
+    else {
+      desktopHidden = !open;
+      writeJSON(LS_SIDE_HIDDEN, desktopHidden);
+    }
+    syncSidebar();
+    if (open) requestAnimationFrame(function () {
+      revealActiveTopic();
+      if (sideMedia.matches && sidebarOpen()) {
+        var target = sideNav.querySelector('[aria-current="page"]') || sideEl.querySelector(".side-close");
+        target.focus({ preventScroll: true });
+      }
+    });
+  }
 
   function buildShell() {
     var here = currentFile();
@@ -85,15 +144,28 @@
     var app = el("div", "app");
 
     /* --- sidebar --- */
-    var side = el("aside", "side");
+    var side = sideEl = el("aside", "side");
+    side.id = "course-sidebar";
     side.setAttribute("aria-label", "Course");
 
     var top = el("div", "side-top");
     var brand = el("a", "side-brand");
     brand.href = "index.html";
+    if (here === "index.html") brand.setAttribute("aria-current", "page");
     brand.appendChild(el("span", "side-dot"));
     brand.appendChild(el("span", null, "KytyPS5"));
-    top.appendChild(brand);
+    var heading = el("div", "side-heading");
+    heading.appendChild(brand);
+    var close = el("button", "icon-btn side-close");
+    close.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">' +
+      '<path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+    close.type = "button";
+    close.title = "Hide sidebar";
+    close.setAttribute("aria-label", "Hide sidebar");
+    close.setAttribute("aria-controls", side.id);
+    close.addEventListener("click", function () { setSidebarOpen(false); });
+    heading.appendChild(close);
+    top.appendChild(heading);
     var sub = el("p", "side-sub", "Learning platform");
     top.appendChild(sub);
 
@@ -105,8 +177,11 @@
     side.appendChild(top);
 
     sideNav = el("nav", "side-nav");
+    sideNav.setAttribute("aria-label", "Topics");
     renderNav(sideNav, here, "");
     side.appendChild(sideNav);
+    sideNav.addEventListener("scroll", saveSidebarScroll, { passive: true });
+    window.addEventListener("pagehide", saveSidebarScroll);
 
     filter.addEventListener("input", function () {
       renderNav(sideNav, here, filter.value.trim().toLowerCase());
@@ -131,21 +206,18 @@
     side.appendChild(foot);
 
     var scrim = el("div", "side-scrim");
-    scrim.addEventListener("click", function () {
-      document.documentElement.classList.remove("side-open");
-    });
+    scrim.addEventListener("click", function () { setSidebarOpen(false); });
 
-    var toggle = el("button", "side-toggle", "☰");
+    var toggle = sideToggle = el("button", "side-toggle", "☰");
     toggle.type = "button";
-    toggle.setAttribute("aria-label", "Open navigation");
-    toggle.addEventListener("click", function () {
-      document.documentElement.classList.toggle("side-open");
-    });
+    toggle.setAttribute("aria-controls", side.id);
+    toggle.addEventListener("click", function () { setSidebarOpen(!sidebarOpen()); });
 
     /* --- main --- */
-    var main = el("div", "main");
+    var main = mainEl = el("div", "main");
 
     var bar = el("div", "topbar");
+    bar.appendChild(toggle);
     var t = currentTopic();
     var crumb = el("div", "crumb", t ? (partOf(t) + " · " + t.title) : "Home");
     bar.appendChild(crumb);
@@ -172,7 +244,25 @@
     app.appendChild(main);
     document.body.insertBefore(app, document.body.firstChild);
     document.body.insertBefore(scrim, document.body.firstChild);
-    document.body.insertBefore(toggle, document.body.firstChild);
+    syncSidebar();
+    sideMedia.addEventListener("change", function () {
+      mobileOpen = false;
+      syncSidebar();
+      requestAnimationFrame(revealActiveTopic);
+    });
+    window.addEventListener("pageshow", function () {
+      mobileOpen = false;
+      desktopHidden = readJSON(LS_SIDE_HIDDEN, false) === true;
+      syncSidebar();
+      requestAnimationFrame(revealActiveTopic);
+    });
+    document.addEventListener("keydown", function (e) {
+      if (!e.defaultPrevented && e.key === "Escape" && sidebarOpen() &&
+          (sideMedia.matches || sideEl.contains(document.activeElement))) {
+        e.preventDefault();
+        setSidebarOpen(false);
+      }
+    });
 
     if (holder) addPager(holder);
   }
@@ -187,6 +277,9 @@
   }
 
   function renderNav(root, here, q) {
+    if (root.childElementCount && !sideQuery && !sideFrame) sideScroll = root.scrollTop;
+    if (sideFrame) cancelAnimationFrame(sideFrame);
+    sideQuery = q;
     root.innerHTML = "";
     var d = done();
     var pendingPart = null;
@@ -209,6 +302,13 @@
       a.appendChild(el("span", null, t.title));
       if (d[t.id]) a.appendChild(el("span", "side-done", "✓"));
       root.appendChild(a);
+    });
+    // Ignore intermediate scroll resets while the navigation DOM is being rebuilt.
+    sideFrame = requestAnimationFrame(function () {
+      sideFrame = 0;
+      root.scrollTop = q ? 0 : sideScroll;
+      revealActiveTopic();
+      saveSidebarScroll();
     });
   }
 
@@ -269,7 +369,7 @@
         var all = document.querySelectorAll(".check-item input[type=checkbox]");
         var allDone = Array.prototype.every.call(all, function (x) { return x.checked; });
         setDone(t.id, allDone && all.length > 0);
-        renderNav(sideNav, currentFile(), "");
+        renderNav(sideNav, currentFile(), sideQuery);
         var fill = document.querySelector(".side-prog-fill");
         var lbl = document.querySelector(".side-prog-l");
         var pr = progress();
